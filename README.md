@@ -1,47 +1,97 @@
-# Getting Started with Create React App
+# Project Kintagen: Your AI Research Co-pilot
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+**Project Kintagen** is a decentralized, AI-powered research assistant designed for scientific labs. It provides a secure, collaborative platform to ingest, analyze, and query private research data, turning your lab's collective knowledge into an interactive and intelligent resource.
 
-## Available Scripts
+Built on a foundation of decentralized technologies like Filecoin and Lit, Kintagen ensures that your sensitive research data remains private, verifiable, and owned by you.
 
-In the project directory, you can run:
 
-### `npm start`
+*(**Action Required:** Replace this with a real screenshot of dashboard!)*
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## The Problem
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+Scientific research labs generate a massive amount of valuable data:
+*   Published papers and literature reviews.
+*   Raw experimental data from equipment (GC-MS, NMR, etc.).
+*   Internal notes, theses, and reports.
 
-### `npm test`
+This knowledge is often siloed, difficult to search, and hard to share securely. New researchers spend months getting up to speed, and valuable insights can be lost in a sea of PDFs and disconnected files.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## The Solution
 
-### `npm run build`
+Project Kintagen acts as a centralized "brain" for your lab. It allows you to:
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+*   **🧠 Ingest Knowledge:** Securely upload research papers, experimental data, and notes. The system processes and understands the content, storing it on the decentralized Filecoin network.
+*   **🤖 Chat with Your Data:** Use a familiar AI chat interface to ask complex questions about your ingested documents. Get instant, context-aware answers grounded in your lab's private data.
+*   **🔬 Accelerate Research:** Quickly find chemical structures, experimental methods, or previously published findings without manually sifting through hundreds of documents.
+*   **🤝 Collaborate Securely:** (Future) Use Flow Protocol to create rules for sharing specific knowledge between partner labs, fostering collaboration without giving up data ownership.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Core Features
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+*   **AI-Powered Chat Interface:** Ask natural language questions and get precise answers from an AI that uses your private data as its knowledge base.
+*   **Decentralized Data Ingestion:** Upload documents and data files. They are processed and stored on the Filecoin network, ensuring data persistence and verifiability.
+*   **Secure API Architecture:** A robust Node.js backend acts as a secure proxy, protecting your AI service API keys and managing business logic.
+*   **Modern, Responsive UI:** A clean and intuitive dashboard built with React, TypeScript, and Tailwind CSS.
+*   **Project-Based Organization:** (Future) Group your data and chats into "Projects" to mirror real-world research workflows.
 
-### `npm run eject`
+## Tech Stack & Architecture
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+Project Kintagen is built on a modern, decentralized technology stack:
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+*   **Frontend:**
+    *   [React](https://reactjs.org/) & [TypeScript](https://www.typescriptlang.org/): For a robust and scalable user interface.
+    *   [Tailwind CSS](https://tailwindcss.com/): For rapid, utility-first styling.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+*   **Backend:**
+    *   [Node.js](https://nodejs.org/) & [Express](https://expressjs.com/): A lightweight and powerful API server.
+    *   [OpenAI SDK](https://github.com/openai/openai-node): To communicate with AI models like DeepSeek or OpenAI.
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+*   **Decentralized Infrastructure (The Vision):**
+    *   **Filecoin:** For persistent, content-addressed storage of research data.
+    *   **Flow Protocol:** For decentralized access control and secure knowledge sharing between agents/labs.
+    *   **Bio.xyz:** For verifiable identity of human contributors.
+    *   **Mosaia:** For cross-referencing and validating information across the network.
 
-## Learn More
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+*(**Action Required:** Create a simple diagram showing React -> Node Backend -> AI Service -> Filecoin)*
 
-To learn React, check out the [React documentation](https://reactjs.org/).
-# kintagen
+---
+
+## Getting Started
+
+Follow these instructions to get a local copy of Project Cortex up and running for development.
+
+### Prerequisites
+
+*   [Node.js](https://nodejs.org/) (v18 or later recommended)
+*   [pnpm](https://pnpm.io/installation) (recommended package manager) or npm/yarn
+*   A Mosaia API Key
+
+### Installation & Setup
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/KintaGen/kintagen
+    cd kintagen
+    ```
+
+2.  **Set up the Frontend Application:**
+    *   Install frontend dependencies:
+    ```bash
+    pnpm install
+    ```
+
+### Running the Application
+
+Project Kintagen requires two separate terminal processes to run concurrently: one for the backend and one for the frontend.
+
+```bash
+# Make sure you are in the project's root directory
+pnpm start
+```
+    This will automatically open your browser to `http://localhost:3000`.
+---
+
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
