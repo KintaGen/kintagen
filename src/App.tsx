@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import DataIngestionPage from './pages/DataIngestionPage';
 import ResearchChatPage from './pages/ResearchChatPage';
+import LD50AnalysisPage from './pages/LD50AnalysisPage';
 
 
 const App: React.FC = () => {
@@ -16,6 +17,8 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/chat" element={<ResearchChatPage />} /> 
             <Route path="/ingest" element={<DataIngestionPage />} />
+            <Route path="/analysis" element={<LD50AnalysisPage />} />
+
           </Routes>
         </main>
       </div>
