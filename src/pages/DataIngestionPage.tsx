@@ -16,27 +16,19 @@ interface ProcessedFile {
 }
 // For the general file history fetched from the server
 interface CidInfo {
-  filename: string;
   cid: string;
-  uploaded_at: string;
+  title: string;
+  year: string;
+  authors: string[]; // An array of author names
+  doi: string;
+  keywords: string[]; // An array of keywords/tags
 }
+
+
 
 const ACCESS_MANAGER_CONTRACT_ADDRESS = "0x5bc5A6E3dD358b67A752C9Dd58df49E863eA95F2";
 
-// --- HELPER FUNCTION ---
-/**
- * Converts a Base64 encoded string to a Uint8Array.
- * This is necessary to send the raw encrypted bytes to the server.
- */
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binaryString = window.atob(base64);
-  const len = binaryString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
+
 
 
 const DataIngestionPage: React.FC = () => {
@@ -70,10 +62,10 @@ const DataIngestionPage: React.FC = () => {
     setError(null);
     try {
       const params = filter ? `?filename=${encodeURIComponent(filter)}` : '';
-      const resp = await fetch(`https://salty-eyes-visit.loca.lt/api/cids${params}`);
+      const resp = await fetch(`https://salty-eyes-visit.loca.lt/api/data/paper`); 
       if (!resp.ok) throw new Error('Failed to fetch CID list');
       const json: CidInfo[] = await resp.json();
-      setCids(json);
+      setCids(json.data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -111,7 +103,43 @@ const DataIngestionPage: React.FC = () => {
       setIsLoading(false);
     }
   };
+  const processAndUploadPdf = async () => {
+    console.log(selectedFile)
+    if (!selectedFile) {
+        alert("Please select a file.");
+        return;
+    }
 
+    // This is a simple FormData upload, just like any other file upload.
+    const formData = new FormData();
+    // The key 'pdfFile' must match `upload.single('pdfFile')` on the server
+    formData.append('pdfFile', selectedFile); 
+
+    // We can add other metadata fields here if needed, and they'll be available in `req.body`
+    // formData.append('tags', 'biochemistry, review');
+
+    try {
+        const response = await fetch('http://localhost:3001/api/process-and-upload-paper', {
+            method: 'POST',
+            body: formData,
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result) {
+            throw new Error(result.error || 'Failed to process the PDF.');
+        }
+
+        console.log("Successfully processed and stored the PDF!");
+        console.log("Final Manifest:", result.data);
+        
+        // Now you can update your UI, maybe by re-fetching the list of all documents.
+        fetchCIDs(); // or whatever your function to refresh the list is called
+
+    } catch (error) {
+        console.error("Error processing PDF:", error);
+        alert(error.message);
+    }
+};
   // 3. Handler for UPLOADING ENCRYPTED files
   const handleEncryptedUpload = async (fileName: string, tokenId: string, encryptedJsonString: string) => {
     setStatus(`Uploading encrypted data for "${fileName}"...`);
@@ -284,7 +312,7 @@ const DataIngestionPage: React.FC = () => {
 
       {/* --- MERGE: The Unified Action Button --- */}
       <button
-        onClick={handleProcessFileClick}
+        onClick={processAndUploadPdf}
         disabled={!selectedFile || isProcessing || (encryptFile && !isConnected)}
         className="w-full mt-4 bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
       >
@@ -296,18 +324,7 @@ const DataIngestionPage: React.FC = () => {
       {contractError && <p className="text-red-400 mt-2">Contract Error: {contractError.shortMessage}</p>}
 
       {/* History Sections */}
-      <div className="mt-10 grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* --- MERGE: Section for ENCRYPTED files in this session --- */}
-        <div>
-          <h2 className="text-xl font-semibold mb-4">Encrypted File History (This Session)</h2>
-          <div className="bg-gray-800 rounded-lg shadow">
-            {processedFiles.length > 0 ? (
-              <ul className="divide-y divide-gray-700">{/* ... render processedFiles list ... */}</ul>
-            ) : <p className="p-4 text-center text-gray-500">No files encrypted in this session.</p>}
-          </div>
-        </div>
-
-        {/* --- MERGE: Section for ALL files from the server --- */}
+      <div className="mt-10 gap-8">
         <div>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">Total Ingestion History</h2>
@@ -318,21 +335,68 @@ const DataIngestionPage: React.FC = () => {
             </div>
           </div>
           <div className="bg-gray-800 rounded-lg shadow">
-            <ul className="divide-y divide-gray-700">
-              {cids.length > 0 ? (
-                cids.map((cid) => (
-                  <li key={cid.cid} className="flex items-center justify-between p-4">
-                    <div className="flex items-center overflow-hidden">
-                      <DocumentTextIcon className="h-6 w-6 text-gray-400 mr-4"/>
-                      <div>
-                        <p className="font-medium text-white truncate">{cid.filename}</p>
-                        <p className="text-sm text-gray-500 truncate">CID: {cid.cid}</p>
+          <ul className="divide-y divide-gray-700">
+          {cids.length > 0 ? (
+      // We'll rename the map variable to `item` for clarity, to avoid confusion with `item.cid`
+      cids.map((item) => (
+        <li key={item.cid} className="p-4 flex items-start space-x-4">
+          {/* Left side: Icon */}
+          <div className="flex-shrink-0">
+            <DocumentTextIcon className="h-8 w-8 text-gray-400 mt-1" />
+          </div>
+
+          {/* Middle: Main Content Block */}
+          <div className="flex-grow overflow-hidden">
+            {/* Title */}
+            <p className="text-lg font-semibold text-white truncate" title={item.title}>
+              {item.title || 'Untitled Document'}
+            </p>
+
+            {/* Authors */}
+            {item.authors && item.authors.length > 0 && (
+              <p className="text-sm text-gray-400 mt-1 truncate" title={item.authors.join(', ')}>
+                by {item.authors.join(', ')}
+              </p>
+            )}
+
+                      {/* DOI and CID */}
+                      <div className="text-xs text-gray-500 mt-2 space-x-4">
+                        {item.doi && (
+                          <a 
+                            href={`https://doi.org/${item.doi}`} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-blue-400 hover:underline"
+                          >
+                            DOI: {item.doi}
+                          </a>
+                        )}
+                        <span className="truncate" title={item.cid}>CID: {item.cid}</span>
                       </div>
+
+                      {/* Keywords/Tags */}
+                      {item.keywords && item.keywords.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.keywords.map((keyword, index) => (
+                            <span key={index} className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded-full">
+                              {keyword}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-sm text-gray-400 text-right">{new Date(cid.uploaded_at).toLocaleString()}</div>
+
+                    {/* Right side: Year */}
+                    <div className="flex-shrink-0 text-right">
+                      <p className="text-base font-medium text-white">{item.year}</p>
+                    </div>
                   </li>
                 ))
-              ) : <li className="p-4 text-center text-gray-500">{isLoading ? 'Loading...' : 'No files found.'}</li>}
+              ) : (
+                <li className="p-4 text-center text-gray-500">
+                  {isLoading ? 'Loading...' : 'No files found.'}
+                </li>
+              )}
             </ul>
           </div>
         </div>

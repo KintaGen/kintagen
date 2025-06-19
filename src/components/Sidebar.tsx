@@ -23,6 +23,7 @@ const Sidebar: React.FC = () => {
     { name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },
     { name: 'Ingest Data', to: '/ingest', icon: ArrowUpTrayIcon },
     { name: 'Analysis Workbench', to: '/analysis', icon: BeakerIcon },
+    { name: 'Analysis GCMS', to: '/analyze-gcms', icon: BeakerIcon },
     { name: 'Lab Network', to: '/network', icon: UsersIcon },
   ];
 
