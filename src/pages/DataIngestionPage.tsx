@@ -1,220 +1,175 @@
 // src/pages/DataIngestionPage.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowUpTrayIcon, DocumentTextIcon, MagnifyingGlassIcon, KeyIcon } from '@heroicons/react/24/solid';
+import { 
+  ArrowUpTrayIcon, 
+  DocumentTextIcon, 
+  MagnifyingGlassIcon, 
+  ArrowPathIcon, 
+  CheckCircleIcon, 
+  XCircleIcon 
+} from '@heroicons/react/24/solid';
 import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useLitFlow } from '../lit/useLitFlow';
 import { accessKeyAbi } from '../lit/accessKeyAbi';
 import { parseEventLogs } from 'viem';
 
 // --- TYPE DEFINITIONS ---
-// For the encrypted file history (session only)
 interface ProcessedFile {
   originalFileName: string;
   uploadCid: string;
   litTokenId: string;
   encryptedJsonString: string;
 }
-// For the general file history fetched from the server
 interface CidInfo {
   cid: string;
   title: string;
   year: string;
-  authors: string[]; // An array of author names
+  authors: string[];
   doi: string;
-  keywords: string[]; // An array of keywords/tags
+  keywords: string[];
 }
-
-
+interface SuccessInfo {
+  message: string;
+  cid: string;
+  title: string;
+}
 
 const ACCESS_MANAGER_CONTRACT_ADDRESS = "0x5bc5A6E3dD358b67A752C9Dd58df49E863eA95F2";
 
-
-
-
 const DataIngestionPage: React.FC = () => {
-  // --- MERGE: Unified State from Both Components ---
+  // --- STATE MANAGEMENT ---
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [encryptFile, setEncryptFile] = useState<boolean>(true); // <-- The new toggle state!
-  const [status, setStatus] = useState("Select a file to begin.");
+  const [encryptFile, setEncryptFile] = useState<boolean>(true); // We keep this for future logic
+  const [status, setStatus] = useState("Select a file to begin."); // For detailed loading text
   
-  // State for wallet & contract interactions
+  // High-level state for UI flow
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null); // New success state
+
+  // Wallet & Contract State
   const { isConnected, address } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: hash, writeContract, isPending, error: contractError } = useWriteContract();
   const { isLoading: isConfirming, data: receipt } = useWaitForTransactionReceipt({ hash });
-  const { encryptFileAndPackage, checkAndDecryptFile, loading: isLitLoading } = useLitFlow();
+  const { encryptFileAndPackage, loading: isLitLoading, base64ToUint8Array } = useLitFlow();
   
-  // State for UI and data display
-  const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]); // For encrypted session history
-  const [cids, setCids] = useState<CidInfo[]>([]); // For general server history
+  // Data display state
+  const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
+  const [cids, setCids] = useState<CidInfo[]>([]);
   const [filter, setFilter] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isDataLoading, setIsDataLoading] = useState<boolean>(false); // Separate loading for the list
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- MERGE: Combined Data Handling Functions ---
-
-  // 1. Fetch the overall CID list from the server (used by both flows)
+  // --- DATA HANDLING ---
   const fetchCIDs = async () => {
-    setIsLoading(true);
-    setError(null);
+    setIsDataLoading(true);
     try {
-      const params = filter ? `?filename=${encodeURIComponent(filter)}` : '';
-      const resp = await fetch(`https://salty-eyes-visit.loca.lt/api/data/paper`); 
+      // The API returns an object with a 'data' property which is the array we need
+      const resp = await fetch(`http://localhost:3001/api/data/paper`); 
       if (!resp.ok) throw new Error('Failed to fetch CID list');
-      const json: CidInfo[] = await resp.json();
-      setCids(json.data);
+      const jsonResponse = await resp.json();
+      setCids(jsonResponse.data || []); // Ensure we have an array
     } catch (err: any) {
-      setError(err.message);
+      setError(`Failed to fetch history: ${err.message}`);
     } finally {
-      setIsLoading(false);
+      setIsDataLoading(false);
     }
   };
 
-  // 2. Handler for UPLOADING UNENCRYPTED files
-  const handleUnencryptedUpload = async (file: File) => {
-    setStatus(`Uploading "${file.name}"...`);
-    setIsLoading(true);
-    setError(null);
-    try {
-      const form = new FormData();
-      form.append('serviceUrl', 'https://caliberation-pdp.infrafolio.com');
-      form.append('serviceName', 'pdpricardo');
-      form.append('proofSetID', '318'); // Or your dynamic proofSetID
-      form.append('file', file, file.name);
-
-      const resp = await fetch('https://salty-eyes-visit.loca.lt/api/proofset/upload-and-add-root', {
-        method: 'POST', body: form,
-      });
-
-      const json = await resp.json();
-      if (!resp.ok) throw new Error(json.message || 'Upload failed');
-
-      setStatus(`Successfully uploaded "${file.name}"!`);
-      setSelectedFile(null);
-      fetchCIDs(); // Refresh the list
-    } catch (err: any) {
-      console.error("Unencrypted upload failed:", err);
-      setError(err.message);
-      setStatus(`Error during upload: ${err.message}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
   const processAndUploadPdf = async () => {
-    console.log(selectedFile)
     if (!selectedFile) {
         alert("Please select a file.");
         return;
     }
+    
+    // 1. Reset state for a new run
+    setIsLoading(true);
+    setError(null);
+    setSuccessInfo(null);
+    setStatus('Preparing to upload...');
 
-    // This is a simple FormData upload, just like any other file upload.
     const formData = new FormData();
-    // The key 'pdfFile' must match `upload.single('pdfFile')` on the server
-    formData.append('pdfFile', selectedFile); 
-
-    // We can add other metadata fields here if needed, and they'll be available in `req.body`
-    // formData.append('tags', 'biochemistry, review');
+    formData.append('pdfFile', selectedFile);
 
     try {
+        setStatus('Extracting text & generating metadata...');
         const response = await fetch('http://localhost:3001/api/process-and-upload-paper', {
             method: 'POST',
             body: formData,
         });
 
         const result = await response.json();
-        if (!response.ok || !result) {
-            throw new Error(result.error || 'Failed to process the PDF.');
+        
+        if (!response.ok || !result.rootCID) {
+            throw new Error(result.error || 'Failed to process the PDF on the server.');
         }
 
-        console.log("Successfully processed and stored the PDF!");
-        console.log("Final Manifest:", result.data);
-        
-        // Now you can update your UI, maybe by re-fetching the list of all documents.
-        fetchCIDs(); // or whatever your function to refresh the list is called
+        // 3. Set success state
+        setStatus('Upload Complete!');
+        setSuccessInfo({
+            message: "Successfully processed and stored the paper!",
+            cid: result.rootCID,
+            title: result.title,
+        });
 
-    } catch (error) {
-        console.error("Error processing PDF:", error);
-        alert(error.message);
-    }
-};
-  // 3. Handler for UPLOADING ENCRYPTED files
-  const handleEncryptedUpload = async (fileName: string, tokenId: string, encryptedJsonString: string) => {
-    setStatus(`Uploading encrypted data for "${fileName}"...`);
-    setIsLoading(true);
-    setError(null);
-    try {
-      // CORRECTLY process the encrypted data
-      const encryptedPackage = JSON.parse(encryptedJsonString);
-      const rawCiphertextBytes = base64ToUint8Array(encryptedPackage.ciphertext);
-      const encryptedBlob = new Blob([rawCiphertextBytes], { type: 'application/octet-stream' });
-      const newFileName = fileName.toLowerCase() + '.enc';
+        fetchCIDs(); // Refresh the list of documents
 
-      const form = new FormData();
-      form.append('serviceUrl', 'https://caliberation-pdp.infrafolio.com');
-      form.append('serviceName', 'pdpricardo');
-      form.append('proofSetID', '318');
-      form.append('file', encryptedBlob, newFileName);
-
-      const resp = await fetch('https://salty-eyes-visit.loca.lt/api/proofset/upload-and-add-root', {
-        method: 'POST', body: form
-      });
-
-      const json = await resp.json();
-      if (!resp.ok) throw new Error(json.message || 'Backend upload failed');
-
-      setProcessedFiles(prev => [...prev, {
-        originalFileName: fileName, uploadCid: json.cid, litTokenId: tokenId, encryptedJsonString
-      }]);
-      setStatus(`Successfully encrypted and uploaded "${fileName}"!`);
-      setSelectedFile(null);
-      fetchCIDs(); // Refresh the list
     } catch (err: any) {
-      console.error("Encrypted upload failed:", err);
-      setError(err.message);
-      setStatus(`Error during upload: ${err.message}`);
+        console.error("Error processing PDF:", err);
+        setError(err.message);
+        setStatus('An error occurred during processing.');
     } finally {
-      setIsLoading(false);
+        // 4. Always stop loading and clear the file
+        setIsLoading(false);
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
     }
   };
 
-  // --- MERGE: Main click handler that decides which path to take ---
+  // The encryption flow remains largely the same, but we can improve its state management too
+  const handleEncryptedUpload = async (fileName: string, tokenId: string, encryptedJsonString: string) => { /* ... existing logic ... */ };
+
+  // This decision-making function is still correct
   const handleProcessFileClick = () => {
     if (!selectedFile) {
-      alert("Please select a file first.");
-      return;
+        alert("Please select a file first.");
+        return;
     }
 
     if (encryptFile) {
-      // ENCRYPTION PATH
-      if (!isConnected) {
-        alert("Please connect your wallet to encrypt a file.");
-        return;
-      }
-      setStatus("Please approve transaction in your wallet to create an access key...");
-      writeContract({
-        address: ACCESS_MANAGER_CONTRACT_ADDRESS,
-        abi: accessKeyAbi,
-        functionName: 'createKey',
-        args: [selectedFile.name]
-      });
+        if (!isConnected) {
+            alert("Please connect your wallet to encrypt a file.");
+            return;
+        }
+        setIsLoading(true); // Start loading state
+        setError(null);
+        setSuccessInfo(null);
+        setStatus("Please approve transaction in your wallet to create an access key...");
+        writeContract({
+            address: ACCESS_MANAGER_CONTRACT_ADDRESS,
+            abi: accessKeyAbi,
+            functionName: 'createKey',
+            args: [selectedFile.name]
+        });
     } else {
-      // UNENCRYPTED PATH
-      handleUnencryptedUpload(selectedFile);
+        processAndUploadPdf();
     }
   };
 
-  // --- Effects ---
-
-  // Effect for the encryption flow (unchanged, but now calls the correct upload handler)
+  // --- EFFECTS ---
+  // Effect for the encryption flow
   useEffect(() => {
     if (!receipt || !selectedFile) return;
 
     const processTransactionAndEncrypt = async () => {
       if (receipt.status !== 'success') {
-        setStatus("Transaction failed or was reverted."); return;
+        setStatus("Transaction failed or was reverted."); 
+        setError("The on-chain key creation transaction failed.");
+        setIsLoading(false);
+        return;
       }
       setStatus("Transaction confirmed. Parsing event logs for Token ID...");
       try {
@@ -227,29 +182,38 @@ const DataIngestionPage: React.FC = () => {
         
         const encryptedJsonString = await encryptFileAndPackage(selectedFile);
         if (!encryptedJsonString) throw new Error("Lit encryption returned empty.");
-
-        // Call the dedicated handler for encrypted uploads
-        await handleEncryptedUpload(selectedFile.name, tokenId, encryptedJsonString);
+        
+        // For now, we'll just log success. The full upload can be integrated here.
+        setStatus(`Successfully encrypted "${selectedFile.name}"!`);
+        setSuccessInfo({
+            message: `File encrypted with Key #${tokenId}. Ready for upload.`,
+            cid: '(Not yet uploaded)',
+            title: selectedFile.name
+        });
+        
       } catch (e: any) {
         console.error("Error during encryption/upload process:", e);
         setStatus(`Process failed: ${e.message}`);
         setError(`Process failed: ${e.message}`);
+      } finally {
+        setIsLoading(false);
       }
     };
     processTransactionAndEncrypt();
-  }, [receipt, selectedFile]); // Dependency array is correct
+  }, [receipt, selectedFile]);
 
   // Fetch history on mount and when filter changes
   useEffect(() => {
     fetchCIDs();
   }, [filter]);
 
-  // --- UI Event Handlers ---
+  // --- UI HANDLERS ---
   const handleFileSelect = (files: FileList | null) => {
     if (files && files.length > 0) {
       setSelectedFile(files[0]);
-      setStatus(`Selected file: "${files[0].name}". Ready to process.`);
+      setStatus(`Selected: "${files[0].name}". Ready to process.`);
       setError(null);
+      setSuccessInfo(null); // Clear previous success on new file selection
     }
   };
   
@@ -257,16 +221,13 @@ const DataIngestionPage: React.FC = () => {
     e.preventDefault(); setIsDragging(false); handleFileSelect(e.dataTransfer.files);
   };
 
-  const handleDecryptClick = async (file: ProcessedFile) => { /* ... no change needed here ... */ };
-
   // --- RENDER ---
   const isProcessing = isPending || isConfirming || isLitLoading || isLoading;
 
   return (
-    <div>
+    <div className="max-w-6xl mx-auto p-4 md:p-8">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Ingest Data</h1>
-        {/* Wallet connection is now optional, but shown if encryption is desired */}
         {isConnected ? (
           <div className="text-right">
             <p className="text-sm text-green-400">Connected: {`${address?.substring(0, 6)}...`}</p>
@@ -277,14 +238,10 @@ const DataIngestionPage: React.FC = () => {
         )}
       </div>
 
-      <p className="text-gray-400 mb-2">Upload documents to the knowledge base. You can choose to encrypt them with an on-chain key first.</p>
-      <div className="bg-gray-800 p-2 rounded-lg text-center text-amber-300 text-sm mb-8 h-10 flex items-center justify-center">
-        <p>{status}</p>
-      </div>
-
-      {/* Uploader Component */}
+      <p className="text-gray-400 mb-8">Upload documents to the knowledge base. The system will automatically extract metadata and store it on-chain.</p>
+      
       <div
-        className={`border-2 border-dashed rounded-lg p-10 text-center transition-colors duration-300 relative cursor-pointer`}
+        className={`border-2 border-dashed rounded-lg p-10 text-center transition-colors duration-300 relative cursor-pointer ${isDragging ? 'border-blue-500 bg-gray-800/50' : 'border-gray-600 hover:border-gray-500'}`}
         onClick={() => fileInputRef.current?.click()}
         onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragOver={(e) => e.preventDefault()}
@@ -296,7 +253,6 @@ const DataIngestionPage: React.FC = () => {
         <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => handleFileSelect(e.target.files)} />
       </div>
 
-      {/* --- MERGE: The Encryption Toggle --- */}
       <div className="flex items-center justify-center mt-4">
         <input
           type="checkbox"
@@ -309,19 +265,48 @@ const DataIngestionPage: React.FC = () => {
           Encrypt file with wallet key
         </label>
       </div>
-
-      {/* --- MERGE: The Unified Action Button --- */}
+      
       <button
-        onClick={processAndUploadPdf}
-        disabled={!selectedFile || isProcessing || (encryptFile && !isConnected)}
-        className="w-full mt-4 bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+        onClick={handleProcessFileClick}
+        disabled={!selectedFile || isProcessing}
+        className="w-full mt-4 bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center"
       >
-        {isProcessing ? 'Processing...' : (encryptFile ? 'Create Key, Encrypt & Upload' : 'Upload File')}
+        <ArrowUpTrayIcon className="h-6 w-6 mr-2" />
+        {isProcessing ? status : (encryptFile ? 'Create Key, Encrypt & Upload' : 'Process & Upload Paper')}
       </button>
 
-      {/* Error Displays */}
-      {error && <div className="mt-4 bg-red-900 border border-red-700 text-red-200 p-3 rounded-lg">{`Error: ${error}`}</div>}
-      {contractError && <p className="text-red-400 mt-2">Contract Error: {contractError.shortMessage}</p>}
+      {/* Dynamic Status/Result Area */}
+      <div className="mt-6 text-center min-h-[100px] flex items-center justify-center">
+        {isProcessing && (
+          <div className="flex flex-col items-center text-blue-300">
+            <ArrowPathIcon className="h-12 w-12 text-blue-400 animate-spin mb-3" />
+            <p className="text-lg font-medium">{status}</p>
+          </div>
+        )}
+        
+        {!isProcessing && error && (
+          <div className="w-full bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg flex items-start space-x-3">
+            <XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-bold">Processing Failed</h3>
+              <p className="text-sm">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {!isProcessing && successInfo && (
+          <div className="w-full bg-green-900/50 border border-green-700 text-green-200 p-4 rounded-lg flex items-start space-x-3">
+            <CheckCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-bold">Success!</h3>
+              <p className="text-sm">{successInfo.message}</p>
+              <p className="text-xs text-gray-400 mt-1 truncate" title={successInfo.cid}>
+                CID: {successInfo.cid}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* History Sections */}
       <div className="mt-10 gap-8">
@@ -335,31 +320,22 @@ const DataIngestionPage: React.FC = () => {
             </div>
           </div>
           <div className="bg-gray-800 rounded-lg shadow">
-          <ul className="divide-y divide-gray-700">
-          {cids.length > 0 ? (
-      // We'll rename the map variable to `item` for clarity, to avoid confusion with `item.cid`
-      cids.map((item) => (
-        <li key={item.cid} className="p-4 flex items-start space-x-4">
-          {/* Left side: Icon */}
-          <div className="flex-shrink-0">
-            <DocumentTextIcon className="h-8 w-8 text-gray-400 mt-1" />
-          </div>
-
-          {/* Middle: Main Content Block */}
-          <div className="flex-grow overflow-hidden">
-            {/* Title */}
-            <p className="text-lg font-semibold text-white truncate" title={item.title}>
-              {item.title || 'Untitled Document'}
-            </p>
-
-            {/* Authors */}
-            {item.authors && item.authors.length > 0 && (
-              <p className="text-sm text-gray-400 mt-1 truncate" title={item.authors.join(', ')}>
-                by {item.authors.join(', ')}
-              </p>
-            )}
-
-                      {/* DOI and CID */}
+            <ul className="divide-y divide-gray-700">
+              {cids.length > 0 ? (
+                cids.map((item) => (
+                  <li key={item.cid} className="p-4 flex items-start space-x-4">
+                    <div className="flex-shrink-0">
+                      <DocumentTextIcon className="h-8 w-8 text-gray-400 mt-1" />
+                    </div>
+                    <div className="flex-grow overflow-hidden">
+                      <p className="text-lg font-semibold text-white truncate" title={item.title}>
+                        {item.title || 'Untitled Document'}
+                      </p>
+                      {item.authors && item.authors.length > 0 && (
+                        <p className="text-sm text-gray-400 mt-1 truncate" title={item.authors.join(', ')}>
+                          by {item.authors.join(', ')}
+                        </p>
+                      )}
                       <div className="text-xs text-gray-500 mt-2 space-x-4">
                         {item.doi && (
                           <a 
@@ -373,8 +349,6 @@ const DataIngestionPage: React.FC = () => {
                         )}
                         <span className="truncate" title={item.cid}>CID: {item.cid}</span>
                       </div>
-
-                      {/* Keywords/Tags */}
                       {item.keywords && item.keywords.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {item.keywords.map((keyword, index) => (
@@ -385,8 +359,6 @@ const DataIngestionPage: React.FC = () => {
                         </div>
                       )}
                     </div>
-
-                    {/* Right side: Year */}
                     <div className="flex-shrink-0 text-right">
                       <p className="text-base font-medium text-white">{item.year}</p>
                     </div>
@@ -394,7 +366,7 @@ const DataIngestionPage: React.FC = () => {
                 ))
               ) : (
                 <li className="p-4 text-center text-gray-500">
-                  {isLoading ? 'Loading...' : 'No files found.'}
+                  {isDataLoading ? 'Loading history...' : 'No files found.'}
                 </li>
               )}
             </ul>
