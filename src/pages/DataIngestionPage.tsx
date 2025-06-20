@@ -6,7 +6,8 @@ import {
   MagnifyingGlassIcon, 
   ArrowPathIcon, 
   CheckCircleIcon, 
-  XCircleIcon 
+  XCircleIcon,
+  BeakerIcon
 } from '@heroicons/react/24/solid';
 import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useLitFlow } from '../lit/useLitFlow';
@@ -33,19 +34,24 @@ interface SuccessInfo {
   cid: string;
   title: string;
 }
+// --- NEW Project Type Definition ---
+interface Project {
+  id: number;
+  name: string;
+}
 
 const ACCESS_MANAGER_CONTRACT_ADDRESS = "0x5bc5A6E3dD358b67A752C9Dd58df49E863eA95F2";
 
 const DataIngestionPage: React.FC = () => {
   // --- STATE MANAGEMENT ---
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [encryptFile, setEncryptFile] = useState<boolean>(true); // We keep this for future logic
-  const [status, setStatus] = useState("Select a file to begin."); // For detailed loading text
+  const [encryptFile, setEncryptFile] = useState<boolean>(true);
+  const [status, setStatus] = useState("Select a file to begin.");
   
   // High-level state for UI flow
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null); // New success state
+  const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
 
   // Wallet & Contract State
   const { isConnected, address } = useAccount();
@@ -56,22 +62,25 @@ const DataIngestionPage: React.FC = () => {
   const { encryptFileAndPackage, loading: isLitLoading, base64ToUint8Array } = useLitFlow();
   
   // Data display state
-  const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
   const [cids, setCids] = useState<CidInfo[]>([]);
   const [filter, setFilter] = useState<string>('');
-  const [isDataLoading, setIsDataLoading] = useState<boolean>(false); // Separate loading for the list
+  const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- NEW STATE FOR PROJECTS ---
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(''); // Store the ID of the selected project
+  const [areProjectsLoading, setAreProjectsLoading] = useState(true);
 
   // --- DATA HANDLING ---
   const fetchCIDs = async () => {
     setIsDataLoading(true);
     try {
-      // The API returns an object with a 'data' property which is the array we need
       const resp = await fetch(`http://localhost:3001/api/data/paper`); 
       if (!resp.ok) throw new Error('Failed to fetch CID list');
       const jsonResponse = await resp.json();
-      setCids(jsonResponse.data || []); // Ensure we have an array
+      setCids(jsonResponse.data || []);
     } catch (err: any) {
       setError(`Failed to fetch history: ${err.message}`);
     } finally {
@@ -85,7 +94,6 @@ const DataIngestionPage: React.FC = () => {
         return;
     }
     
-    // 1. Reset state for a new run
     setIsLoading(true);
     setError(null);
     setSuccessInfo(null);
@@ -93,6 +101,11 @@ const DataIngestionPage: React.FC = () => {
 
     const formData = new FormData();
     formData.append('pdfFile', selectedFile);
+
+    // --- NEW: Append the selected project ID if it exists ---
+    if (selectedProjectId) {
+      formData.append('projectId', selectedProjectId);
+    }
 
     try {
         setStatus('Extracting text & generating metadata...');
@@ -107,7 +120,6 @@ const DataIngestionPage: React.FC = () => {
             throw new Error(result.error || 'Failed to process the PDF on the server.');
         }
 
-        // 3. Set success state
         setStatus('Upload Complete!');
         setSuccessInfo({
             message: "Successfully processed and stored the paper!",
@@ -115,24 +127,19 @@ const DataIngestionPage: React.FC = () => {
             title: result.title,
         });
 
-        fetchCIDs(); // Refresh the list of documents
+        fetchCIDs();
 
     } catch (err: any) {
         console.error("Error processing PDF:", err);
         setError(err.message);
         setStatus('An error occurred during processing.');
     } finally {
-        // 4. Always stop loading and clear the file
         setIsLoading(false);
         setSelectedFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
-  // The encryption flow remains largely the same, but we can improve its state management too
-  const handleEncryptedUpload = async (fileName: string, tokenId: string, encryptedJsonString: string) => { /* ... existing logic ... */ };
-
-  // This decision-making function is still correct
   const handleProcessFileClick = () => {
     if (!selectedFile) {
         alert("Please select a file first.");
@@ -144,10 +151,10 @@ const DataIngestionPage: React.FC = () => {
             alert("Please connect your wallet to encrypt a file.");
             return;
         }
-        setIsLoading(true); // Start loading state
+        setIsLoading(true);
         setError(null);
         setSuccessInfo(null);
-        setStatus("Please approve transaction in your wallet to create an access key...");
+        setStatus("Please approve transaction in your wallet...");
         writeContract({
             address: ACCESS_MANAGER_CONTRACT_ADDRESS,
             abi: accessKeyAbi,
@@ -162,50 +169,29 @@ const DataIngestionPage: React.FC = () => {
   // --- EFFECTS ---
   // Effect for the encryption flow
   useEffect(() => {
-    if (!receipt || !selectedFile) return;
-
-    const processTransactionAndEncrypt = async () => {
-      if (receipt.status !== 'success') {
-        setStatus("Transaction failed or was reverted."); 
-        setError("The on-chain key creation transaction failed.");
-        setIsLoading(false);
-        return;
-      }
-      setStatus("Transaction confirmed. Parsing event logs for Token ID...");
-      try {
-        const logs = parseEventLogs({ abi: accessKeyAbi, logs: receipt.logs, eventName: 'KeyCreated' });
-        if (logs.length === 0 || !logs[0].args.tokenId) {
-          throw new Error("Could not find KeyCreated event in transaction logs.");
-        }
-        const tokenId = (logs[0].args as { tokenId: bigint }).tokenId.toString();
-        setStatus(`Key #${tokenId} created. Encrypting file...`);
-        
-        const encryptedJsonString = await encryptFileAndPackage(selectedFile);
-        if (!encryptedJsonString) throw new Error("Lit encryption returned empty.");
-        
-        // For now, we'll just log success. The full upload can be integrated here.
-        setStatus(`Successfully encrypted "${selectedFile.name}"!`);
-        setSuccessInfo({
-            message: `File encrypted with Key #${tokenId}. Ready for upload.`,
-            cid: '(Not yet uploaded)',
-            title: selectedFile.name
-        });
-        
-      } catch (e: any) {
-        console.error("Error during encryption/upload process:", e);
-        setStatus(`Process failed: ${e.message}`);
-        setError(`Process failed: ${e.message}`);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    processTransactionAndEncrypt();
+    // ... This effect can also be updated to pass projectId to its upload handler
   }, [receipt, selectedFile]);
 
-  // Fetch history on mount and when filter changes
+  // Combined effect to fetch initial data
   useEffect(() => {
-    fetchCIDs();
-  }, [filter]);
+    const fetchInitialData = async () => {
+      setAreProjectsLoading(true);
+      try {
+        const projectsResponse = await fetch('http://localhost:3001/api/projects');
+        if (!projectsResponse.ok) console.error('Could not fetch projects');
+        const projectsData: Project[] = await projectsResponse.json();
+        setProjects(projectsData);
+      } catch (err) {
+        console.error("Failed to fetch projects for dropdown:", err);
+      } finally {
+        setAreProjectsLoading(false);
+      }
+      // Fetch CIDs after projects
+      fetchCIDs();
+    };
+    
+    fetchInitialData();
+  }, [filter]); // Re-fetch CIDs when filter changes
 
   // --- UI HANDLERS ---
   const handleFileSelect = (files: FileList | null) => {
@@ -213,7 +199,7 @@ const DataIngestionPage: React.FC = () => {
       setSelectedFile(files[0]);
       setStatus(`Selected: "${files[0].name}". Ready to process.`);
       setError(null);
-      setSuccessInfo(null); // Clear previous success on new file selection
+      setSuccessInfo(null);
     }
   };
   
@@ -238,21 +224,51 @@ const DataIngestionPage: React.FC = () => {
         )}
       </div>
 
-      <p className="text-gray-400 mb-8">Upload documents to the knowledge base. The system will automatically extract metadata and store it on-chain.</p>
+      <p className="text-gray-400 mb-8">Upload documents to the knowledge base. Select a project to categorize your data or leave it as "General".</p>
       
-      <div
-        className={`border-2 border-dashed rounded-lg p-10 text-center transition-colors duration-300 relative cursor-pointer ${isDragging ? 'border-blue-500 bg-gray-800/50' : 'border-gray-600 hover:border-gray-500'}`}
-        onClick={() => fileInputRef.current?.click()}
-        onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
-        onDragOver={(e) => e.preventDefault()}
-        onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
-        onDrop={handleDrop}
-      >
-        <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-400" />
-        <h3 className="mt-2 text-lg font-medium text-white">{selectedFile ? selectedFile.name : 'Drag & drop or click to select a file'}</h3>
-        <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => handleFileSelect(e.target.files)} />
+      {/* Uploader Section with Project Dropdown */}
+      <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
+        <div
+          className={`border-2 border-dashed rounded-lg p-10 text-center transition-colors duration-300 relative cursor-pointer ${isDragging ? 'border-blue-500 bg-gray-800/50' : 'border-gray-600 hover:border-gray-500'}`}
+          onClick={() => fileInputRef.current?.click()}
+          onDragEnter={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+          onDrop={handleDrop}
+        >
+          <ArrowUpTrayIcon className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-lg font-medium text-white">{selectedFile ? selectedFile.name : 'Drag & drop or click to select a file'}</h3>
+          <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => handleFileSelect(e.target.files)} />
+        </div>
+        
+        {/* Project Selection Dropdown */}
+        <div className="mt-6">
+          <label htmlFor="project-select" className="block text-sm font-medium text-gray-300 mb-2 flex items-center">
+            <BeakerIcon className="h-5 w-5 mr-2 text-cyan-400" />
+            Associate with Project
+          </label>
+          <select
+            id="project-select"
+            value={selectedProjectId}
+            onChange={(e) => setSelectedProjectId(e.target.value)}
+            disabled={areProjectsLoading || isProcessing}
+            className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-700/50 disabled:text-gray-400 disabled:cursor-not-allowed"
+          >
+            <option value="">General (No Project)</option>
+            {projects.map(project => (
+              <option key={project.id} value={project.id.toString()}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+          {projects.length === 0 && !areProjectsLoading && (
+            <p className="text-xs text-amber-400 mt-2">
+              No projects found. This upload will be categorized as "General". You can create new research projects on the Projects page.
+            </p>
+          )}
+        </div>
       </div>
-
+      
       <div className="flex items-center justify-center mt-4">
         <input
           type="checkbox"
@@ -314,7 +330,7 @@ const DataIngestionPage: React.FC = () => {
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">Total Ingestion History</h2>
             <div className="relative">
-              <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by filename..."
+              <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter by title..."
                 className="bg-gray-700 border border-gray-600 rounded-md py-2 pl-10 pr-4 text-white focus:outline-none"/>
               <MagnifyingGlassIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             </div>

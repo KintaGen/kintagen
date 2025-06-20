@@ -3,6 +3,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
+import ProjectsPage from './pages/ProjectsPage';
 import DataIngestionPage from './pages/DataIngestionPage';
 import ResearchChatPage from './pages/ResearchChatPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
@@ -19,6 +20,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<Dashboard />} /> 
             <Route path="/chat" element={<ResearchChatPage />} /> 
+            <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/ingest" element={<DataIngestionPage />} />
             <Route path="/analysis" element={<LD50AnalysisPage />} />
             <Route path="/analyze-gcms" element={<GCMSAnalysisPage />} /> 
