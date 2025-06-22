@@ -62,7 +62,7 @@ const Sidebar: React.FC = () => {
   return (
     <div className="w-64 bg-gray-800 text-gray-200 flex flex-col fixed h-full">
       <div className="bg-gray-900 p-4 flex items-center justify-center border-b border-gray-700">
-        <h1 className="text-xl font-bold">Project Cortex</h1>
+        <h1 className="text-xl font-bold">KintaGen</h1>
       </div>
       <nav className="flex-1 p-4">
         <ul>
