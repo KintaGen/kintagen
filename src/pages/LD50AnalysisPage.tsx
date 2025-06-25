@@ -133,52 +133,50 @@ const Ld50AnalysisPage: React.FC = () => {
     setError(null);
 
     try {
-      // Step 1: Create Blobs from the results
-      const plotBase64 = results.results.plot_b64.split(',')[1];
-      const plotBlob = await (await fetch(`data:image/png;base64,${plotBase64}`)).blob();
-      const metricsBlob = new Blob([JSON.stringify(results.results, null, 2)], { type: 'application/json' });
-      
-      const sourceFile = experimentFiles.find(f => f.cid === selectedFileCid);
-      const baseTitle = sourceFile ? sourceFile.title : "LD50 Analysis";
+        const plotBase64 = results.results.plot_b64.split(',')[1];
+        const plotBlob = await (await fetch(`data:image/png;base64,${plotBase64}`)).blob();
+        const metricsBlob = new Blob([JSON.stringify(results.results, null, 2)], { type: 'application/json' });
+        
+        const sourceFile = experimentFiles.find(f => f.cid === selectedFileCid);
+        const baseTitle = sourceFile ? `LD50 from ${sourceFile.title}` : "LD50 Analysis";
 
-      // Step 2: Upload both files as new "experiment" data
-      const plotFormData = new FormData();
-      plotFormData.append('file', plotBlob, `${baseTitle}_plot.png`);
-      plotFormData.append('dataType', 'experiment');
-      plotFormData.append('title', `${baseTitle} - Plot`);
-      plotFormData.append('projectId', selectedProjectId);
-      const plotResponse = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: plotFormData });
-      const plotResult = await plotResponse.json();
-      if (!plotResponse.ok) throw new Error('Failed to upload plot result.');
+        // --- THE KEY CHANGE IS HERE: Use 'analysis' as the dataType ---
+        const plotFormData = new FormData();
+        plotFormData.append('file', plotBlob, `${baseTitle}_plot.png`);
+        plotFormData.append('dataType', 'analysis'); // <-- SET DATA TYPE
+        plotFormData.append('title', `${baseTitle} - Plot`);
+        plotFormData.append('projectId', selectedProjectId);
+        const plotResponse = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: plotFormData });
+        const plotResult = await plotResponse.json();
+        if (!plotResponse.ok) throw new Error('Failed to upload plot result.');
 
-      const metricsFormData = new FormData();
-      metricsFormData.append('file', metricsBlob, `${baseTitle}_metrics.json`);
-      metricsFormData.append('dataType', 'experiment');
-      metricsFormData.append('title', `${baseTitle} - Metrics`);
-      metricsFormData.append('projectId', selectedProjectId);
-      const metricsResponse = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: metricsFormData });
-      const metricsResult = await metricsResponse.json();
-      if (!metricsResponse.ok) throw new Error('Failed to upload metrics result.');
+        const metricsFormData = new FormData();
+        metricsFormData.append('file', metricsBlob, `${baseTitle}_metrics.json`);
+        metricsFormData.append('dataType', 'analysis'); // <-- SET DATA TYPE
+        metricsFormData.append('title', `${baseTitle} - Metrics`);
+        metricsFormData.append('projectId', selectedProjectId);
+        const metricsResponse = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: metricsFormData });
+        const metricsResult = await metricsResponse.json();
+        if (!metricsResponse.ok) throw new Error('Failed to upload metrics result.');
 
-      // Step 3: If the project has an NFT, add an entry to the log
-      const project = projects.find(p => p.id === Number(selectedProjectId));
-      if (project?.nft_id) {
-        const actionDescription = `Performed LD50 Analysis on "${baseTitle}". Results stored as Plot (CID: ${plotResult.rootCID}) and Metrics (CID: ${metricsResult.rootCID}).`;
-        // We log the primary result (the plot) as the main output CID
-        const logResponse = await fetch(`http://localhost:3001/api/projects/${selectedProjectId}/log`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: actionDescription, outputCID: plotResult.rootCID })
-        });
-        if (!logResponse.ok) throw new Error('Result files were saved, but failed to add log to NFT.');
-      }
-      setSaveSuccess(true);
+        // The rest of the logic for logging to the NFT is the same and will work perfectly.
+        const project = projects.find(p => p.id === Number(selectedProjectId));
+        if (project?.nft_id) {
+            const actionDescription = `Performed LD50 Analysis. Results: Plot (${plotResult.rootCID}), Metrics (${metricsResult.rootCID}).`;
+            const logResponse = await fetch(`http://localhost:3001/api/projects/${selectedProjectId}/log`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: actionDescription, outputCID: plotResult.rootCID })
+            });
+            if (!logResponse.ok) throw new Error('Result files were saved, but failed to add log to NFT.');
+        }
+        setSaveSuccess(true);
     } catch (err: any) {
-      setError(err.message);
+        setError(err.message);
     } finally {
-      setIsSaving(false);
+        setIsSaving(false);
     }
-  };
+};
 
   const canAnalyze = selectedFileCid || dataUrl;
 
