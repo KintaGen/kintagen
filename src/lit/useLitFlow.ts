@@ -16,7 +16,15 @@ export const useLitFlow = () => {
   const { signMessageAsync } = useSignMessage();
 
   const [loading, setLoading] = useState(false);
-
+  function base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = window.atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  }
   // This function now encrypts everything into a single, portable JSON string.
   const encryptFileAndPackage = useCallback(async (file: File) => {
     if (!litNodeClient) throw new Error("Lit Node Client not connected.");
@@ -89,5 +97,5 @@ export const useLitFlow = () => {
     }
   }, [litNodeClient, address, signMessageAsync]);
 
-  return { encryptFileAndPackage, checkAndDecryptFile, loading };
+  return { encryptFileAndPackage, checkAndDecryptFile,base64ToUint8Array, loading };
 };
