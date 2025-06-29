@@ -20,30 +20,45 @@ interface StoryStep {
   agent: string;
   action: string;
   resultCID: string;
-  timestamp: string;
+  timestamp: string; // This comes from Flow as a string like "1681333733.0"
 }
 
 interface ProjectDetailProps {
   project: Project;
-  onClose: () => void; // A function to close the detail view, passed from the parent
+  onClose: () => void;
 }
 
+// --- NEW: Helper function to format the timestamp ---
+const formatTimestamp = (timestamp: string) => {
+    // Convert string timestamp to number and multiply by 1000 for milliseconds
+    const date = new Date(parseFloat(timestamp) * 1000);
+    // Pad single digits with a leading zero
+    const pad = (num: number) => num.toString().padStart(2, '0');
+    
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1); // Months are 0-indexed
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const seconds = pad(date.getSeconds());
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+};
+
+
 const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
-  // --- STATE ---
   const [papers, setPapers] = useState<DataItem[]>([]);
   const [experiments, setExperiments] = useState<DataItem[]>([]);
-  const [analyses, setAnalyses] = useState<DataItem[]>([]); // State for the new category
+  const [analyses, setAnalyses] = useState<DataItem[]>([]);
   const [story, setStory] = useState<StoryStep[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // --- DATA FETCHING EFFECT ---
   useEffect(() => {
     const fetchDetails = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        // Fetch all data in parallel for efficiency
         const [papersRes, experimentsRes, analysesRes, storyRes] = await Promise.all([
           fetch(`http://localhost:3001/api/data/paper?projectId=${project.id}`),
           fetch(`http://localhost:3001/api/data/experiment?projectId=${project.id}`),
@@ -51,7 +66,6 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
           project.nft_id ? fetch(`http://localhost:3001/api/nfts/${project.nft_id}/story`) : Promise.resolve(null)
         ]);
         
-        // Check responses and parse JSON
         if (!papersRes.ok) throw new Error('Failed to fetch papers.');
         const papersData = await papersRes.json();
         
@@ -81,7 +95,6 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
     fetchDetails();
   }, [project.id, project.nft_id]);
 
-  // --- RENDER ---
   return (
     <div 
       className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 flex justify-center items-start pt-16 md:pt-24 p-4"
@@ -91,7 +104,6 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
         className="relative bg-gray-800 border border-gray-700 rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        {/* Modal Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-700 flex-shrink-0">
           <h2 className="text-2xl font-bold flex items-center">
             <BeakerIcon className="h-7 w-7 mr-3 text-cyan-400"/>
@@ -102,58 +114,20 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
           </button>
         </div>
         
-        {/* Modal Body */}
-        {isLoading && (
-          <div className="flex-grow flex justify-center items-center p-10">
-            <ArrowPathIcon className="h-10 w-10 text-blue-400 animate-spin"/>
-          </div>
-        )}
-
+        {isLoading && (<div className="flex-grow flex justify-center items-center p-10"><ArrowPathIcon className="h-10 w-10 text-blue-400 animate-spin"/></div>)}
         {error && <div className="p-10 text-center text-red-400">{error}</div>}
         
         {!isLoading && !error && (
           <div className="flex-grow overflow-y-auto p-6 space-y-8">
-            {/* Project Data Section */}
             <div>
               <h3 className="text-lg font-semibold mb-3 text-white">Project Data</h3>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="bg-gray-900/50 p-4 rounded-lg">
-                  <h4 className="font-bold mb-2">Papers ({papers.length})</h4>
-                  <ul className="text-sm space-y-2 text-gray-300 max-h-48 overflow-y-auto pr-2">
-                    {papers.length > 0 ? papers.map(p => (
-                        <li key={p.cid} className="flex items-start gap-2 truncate" title={p.title}>
-                            <DocumentTextIcon className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500"/>
-                            <span>{p.title}</span>
-                        </li>
-                    )) : <li className="text-gray-500">No papers found.</li>}
-                  </ul>
-                </div>
-                <div className="bg-gray-900/50 p-4 rounded-lg">
-                  <h4 className="font-bold mb-2">Experiment Data ({experiments.length})</h4>
-                  <ul className="text-sm space-y-2 text-gray-300 max-h-48 overflow-y-auto pr-2">
-                     {experiments.length > 0 ? experiments.map(e => (
-                         <li key={e.cid} className="flex items-start gap-2 truncate" title={e.title}>
-                            <DocumentTextIcon className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500"/>
-                            <span>{e.title}</span>
-                         </li>
-                     )) : <li className="text-gray-500">No experiments found.</li>}
-                  </ul>
-                </div>
-                <div className="bg-gray-900/50 p-4 rounded-lg">
-                  <h4 className="font-bold mb-2">Analyses ({analyses.length})</h4>
-                  <ul className="text-sm space-y-2 text-gray-300 max-h-48 overflow-y-auto pr-2">
-                     {analyses.length > 0 ? analyses.map(a => (
-                         <li key={a.cid} className="flex items-start gap-2 truncate" title={a.title}>
-                            <DocumentTextIcon className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500"/>
-                            <span>{a.title}</span>
-                         </li>
-                     )) : <li className="text-gray-500">No analyses found.</li>}
-                  </ul>
-                </div>
+                <div className="bg-gray-900/50 p-4 rounded-lg"><h4 className="font-bold mb-2">Papers ({papers.length})</h4><ul className="text-sm space-y-2 text-gray-300 max-h-48 overflow-y-auto pr-2">{papers.length > 0 ? papers.map(p => (<li key={p.cid} className="flex items-start gap-2 truncate" title={p.title}><DocumentTextIcon className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500"/><span>{p.title}</span></li>)) : <li className="text-gray-500">No papers found.</li>}</ul></div>
+                <div className="bg-gray-900/50 p-4 rounded-lg"><h4 className="font-bold mb-2">Experiment Data ({experiments.length})</h4><ul className="text-sm space-y-2 text-gray-300 max-h-48 overflow-y-auto pr-2">{experiments.length > 0 ? experiments.map(e => (<li key={e.cid} className="flex items-start gap-2 truncate" title={e.title}><DocumentTextIcon className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500"/><span>{e.title}</span></li>)) : <li className="text-gray-500">No experiments found.</li>}</ul></div>
+                <div className="bg-gray-900/50 p-4 rounded-lg"><h4 className="font-bold mb-2">Analyses ({analyses.length})</h4><ul className="text-sm space-y-2 text-gray-300 max-h-48 overflow-y-auto pr-2">{analyses.length > 0 ? analyses.map(a => (<li key={a.cid} className="flex items-start gap-2 truncate" title={a.title}><DocumentTextIcon className="h-4 w-4 mt-0.5 flex-shrink-0 text-gray-500"/><span>{a.title}</span></li>)) : <li className="text-gray-500">No analyses found.</li>}</ul></div>
               </div>
             </div>
 
-            {/* On-Chain Log Section - Only shows if the project is minted */}
             {project.nft_id && (
               <div>
                 <h3 className="text-lg font-semibold mb-3 text-white">On-Chain Audit Log (NFT #{project.nft_id})</h3>
@@ -163,7 +137,8 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
                       {story.map(step => (
                         <li key={step.stepNumber} className="text-sm border-l-2 border-purple-500 pl-4">
                           <p className="font-bold text-white">{step.action}</p>
-                          <p className="text-gray-400">Agent: {step.agent}</p>
+                          {/* --- THIS IS THE MODIFIED LINE --- */}
+                          <p className="text-gray-400 font-mono text-xs">{formatTimestamp(step.timestamp)}</p>
                           <p className="text-xs text-gray-500 font-mono truncate" title={step.resultCID}>Result CID: {step.resultCID}</p>
                         </li>
                       ))}
