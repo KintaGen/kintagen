@@ -81,7 +81,7 @@ const DataIngestionPage: React.FC = () => {
     setHistoryData([]);
     let queryParams = new URLSearchParams();
     if (selectedProjectId) queryParams.append('projectId', selectedProjectId);
-    const url = `http://localhost:3001/api/data/${dataType}?${queryParams.toString()}`;
+    const url = `https://salty-eyes-visit.loca.lt/api/data/${dataType}?${queryParams.toString()}`;
     try {
       const resp = await fetch(url); 
       if (!resp.ok) throw new Error(`Failed to fetch ${dataType} list from server.`);
@@ -111,7 +111,7 @@ const DataIngestionPage: React.FC = () => {
 
     try {
       setStatus(dataType === 'paper' ? 'AI processing paper...' : 'Uploading experiment data...');
-      const response = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: formData });
+      const response = await fetch('https://salty-eyes-visit.loca.lt/api/upload', { method: 'POST', body: formData });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Upload failed.');
 
@@ -155,7 +155,7 @@ const DataIngestionPage: React.FC = () => {
         formData.append('title', dataType === 'paper' ? fileName : experimentTitle);
         if (selectedProjectId) formData.append('projectId', selectedProjectId);
 
-        const response = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: formData });
+        const response = await fetch('https://salty-eyes-visit.loca.lt/api/upload', { method: 'POST', body: formData });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Encrypted upload failed.');
 
@@ -208,7 +208,7 @@ const DataIngestionPage: React.FC = () => {
     setError(null);
     try {
         const actionDescription = `Ingested ${dataType}: "${successInfo.title}"`;
-        const response = await fetch(`http://localhost:3001/api/projects/${successInfo.projectId}/log`, {
+        const response = await fetch(`https://salty-eyes-visit.loca.lt/api/projects/${successInfo.projectId}/log`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -258,7 +258,7 @@ const DataIngestionPage: React.FC = () => {
     const fetchProjects = async () => {
       setAreProjectsLoading(true);
       try {
-        const projectsResponse = await fetch('http://localhost:3001/api/projects');
+        const projectsResponse = await fetch('https://salty-eyes-visit.loca.lt/api/projects');
         setProjects(await projectsResponse.json());
       } catch (err) { console.error("Failed to fetch projects", err); }
       finally { setAreProjectsLoading(false); }

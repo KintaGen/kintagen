@@ -25,7 +25,7 @@ const ProjectsPage: React.FC = () => {
   const [newDescription, setNewDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  
+
   // State to track which project is currently minting
   const [mintingProjectId, setMintingProjectId] = useState<number | null>(null);
   const [mintingError, setMintingError] = useState<string | null>(null);
@@ -37,7 +37,7 @@ const ProjectsPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('http://localhost:3001/api/projects');
+      const response = await fetch('https://salty-eyes-visit.loca.lt/api/projects');
       if (!response.ok) throw new Error('Failed to fetch projects.');
       const data: Project[] = await response.json();
       setProjects(data);
@@ -61,14 +61,14 @@ const ProjectsPage: React.FC = () => {
     setIsSubmitting(true);
     setFormError(null);
     try {
-      const response = await fetch('http://localhost:3001/api/projects', {
+      const response = await fetch('https://salty-eyes-visit.loca.lt/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName, description: newDescription }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to create project.');
-      
+
       setProjects(prev => [data, ...prev].sort((a, b) => a.name.localeCompare(b.name)));
       setNewName('');
       setNewDescription('');
@@ -83,7 +83,7 @@ const ProjectsPage: React.FC = () => {
     setMintingProjectId(projectId);
     setMintingError(null);
     try {
-      const response = await fetch(`http://localhost:3001/api/projects/${projectId}/mint`, {
+      const response = await fetch(`https://salty-eyes-visit.loca.lt/api/projects/${projectId}/mint`, {
         method: 'POST',
       });
       const updatedProject = await response.json();
@@ -131,30 +131,43 @@ const ProjectsPage: React.FC = () => {
           {isLoading && <p className="text-gray-400">Loading projects...</p>}
           {error && <p className="text-red-400">{error}</p>}
           {mintingError && <p className="text-red-400 mb-4">Minting Error: {mintingError}</p>}
-          {!isLoading && projects.length === 0 && <p className="text-gray-500">No projects created yet.</p>}
-          
+          {!isLoading && projects.length === 0 && (
+            <p className="text-gray-500">No projects created yet.</p>
+          )}
+
           <ul className="space-y-4">
-            {projects.map(project => (
-              <li 
-                key={project.id} 
+            {projects.map((project) => (
+              <li
+                key={project.id}
                 className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 transition-all duration-200 hover:bg-gray-800 hover:border-blue-500 cursor-pointer"
                 onClick={() => setSelectedProject(project)}
               >
                 <div className="flex-grow">
-                  <h3 className="text-lg font-bold text-white flex items-center"><BeakerIcon className="h-5 w-5 mr-2 text-cyan-400" />{project.name}</h3>
+                  <h3 className="text-lg font-bold text-white flex items-center">
+                    <BeakerIcon className="h-5 w-5 mr-2 text-cyan-400" />
+                    {project.name}
+                  </h3>
                   <p className="text-gray-400 mt-1 text-sm">{project.description}</p>
-                  <p className="text-xs text-gray-500 mt-2">Created: {new Date(project.created_at).toLocaleDateString()}</p>
+                  {/* full timestamp */}
+                  <p className="text-xs text-gray-500 mt-2">
+                    Created:&nbsp;{new Date(project.created_at).toLocaleString()}
+                  </p>
                 </div>
-                
-                <div 
+
+                <div
                   className="flex-shrink-0 w-full sm:w-auto text-right"
-                  onClick={(e) => e.stopPropagation()} // Prevents opening detail view when clicking the button
+                  onClick={(e) => e.stopPropagation()}
                 >
                   {project.nft_id ? (
-                    <div className="flex items-center justify-end font-mono bg-purple-900/50 text-purple-300 px-3 py-1.5 rounded-md text-sm">
+                    <a
+                      href={`https://testnet.flowscan.io/nft/A.4971e1983b20b758.KintaGenNFT.NFT/token/A.4971e1983b20b758.KintaGenNFT.NFT-${project.nft_id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-end font-mono bg-purple-900/50 text-purple-300 px-3 py-1.5 rounded-md text-sm hover:underline"
+                    >
                       <CubeTransparentIcon className="h-5 w-5 mr-2" />
-                      <span>NFT ID: {project.nft_id.toString()}</span>
-                    </div>
+                      <span>Block&nbsp;Explorer&nbsp;LOG:&nbsp;{project.nft_id}</span>
+                    </a>
                   ) : (
                     <button
                       onClick={() => handleMintClick(project.id)}
@@ -176,13 +189,15 @@ const ProjectsPage: React.FC = () => {
             ))}
           </ul>
         </div>
+
+
       </div>
-      
+
       {/* --- Conditionally render the detail modal --- */}
       {selectedProject && (
-        <ProjectDetail 
-          project={selectedProject} 
-          onClose={() => setSelectedProject(null)} 
+        <ProjectDetail
+          project={selectedProject}
+          onClose={() => setSelectedProject(null)}
         />
       )}
     </>

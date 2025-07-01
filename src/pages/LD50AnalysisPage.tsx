@@ -54,7 +54,7 @@ const Ld50AnalysisPage: React.FC = () => {
     const fetchProjects = async () => {
       setAreProjectsLoading(true);
       try {
-        const response = await fetch('http://localhost:3001/api/projects');
+        const response = await fetch('https://salty-eyes-visit.loca.lt/api/projects');
         if (!response.ok) throw new Error("Could not fetch projects");
         setProjects(await response.json());
       } catch (err) {
@@ -78,7 +78,7 @@ const Ld50AnalysisPage: React.FC = () => {
       setExperimentFiles([]);
       setSelectedFileCid('');
       try {
-        const response = await fetch(`http://localhost:3001/api/data/experiment?projectId=${selectedProjectId}`);
+        const response = await fetch(`https://salty-eyes-visit.loca.lt/api/data/experiment?projectId=${selectedProjectId}`);
         const data = await response.json();
         setExperimentFiles(data.data || []);
       } catch (err) {
@@ -112,7 +112,7 @@ const Ld50AnalysisPage: React.FC = () => {
     }
     
     try {
-      const response = await fetch('http://localhost:3001/api/analyze-ld50', {
+      const response = await fetch('https://salty-eyes-visit.loca.lt/api/analyze-ld50', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -146,7 +146,7 @@ const Ld50AnalysisPage: React.FC = () => {
         plotFormData.append('dataType', 'analysis'); // <-- SET DATA TYPE
         plotFormData.append('title', `${baseTitle} - Plot`);
         plotFormData.append('projectId', selectedProjectId);
-        const plotResponse = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: plotFormData });
+        const plotResponse = await fetch('https://salty-eyes-visit.loca.lt/api/upload', { method: 'POST', body: plotFormData });
         const plotResult = await plotResponse.json();
         if (!plotResponse.ok) throw new Error('Failed to upload plot result.');
 
@@ -155,7 +155,7 @@ const Ld50AnalysisPage: React.FC = () => {
         metricsFormData.append('dataType', 'analysis'); // <-- SET DATA TYPE
         metricsFormData.append('title', `${baseTitle} - Metrics`);
         metricsFormData.append('projectId', selectedProjectId);
-        const metricsResponse = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: metricsFormData });
+        const metricsResponse = await fetch('https://salty-eyes-visit.loca.lt/api/upload', { method: 'POST', body: metricsFormData });
         const metricsResult = await metricsResponse.json();
         if (!metricsResponse.ok) throw new Error('Failed to upload metrics result.');
 
@@ -163,7 +163,7 @@ const Ld50AnalysisPage: React.FC = () => {
         const project = projects.find(p => p.id === Number(selectedProjectId));
         if (project?.nft_id) {
             const actionDescription = `Performed LD50 Analysis. Results: Plot (${plotResult.rootCID}), Metrics (${metricsResult.rootCID}).`;
-            const logResponse = await fetch(`http://localhost:3001/api/projects/${selectedProjectId}/log`, {
+            const logResponse = await fetch(`https://salty-eyes-visit.loca.lt/api/projects/${selectedProjectId}/log`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: actionDescription, outputCID: plotResult.rootCID })

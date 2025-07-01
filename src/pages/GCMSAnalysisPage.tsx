@@ -54,7 +54,7 @@ const GcmsAnalysisPage: React.FC = () => {
     const requestBody = useSampleData ? {} : { dataPath, phenoFile };
 
     try {
-      const response = await fetch('http://localhost:3001/api/analyze-gcms', {
+      const response = await fetch('https://salty-eyes-visit.loca.lt/api/analyze-gcms', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
