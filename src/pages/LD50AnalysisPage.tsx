@@ -2,6 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import { ChartBarIcon, LinkIcon, ArrowPathIcon, SparklesIcon, BeakerIcon, DocumentMagnifyingGlassIcon, InboxArrowDownIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
+const FILECOIN_GATEWAY = 'https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io';
+
 // --- TYPE DEFINITIONS ---
 interface Ld50ResultData {
   ld50_estimate: number;
@@ -54,7 +57,7 @@ const Ld50AnalysisPage: React.FC = () => {
     const fetchProjects = async () => {
       setAreProjectsLoading(true);
       try {
-        const response = await fetch('https://salty-eyes-visit.loca.lt/api/projects');
+        const response = await fetch(`${API_BASE}/projects`);
         if (!response.ok) throw new Error("Could not fetch projects");
         setProjects(await response.json());
       } catch (err) {
@@ -78,7 +81,7 @@ const Ld50AnalysisPage: React.FC = () => {
       setExperimentFiles([]);
       setSelectedFileCid('');
       try {
-        const response = await fetch(`https://salty-eyes-visit.loca.lt/api/data/experiment?projectId=${selectedProjectId}`);
+        const response = await fetch(`${API_BASE}/data/experiment?projectId=${selectedProjectId}`);
         const data = await response.json();
         setExperimentFiles(data.data || []);
       } catch (err) {
@@ -102,7 +105,7 @@ const Ld50AnalysisPage: React.FC = () => {
     if (useSampleData) {
       // Body remains empty for sample data
     } else if (selectedFileCid) {
-      requestBody = { dataUrl: `https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io/${selectedFileCid}` };
+      requestBody = { dataUrl: `${FILECOIN_GATEWAY}/${selectedFileCid}` };
     } else if (dataUrl) {
       requestBody = { dataUrl };
     } else {
@@ -112,7 +115,7 @@ const Ld50AnalysisPage: React.FC = () => {
     }
     
     try {
-      const response = await fetch('https://salty-eyes-visit.loca.lt/api/analyze-ld50', {
+      const response = await fetch(`${API_BASE}/analyze-ld50`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -146,7 +149,7 @@ const Ld50AnalysisPage: React.FC = () => {
         plotFormData.append('dataType', 'analysis'); // <-- SET DATA TYPE
         plotFormData.append('title', `${baseTitle} - Plot`);
         plotFormData.append('projectId', selectedProjectId);
-        const plotResponse = await fetch('https://salty-eyes-visit.loca.lt/api/upload', { method: 'POST', body: plotFormData });
+        const plotResponse = await fetch(`${API_BASE}/upload`, { method: 'POST', body: plotFormData });
         const plotResult = await plotResponse.json();
         if (!plotResponse.ok) throw new Error('Failed to upload plot result.');
 
@@ -155,7 +158,7 @@ const Ld50AnalysisPage: React.FC = () => {
         metricsFormData.append('dataType', 'analysis'); // <-- SET DATA TYPE
         metricsFormData.append('title', `${baseTitle} - Metrics`);
         metricsFormData.append('projectId', selectedProjectId);
-        const metricsResponse = await fetch('https://salty-eyes-visit.loca.lt/api/upload', { method: 'POST', body: metricsFormData });
+        const metricsResponse = await fetch(`${API_BASE}/upload`, { method: 'POST', body: metricsFormData });
         const metricsResult = await metricsResponse.json();
         if (!metricsResponse.ok) throw new Error('Failed to upload metrics result.');
 
@@ -163,7 +166,7 @@ const Ld50AnalysisPage: React.FC = () => {
         const project = projects.find(p => p.id === Number(selectedProjectId));
         if (project?.nft_id) {
             const actionDescription = `Performed LD50 Analysis. Results: Plot (${plotResult.rootCID}), Metrics (${metricsResult.rootCID}).`;
-            const logResponse = await fetch(`https://salty-eyes-visit.loca.lt/api/projects/${selectedProjectId}/log`, {
+            const logResponse = await fetch(`${API_BASE}/projects/${selectedProjectId}/log`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: actionDescription, outputCID: plotResult.rootCID })

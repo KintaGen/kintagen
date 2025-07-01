@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { BeakerIcon, ArrowPathIcon, TableCellsIcon, ChartPieIcon, PresentationChartLineIcon, SparklesIcon, DocumentTextIcon } from '@heroicons/react/24/solid';
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
+
 // --- 1. Type Definitions for the GC-MS API Response ---
 // These interfaces match the JSON structure our R script produces.
 interface StatsTableEntry {
@@ -54,7 +56,7 @@ const GcmsAnalysisPage: React.FC = () => {
     const requestBody = useSampleData ? {} : { dataPath, phenoFile };
 
     try {
-      const response = await fetch('https://salty-eyes-visit.loca.lt/api/analyze-gcms', {
+      const response = await fetch(`${API_BASE}/analyze-gcms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -75,13 +75,16 @@ const DataIngestionPage: React.FC = () => {
   const [encryptFile, setEncryptFile] = useState(false); // Default to false for simplicity
 
 
+  const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
+
   // --- DATA HANDLING ---
   const fetchHistory = async () => {
     setIsDataLoading(true);
     setHistoryData([]);
     let queryParams = new URLSearchParams();
     if (selectedProjectId) queryParams.append('projectId', selectedProjectId);
-    const url = `https://salty-eyes-visit.loca.lt/api/data/${dataType}?${queryParams.toString()}`;
+    const url = `${API_BASE}/data/${dataType}?${queryParams.toString()}`;
     try {
       const resp = await fetch(url); 
       if (!resp.ok) throw new Error(`Failed to fetch ${dataType} list from server.`);
@@ -111,7 +114,7 @@ const DataIngestionPage: React.FC = () => {
 
     try {
       setStatus(dataType === 'paper' ? 'AI processing paper...' : 'Uploading experiment data...');
-      const response = await fetch('https://salty-eyes-visit.loca.lt/api/upload', { method: 'POST', body: formData });
+      const response = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Upload failed.');
 
@@ -155,7 +158,7 @@ const DataIngestionPage: React.FC = () => {
         formData.append('title', dataType === 'paper' ? fileName : experimentTitle);
         if (selectedProjectId) formData.append('projectId', selectedProjectId);
 
-        const response = await fetch('https://salty-eyes-visit.loca.lt/api/upload', { method: 'POST', body: formData });
+        const response = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Encrypted upload failed.');
 
@@ -208,7 +211,7 @@ const DataIngestionPage: React.FC = () => {
     setError(null);
     try {
         const actionDescription = `Ingested ${dataType}: "${successInfo.title}"`;
-        const response = await fetch(`https://salty-eyes-visit.loca.lt/api/projects/${successInfo.projectId}/log`, {
+        const response = await fetch(`${API_BASE}/projects/${successInfo.projectId}/log`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -258,7 +261,7 @@ const DataIngestionPage: React.FC = () => {
     const fetchProjects = async () => {
       setAreProjectsLoading(true);
       try {
-        const projectsResponse = await fetch('https://salty-eyes-visit.loca.lt/api/projects');
+        const projectsResponse = await fetch(`${API_BASE}/projects`);
         setProjects(await projectsResponse.json());
       } catch (err) { console.error("Failed to fetch projects", err); }
       finally { setAreProjectsLoading(false); }

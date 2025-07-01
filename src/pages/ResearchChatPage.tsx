@@ -20,8 +20,7 @@ interface PaperInfo {
 }
 
 // --- CONSTANTS ---
-const API_URL = 'http://127.0.0.1:3001/api';
-const buildFilcdnUrl = (cid: string) => `https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io/${cid}`;
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
 
 // --- COMPONENT ---
 const ResearchChatPage: React.FC = () => {
@@ -42,7 +41,7 @@ const ResearchChatPage: React.FC = () => {
     const fetchProjects = async () => {
       setIsProjectsLoading(true);
       try {
-        const response = await fetch(`${API_URL}/projects`);
+        const response = await fetch(`${API_BASE}/projects`);
         if (!response.ok) throw new Error('Could not fetch projects');
         const data: Project[] = await response.json();
         setProjects(data);
@@ -74,7 +73,7 @@ const ResearchChatPage: React.FC = () => {
 
         if (selectedProjectId) {
             setStatus("Finding project documents...");
-            const papersResponse = await fetch(`${API_URL}/data/paper?projectId=${selectedProjectId}`);
+            const papersResponse = await fetch(`${API_BASE}/data/paper?projectId=${selectedProjectId}`);
             if (!papersResponse.ok) throw new Error("Could not fetch papers for this project.");
             
             const papersResult = await papersResponse.json();
@@ -89,7 +88,7 @@ const ResearchChatPage: React.FC = () => {
                 // --- THIS IS THE MODIFIED BLOCK ---
                 // We now call our backend endpoint for each paper to get its text content.
                 const fetchPromises = papers.map(paper => 
-                    fetch(`${API_URL}/document-content/${paper.cid}`)
+                    fetch(`${API_BASE}/document-content/${paper.cid}`)
                         .then(res => {
                             if (!res.ok) {
                                 console.error(`Failed to get text for CID: ${paper.cid}`);
@@ -114,7 +113,7 @@ const ResearchChatPage: React.FC = () => {
         
         setStatus("Asking AI...");
 
-        const completionResponse = await fetch(`${API_URL}/chat`, {
+        const completionResponse = await fetch(`${API_BASE}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

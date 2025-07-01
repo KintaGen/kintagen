@@ -3,6 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BeakerIcon, PlusCircleIcon, ArrowPathIcon, CubeTransparentIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import ProjectDetail from '../components/ProjectDetail'; // Import the new component
 
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
+
 // Updated Project interface to handle nullable nft_id
 interface Project {
   id: number;
@@ -37,7 +40,7 @@ const ProjectsPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('https://salty-eyes-visit.loca.lt/api/projects');
+      const response = await fetch(`${API_BASE}/projects`);
       if (!response.ok) throw new Error('Failed to fetch projects.');
       const data: Project[] = await response.json();
       setProjects(data);
@@ -61,7 +64,7 @@ const ProjectsPage: React.FC = () => {
     setIsSubmitting(true);
     setFormError(null);
     try {
-      const response = await fetch('https://salty-eyes-visit.loca.lt/api/projects', {
+      const response = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newName, description: newDescription }),
@@ -83,7 +86,7 @@ const ProjectsPage: React.FC = () => {
     setMintingProjectId(projectId);
     setMintingError(null);
     try {
-      const response = await fetch(`https://salty-eyes-visit.loca.lt/api/projects/${projectId}/mint`, {
+      const response = await fetch(`${API_BASE}/projects/${projectId}/mint`, {
         method: 'POST',
       });
       const updatedProject = await response.json();
