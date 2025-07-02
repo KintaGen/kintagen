@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { injected } from 'wagmi/connectors';
 
 // --- LIT PROTOCOL PROVIDER IMPORT ---
-import { LitProvider } from './lit/LitProvider';
+import { LitProvider } from './lit/litProvider';
 
 // --- SHARED CONFIGURATION IMPORTS ---
 import { flowEvmTestnet } from './config/chain';
