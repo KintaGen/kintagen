@@ -1,7 +1,7 @@
 // src/pages/DataIngestionPage.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  ArrowUpTrayIcon, DocumentTextIcon, MagnifyingGlassIcon, 
+import {
+  ArrowUpTrayIcon, DocumentTextIcon, MagnifyingGlassIcon,
   ArrowPathIcon, CheckCircleIcon, XCircleIcon,
   BeakerIcon, SparklesIcon, KeyIcon, LockClosedIcon
 } from '@heroicons/react/24/solid';
@@ -54,14 +54,14 @@ const DataIngestionPage: React.FC = () => {
 
   const [logAdded, setLogAdded] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
-  
+
   const { isConnected, address } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: hash, writeContract, isPending, error: contractError } = useWriteContract();
   const { isLoading: isConfirming, data: receipt } = useWaitForTransactionReceipt({ hash });
   const { encryptFileAndPackage, loading: isLitLoading, base64ToUint8Array } = useLitFlow();
-  
+
   const [historyData, setHistoryData] = useState<GenericDataInfo[]>([]);
   const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +83,7 @@ const DataIngestionPage: React.FC = () => {
     if (selectedProjectId) queryParams.append('projectId', selectedProjectId);
     const url = `${API_BASE}/data/${dataType}?${queryParams.toString()}`;
     try {
-      const resp = await fetch(url); 
+      const resp = await fetch(url);
       if (!resp.ok) throw new Error(`Failed to fetch ${dataType} list from server.`);
       const jsonResponse = await resp.json();
       setHistoryData(jsonResponse.data || []);
@@ -101,7 +101,7 @@ const DataIngestionPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setSuccessInfo(null);
-    setLogAdded(false); 
+    setLogAdded(false);
 
     const formData = new FormData();
     formData.append('file', selectedFile);
@@ -141,88 +141,88 @@ const DataIngestionPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setSuccessInfo(null);
-    setLogAdded(false); 
-    
+    setLogAdded(false);
+
     try {
-        const encryptedBlob = new Blob([encryptedJsonString], { type: 'application/json' });
-        const newFileName = fileName.toLowerCase() + '.enc.json';
+      const encryptedBlob = new Blob([encryptedJsonString], { type: 'application/json' });
+      const newFileName = fileName.toLowerCase() + '.enc.json';
 
-        const formData = new FormData();
-        formData.append('file', encryptedBlob, newFileName);
-        formData.append('dataType', dataType);
-        formData.append('isEncrypted', 'true');
-        formData.append('litTokenId', litTokenId);
-        formData.append('title', dataType === 'paper' ? fileName : experimentTitle);
-        if (selectedProjectId) formData.append('projectId', selectedProjectId);
+      const formData = new FormData();
+      formData.append('file', encryptedBlob, newFileName);
+      formData.append('dataType', dataType);
+      formData.append('isEncrypted', 'true');
+      formData.append('litTokenId', litTokenId);
+      formData.append('title', dataType === 'paper' ? fileName : experimentTitle);
+      if (selectedProjectId) formData.append('projectId', selectedProjectId);
 
-        const response = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Encrypted upload failed.');
+      const response = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Encrypted upload failed.');
 
-        setStatus('Encrypted Upload Complete!');
-        setSuccessInfo({
-            message: `Encrypted ${dataType} uploaded successfully!`,
-            cid: result.rootCID,
-            title: result.title,
-            projectId: result.projectId,
-            isEncrypted: true,
-            litTokenId: litTokenId,
-        });
-        fetchHistory();
+      setStatus('Encrypted Upload Complete!');
+      setSuccessInfo({
+        message: `Encrypted ${dataType} uploaded successfully!`,
+        cid: result.rootCID,
+        title: result.title,
+        projectId: result.projectId,
+        isEncrypted: true,
+        litTokenId: litTokenId,
+      });
+      fetchHistory();
 
-    } catch(err: any) {
-        setError(err.message);
-        setStatus('An error occurred during encrypted upload.');
+    } catch (err: any) {
+      setError(err.message);
+      setStatus('An error occurred during encrypted upload.');
     } finally {
-        setIsLoading(false);
-        setSelectedFile(null);
-        setExperimentTitle('');
-        if (fileInputRef.current) fileInputRef.current.value = "";
+      setIsLoading(false);
+      setSelectedFile(null);
+      setExperimentTitle('');
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
-  
+
   const handleProcessFileClick = () => {
     if (!selectedFile) return alert("Please select a file first.");
     if (dataType === 'experiment' && !experimentTitle.trim()) return alert("Please provide a title for the experiment.");
 
     if (encryptFile) {
-        if (!isConnected) return alert("Please connect your wallet to encrypt files.");
-        setIsLoading(true);
-        setError(null);
-        setSuccessInfo(null);
-        setStatus("Please approve transaction in your wallet to create an access key...");
-        writeContract({
-            address: ACCESS_MANAGER_CONTRACT_ADDRESS,
-            abi: accessKeyAbi,
-            functionName: 'createKey',
-            args: [selectedFile.name]
-        });
+      if (!isConnected) return alert("Please connect your wallet to encrypt files.");
+      setIsLoading(true);
+      setError(null);
+      setSuccessInfo(null);
+      setStatus("Please approve transaction in your wallet to create an access key...");
+      writeContract({
+        address: ACCESS_MANAGER_CONTRACT_ADDRESS,
+        abi: accessKeyAbi,
+        functionName: 'createKey',
+        args: [selectedFile.name]
+      });
     } else {
-        handleUnencryptedUpload();
+      handleUnencryptedUpload();
     }
   };
-  
+
   const handleAddToLog = async () => {
     if (!successInfo || !successInfo.projectId) return;
     setIsLogging(true);
     setError(null);
     try {
-        const actionDescription = `Ingested ${dataType}: "${successInfo.title}"`;
-        const response = await fetch(`${API_BASE}/projects/${successInfo.projectId}/log`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: actionDescription,
-                outputCID: successInfo.cid
-            })
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Failed to add log entry.');
-        setLogAdded(true);
-    } catch(err: any) {
-        setError(`Failed to add to on-chain log: ${err.message}`);
+      const actionDescription = `Ingested ${dataType}: "${successInfo.title}"`;
+      const response = await fetch(`${API_BASE}/projects/${successInfo.projectId}/log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: actionDescription,
+          outputCID: successInfo.cid
+        })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to add log entry.');
+      setLogAdded(true);
+    } catch (err: any) {
+      setError(`Failed to add to on-chain log: ${err.message}`);
     } finally {
-        setIsLogging(false);
+      setIsLogging(false);
     }
   };
 
@@ -268,7 +268,7 @@ const DataIngestionPage: React.FC = () => {
   useEffect(() => {
     fetchHistory();
   }, [dataType, selectedProjectId]);
-  
+
   const handleFileSelect = (files: FileList | null) => {
     if (files && files.length > 0) {
       setSelectedFile(files[0]);
@@ -278,11 +278,11 @@ const DataIngestionPage: React.FC = () => {
       setLogAdded(false);
     }
   };
-  
+
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault(); setIsDragging(false); handleFileSelect(e.dataTransfer.files);
   };
-  
+
   const isProcessing = isPending || isConfirming || isLitLoading || isLoading;
   const selectedProjectObject = projects.find(p => p.id === Number(selectedProjectId));
   const canLogToNft = selectedProjectObject && selectedProjectObject.nft_id && successInfo?.projectId === selectedProjectObject.id;
@@ -293,7 +293,7 @@ const DataIngestionPage: React.FC = () => {
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Ingest Data</h1>
-          {isConnected ? ( <div className="text-right"><p className="text-sm text-green-400">Connected: {`${address?.substring(0, 6)}...`}</p><button onClick={() => disconnect()} className="text-xs text-gray-400 hover:text-white">Disconnect</button></div>) : (<button onClick={() => connect({ connector: connectors[0] })} className="bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-500">Connect Wallet</button>)}
+          {isConnected ? (<div className="text-right"><p className="text-sm text-green-400">Connected: {`${address?.substring(0, 6)}...`}</p><button onClick={() => disconnect()} className="text-xs text-gray-400 hover:text-white">Disconnect</button></div>) : (<button onClick={() => connect({ connector: connectors[0] })} className="bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-500">Connect Wallet</button>)}
         </div>
         <p className="text-gray-400 mb-8">Upload documents or experiment data. Associate with a project and optionally encrypt with an on-chain key.</p>
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
@@ -321,9 +321,9 @@ const DataIngestionPage: React.FC = () => {
           {dataType === 'experiment' && (<div className="mt-4"><label htmlFor="expTitle" className="block text-sm font-medium text-gray-300 mb-1">Experiment Title</label><input id="expTitle" type="text" value={experimentTitle} onChange={(e) => setExperimentTitle(e.target.value)} placeholder="e.g., Compound XYZ Synthesis, Run 1" className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white" /></div>)}
         </div>
         <div className="mt-4 flex items-center justify-center p-3 bg-gray-900/50 rounded-lg">
-          <input id="encrypt-toggle" type="checkbox" checked={encryptFile} onChange={(e) => setEncryptFile(e.target.checked)} className="h-4 w-4 rounded border-gray-500 text-blue-600 focus:ring-blue-500"/>
+          <input id="encrypt-toggle" type="checkbox" checked={encryptFile} onChange={(e) => setEncryptFile(e.target.checked)} className="h-4 w-4 rounded border-gray-500 text-blue-600 focus:ring-blue-500" />
           <label htmlFor="encrypt-toggle" className="ml-3 block text-sm font-medium text-gray-300">Encrypt this file with an on-chain key via Lit Protocol</label>
-          <KeyIcon className="h-5 w-5 ml-2 text-amber-400"/>
+          <KeyIcon className="h-5 w-5 ml-2 text-amber-400" />
         </div>
         <button onClick={handleProcessFileClick} disabled={!selectedFile || isProcessing || (dataType === 'experiment' && !experimentTitle.trim())} className="w-full mt-6 bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center">
           <ArrowUpTrayIcon className="h-6 w-6 mr-2" />
@@ -333,7 +333,7 @@ const DataIngestionPage: React.FC = () => {
         <div className="mt-6 text-center min-h-[100px] flex items-center justify-center">
           {isProcessing && (<div className="flex flex-col items-center text-blue-300"><ArrowPathIcon className="h-12 w-12 text-blue-400 animate-spin mb-3" /><p className="text-lg font-medium">{status}</p></div>)}
           {!isProcessing && error && (<div className="w-full bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">An Error Occurred</h3><p className="text-sm">{error}</p></div></div>)}
-          {!isProcessing && successInfo && (<div className="w-full text-left bg-green-900/50 border border-green-700 text-green-200 p-4 rounded-lg space-y-3"><div className="flex items-start space-x-3"><CheckCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Success!</h3><p className="text-sm">{successInfo.message}</p><p className="text-xs text-gray-400 mt-1 truncate" title={successInfo.cid}>CID: {successInfo.cid}</p></div></div>{canLogToNft && (<div className="pt-3 border-t border-green-700/50">{logAdded ? (<p className="text-sm text-center text-purple-300 font-semibold flex items-center justify-center"><CheckCircleIcon className="h-5 w-5 mr-2"/>Added to on-chain log!</p>) : (<button onClick={handleAddToLog} disabled={isLogging} className="w-full flex items-center justify-center bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 disabled:cursor-wait">{isLogging ? <ArrowPathIcon className="h-5 w-5 animate-spin"/> : <><SparklesIcon className="h-5 w-5 mr-2" /><span>Add to On-Chain Log</span></>}</button>)}</div>)}</div>)}
+          {!isProcessing && successInfo && (<div className="w-full text-left bg-green-900/50 border border-green-700 text-green-200 p-4 rounded-lg space-y-3"><div className="flex items-start space-x-3"><CheckCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Success!</h3><p className="text-sm">{successInfo.message}</p><p className="text-xs text-gray-400 mt-1 truncate" title={successInfo.cid}>CID: {successInfo.cid}</p></div></div>{canLogToNft && (<div className="pt-3 border-t border-green-700/50">{logAdded ? (<p className="text-sm text-center text-purple-300 font-semibold flex items-center justify-center"><CheckCircleIcon className="h-5 w-5 mr-2" />Added to on-chain log!</p>) : (<button onClick={handleAddToLog} disabled={isLogging} className="w-full flex items-center justify-center bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 disabled:cursor-wait">{isLogging ? <ArrowPathIcon className="h-5 w-5 animate-spin" /> : <><SparklesIcon className="h-5 w-5 mr-2" /><span>Add to On-Chain Log</span></>}</button>)}</div>)}</div>)}
         </div>
         <div className="mt-10 gap-8">
           <div>
@@ -346,7 +346,7 @@ const DataIngestionPage: React.FC = () => {
           </div>
         </div>
       </div>
-      {viewingItem && (<FileViewer item={viewingItem} onClose={() => setViewingItem(null)}/>)}
+      {viewingItem && (<FileViewer item={viewingItem} onClose={() => setViewingItem(null)} />)}
     </>
   );
 };

@@ -30,7 +30,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        {/* By placing LitProvider here, it wraps the entire App and all its routes */}
         <LitProvider>
           <App />
         </LitProvider>
