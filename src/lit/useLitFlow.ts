@@ -1,7 +1,7 @@
+// src/lit/useLitFlow.ts
 import { useState, useCallback } from "react";
 import { useAccount, useSignMessage } from "wagmi";
 import { useLitContext } from "./litProvider";
-// We use the high-level encryptToJson and the standard decryptToFile
 import { encryptToJson, decryptToFile } from "@lit-protocol/encryption";
 import { LitActionResource, createSiweMessage } from "@lit-protocol/auth-helpers";
 import litActionCode from "./litAction";
@@ -16,6 +16,7 @@ export const useLitFlow = () => {
   const { signMessageAsync } = useSignMessage();
 
   const [loading, setLoading] = useState(false);
+
   function base64ToUint8Array(base64: string): Uint8Array {
     const binaryString = window.atob(base64);
     const len = binaryString.length;
@@ -25,12 +26,12 @@ export const useLitFlow = () => {
     }
     return bytes;
   }
-  // This function now encrypts everything into a single, portable JSON string.
+
   const encryptFileAndPackage = useCallback(async (file: File) => {
     if (!litNodeClient) throw new Error("Lit Node Client not connected.");
     setLoading(true);
     try {
-      const accessControlConditions = [{ contractAddress: "", standardContractType: "", chain: FORMAL_ACC_CHAIN, method: "eth_getBalance", parameters: [":userAddress", "latest"], returnValueTest: { comparator: ">=", value: "0" },},];
+      const accessControlConditions = [{ contractAddress: "", standardContractType: "", chain: FORMAL_ACC_CHAIN, method: "eth_getBalance", parameters: [":userAddress", "latest"], returnValueTest: { comparator: ">=", value: "0" },}];
       
       const jsonString = await encryptToJson({
         accessControlConditions,
@@ -49,7 +50,7 @@ export const useLitFlow = () => {
   }, [litNodeClient]);
 
   const checkAndDecryptFile = useCallback(async (
-    encryptedJsonString: string, // Expect the full JSON package
+    encryptedBase64String: string, // Changed name for clarity
     flowNftAddress: string,
     tokenId: string
   ) => {
@@ -79,8 +80,13 @@ export const useLitFlow = () => {
         throw new Error(checkError || "Access Denied: You do not hold the required Flow NFT.");
       }
 
-      // Step 2: If check passes, parse the JSON and decrypt on the client-side
+      // --- THE FIX IS HERE ---
+      // Step 2a: Decode the Base64 string back into the original JSON string.
+      const encryptedJsonString = window.atob(encryptedBase64String);
+
+      // Step 2b: Now parse the DECODED JSON string.
       const paramsToDecrypt: DecryptRequest = JSON.parse(encryptedJsonString);
+      // --- END FIX ---
 
       const decryptedFile = await decryptToFile({
         ...paramsToDecrypt, // Spread all properties from the JSON
@@ -97,5 +103,5 @@ export const useLitFlow = () => {
     }
   }, [litNodeClient, address, signMessageAsync]);
 
-  return { encryptFileAndPackage, checkAndDecryptFile,base64ToUint8Array, loading };
+  return { encryptFileAndPackage, checkAndDecryptFile, base64ToUint8Array, loading };
 };
