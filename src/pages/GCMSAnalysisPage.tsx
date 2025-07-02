@@ -1,10 +1,20 @@
 import React, { useState } from 'react';
-import { BeakerIcon, ArrowPathIcon, TableCellsIcon, ChartPieIcon, PresentationChartLineIcon, SparklesIcon, DocumentTextIcon } from '@heroicons/react/24/solid';
+import {
+  BeakerIcon,
+  ArrowPathIcon,
+  TableCellsIcon,
+  ChartPieIcon,
+  PresentationChartLineIcon,
+  SparklesIcon,
+  DocumentTextIcon,
+  MapIcon,
+  PresentationChartBarIcon
+} from '@heroicons/react/24/solid';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api'; // Example backend URL
 
 // --- 1. Type Definitions for the GC-MS API Response ---
-// These interfaces match the JSON structure our R script produces.
+// These interfaces match the final JSON structure our R script produces.
 interface StatsTableEntry {
   feature: string;
   mzmed: number;
@@ -14,14 +24,24 @@ interface StatsTableEntry {
   p_adj: number;
 }
 
+// Represents the plot pair for a single significant feature
+interface FeaturePlots {
+  eic_plot_b64: string | null;
+  spectrum_plot_b64: string | null;
+}
+
+// The main `results` object structure
 interface GcmsResultData {
   stats_table: StatsTableEntry[];
   pca_plot_b64: string;
   volcano_plot_b64: string;
-  eic_plot_b64?: string;      // Optional, only exists if significant features are found
-  spectrum_plot_b64?: string; // Optional
+  metabolite_map_b64: string; // The new RT vs m/z plot
+  top_feature_plots?: {         // Now an object where keys are feature IDs
+    [featureId: string]: FeaturePlots;
+  };
 }
 
+// The top-level API response structure
 interface GcmsApiResponse {
   status: 'success' | 'error' | 'processing';
   error: string | null;
@@ -82,7 +102,7 @@ const GcmsAnalysisPage: React.FC = () => {
 
   // --- JSX Rendering ---
   return (
-    <div className="max-w-7xl mx-auto p-4 md:p-8">
+    <div className="max-w-7xl mx-auto p-4 md:p-8 bg-gray-900 text-white min-h-screen">
       <h1 className="text-3xl font-bold mb-4">GC-MS Untargeted Metabolomics Analysis</h1>
       <p className="text-gray-400 mb-8">
         Provide absolute paths to your data folder and metadata file, or use the sample data to run a complete XCMS analysis pipeline.
@@ -156,38 +176,67 @@ const GcmsAnalysisPage: React.FC = () => {
 
       {/* --- Results Section --- */}
       {results && results.status === 'success' && (
-        <div className="space-y-8">
+        <div className="space-y-12">
             {/* Summary Header */}
             <div className="bg-gray-800 p-4 rounded-lg text-center">
                 <h2 className="text-2xl font-bold text-green-400">Analysis Complete!</h2>
                 <p className="text-gray-300">Found {results.results.stats_table.length} total features.</p>
             </div>
 
-            {/* Plots Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                    <h3 className="text-xl font-semibold mb-4 flex items-center"><ChartPieIcon className="h-6 w-6 mr-2 text-indigo-400"/>PCA Plot</h3>
-                    <img src={results.results.pca_plot_b64} alt="PCA Plot" className="w-full h-auto rounded-md bg-white p-1" />
-                </div>
-                <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                    <h3 className="text-xl font-semibold mb-4 flex items-center"><PresentationChartLineIcon className="h-6 w-6 mr-2 text-indigo-400"/>Volcano Plot</h3>
-                    <img src={results.results.volcano_plot_b64} alt="Volcano Plot" className="w-full h-auto rounded-md bg-white p-1" />
-                </div>
-                {results.results.eic_plot_b64 && (
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 flex items-center"><SparklesIcon className="h-6 w-6 mr-2 text-indigo-400"/>Top Feature EIC</h3>
-                        <img src={results.results.eic_plot_b64} alt="EIC Plot" className="w-full h-auto rounded-md bg-white p-1" />
-                    </div>
-                )}
-                {results.results.spectrum_plot_b64 && (
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                        <h3 className="text-xl font-semibold mb-4 flex items-center"><DocumentTextIcon className="h-6 w-6 mr-2 text-indigo-400"/>Top Feature Spectrum</h3>
-                        <img src={results.results.spectrum_plot_b64} alt="Spectrum Plot" className="w-full h-auto rounded-md bg-white p-1" />
-                    </div>
-                )}
+            {/* --- Global Summary Plots --- */}
+            <div>
+              <h2 className="text-2xl font-semibold mb-6 border-b-2 border-gray-700 pb-2">Global Summary Plots</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
+                      <h3 className="text-xl font-semibold mb-4 flex items-center"><ChartPieIcon className="h-6 w-6 mr-2 text-indigo-400"/>PCA Plot</h3>
+                      <img src={results.results.pca_plot_b64} alt="PCA Plot" className="w-full h-auto rounded-md bg-white p-1" />
+                  </div>
+                  <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
+                      <h3 className="text-xl font-semibold mb-4 flex items-center"><PresentationChartLineIcon className="h-6 w-6 mr-2 text-indigo-400"/>Volcano Plot</h3>
+                      <img src={results.results.volcano_plot_b64} alt="Volcano Plot" className="w-full h-auto rounded-md bg-white p-1" />
+                  </div>
+              </div>
+              {/* New Metabolite Map plot takes full width */}
+              <div className="bg-gray-800 p-6 rounded-lg shadow-lg mt-8">
+                  <h3 className="text-xl font-semibold mb-4 flex items-center"><MapIcon className="h-6 w-6 mr-2 text-indigo-400"/>Metabolite Map (RT vs. m/z)</h3>
+                  <img src={results.results.metabolite_map_b64} alt="Metabolite Map" className="w-full h-auto rounded-md bg-white p-1" />
+              </div>
             </div>
-
-            {/* Statistics Table */}
+            
+            {/* --- Detailed Feature Plots Section --- */}
+            {results.results.top_feature_plots && Object.keys(results.results.top_feature_plots).length > 0 && (
+              <div>
+                <h2 className="text-2xl font-semibold mb-6 border-b-2 border-gray-700 pb-2">Top Significant Features</h2>
+                <div className="space-y-10">
+                  {/* Iterate over the top_feature_plots object */}
+                  {Object.entries(results.results.top_feature_plots).map(([featureId, plots]) => (
+                    <div key={featureId} className="bg-gray-900/50 p-6 rounded-lg border border-gray-700">
+                      <h3 className="text-xl font-bold mb-6 text-cyan-400">
+                        Detailed Plots for Feature: <span className="font-mono">{featureId}</span>
+                      </h3>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* EIC Grid Plot */}
+                        {plots.eic_plot_b64 && (
+                          <div className="bg-gray-800 p-4 rounded-lg">
+                            <h4 className="font-semibold mb-3 flex items-center"><PresentationChartBarIcon className="h-5 w-5 mr-2"/>EIC Grid</h4>
+                            <img src={plots.eic_plot_b64} alt={`EIC plot for ${featureId}`} className="w-full h-auto rounded-md bg-white p-1" />
+                          </div>
+                        )}
+                        {/* Spectrum Grid Plot */}
+                        {plots.spectrum_plot_b64 && (
+                          <div className="bg-gray-800 p-4 rounded-lg">
+                            <h4 className="font-semibold mb-3 flex items-center"><DocumentTextIcon className="h-5 w-5 mr-2"/>Mass Spectrum Grid</h4>
+                            <img src={plots.spectrum_plot_b64} alt={`Spectrum plot for ${featureId}`} className="w-full h-auto rounded-md bg-white p-1" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* --- Statistics Table --- */}
             <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
                  <h3 className="text-xl font-semibold mb-4 flex items-center"><TableCellsIcon className="h-6 w-6 mr-2 text-indigo-400"/>Statistical Results</h3>
                  <div className="overflow-x-auto max-h-[500px] border border-gray-700 rounded-lg">
