@@ -1,4 +1,3 @@
-// src/App.tsx
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
@@ -9,10 +8,12 @@ import ResearchChatPage from './pages/ResearchChatPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
 import GCMSAnalysisPage from './pages/GCMSAnalysisPage';
 
+// --- 1. Import the new AccessControlPage ---
+import AccessControlPage from './pages/AccessControlPage';
+
 
 const App: React.FC = () => {
   return (
-    // --- 3. Wrap with Providers ---
     <BrowserRouter>
       <div className="bg-gray-900 min-h-screen text-gray-200 flex">
         <Sidebar />
@@ -24,6 +25,9 @@ const App: React.FC = () => {
             <Route path="/ingest" element={<DataIngestionPage />} />
             <Route path="/analysis" element={<LD50AnalysisPage />} />
             <Route path="/analyze-gcms" element={<GCMSAnalysisPage />} /> 
+
+            {/* --- 2. Add the new route for /network --- */}
+            <Route path="/network" element={<AccessControlPage />} />
 
           </Routes>
         </main>

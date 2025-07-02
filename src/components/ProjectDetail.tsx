@@ -44,6 +44,9 @@ const formatTimestamp = (timestamp: string) => {
   )}`;
 };
 
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+
 const shortenCID = (cid: string) =>
   cid.length > 10 ? `${cid.slice(0, 5)}…${cid.slice(-5)}` : cid;
 
@@ -65,17 +68,17 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
         const [papersRes, experimentsRes, analysesRes, storyRes] =
           await Promise.all([
             fetch(
-              `https://salty-eyes-visit.loca.lt/api/data/paper?projectId=${project.id}`
+              `${API_BASE}/data/paper?projectId=${project.id}`
             ),
             fetch(
-              `https://salty-eyes-visit.loca.lt/api/data/experiment?projectId=${project.id}`
+              `${API_BASE}/data/experiment?projectId=${project.id}`
             ),
             fetch(
-              `https://salty-eyes-visit.loca.lt/api/data/analysis?projectId=${project.id}`
+              ` ${API_BASE}/data/analysis?projectId=${project.id}`
             ),
             project.nft_id
               ? fetch(
-                  `https://salty-eyes-visit.loca.lt/api/nfts/${project.nft_id}/story`
+                  `${API_BASE}/nfts/${project.nft_id}/story`
                 )
               : Promise.resolve(null),
           ]);
