@@ -1,29 +1,20 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { injected } from "wagmi/connectors";
-import type { Chain } from "wagmi/chains";
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
 
-// ... other page imports
-
-// --- 1. Wagmi and Lit Imports ---
+// --- WAGMI AND QUERY CLIENT IMPORTS ---
 import { WagmiProvider, createConfig, http } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { LitProvider } from './lit/litProvider';
+import { injected } from 'wagmi/connectors';
 
-export const flowEvmTestnet = {
-  id: 7001,
-  name: "Flow EVM Testnet",
-  nativeCurrency: { name: "Flow", symbol: "FLOW", decimals: 18 },
-  rpcUrls: {
-    // --- THIS IS THE KEY CHANGE ---
-    // Instead of the direct URL, we point to our local proxy path.
-    default: { http: ["/flow-rpc"] },
-  },
-  blockExplorers: {
-    default: { name: "Flowscan", url: "https://testnet.flowscan.org" },
-  },
-} as const satisfies Chain;
+// --- LIT PROTOCOL PROVIDER IMPORT ---
+import { LitProvider } from './lit/LitProvider';
 
+// --- SHARED CONFIGURATION IMPORTS ---
+import { flowEvmTestnet } from './config/chain';
+
+// --- SETUP ---
 const queryClient = new QueryClient();
 
 export const config = createConfig({
@@ -34,17 +25,16 @@ export const config = createConfig({
   },
 });
 
-import './index.css'
-import App from './App.tsx'
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+// --- RENDER THE APPLICATION WITH ALL PROVIDERS ---
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
+        {/* By placing LitProvider here, it wraps the entire App and all its routes */}
         <LitProvider>
           <App />
         </LitProvider>
       </QueryClientProvider>
     </WagmiProvider>
-  </StrictMode>,
-)
+  </React.StrictMode>
+);
