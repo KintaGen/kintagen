@@ -20,7 +20,7 @@ interface PaperInfo {
 }
 
 // --- CONSTANTS ---
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // --- COMPONENT ---
 const ResearchChatPage: React.FC = () => {

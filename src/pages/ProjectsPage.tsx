@@ -4,7 +4,7 @@ import { BeakerIcon, PlusCircleIcon, ArrowPathIcon, CubeTransparentIcon, Sparkle
 import ProjectDetail from '../components/ProjectDetail'; // Import the new component
 
 const API_BASE =
-  import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
 // Updated Project interface to handle nullable nft_id
 interface Project {

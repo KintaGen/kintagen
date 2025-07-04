@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChartBarIcon, LinkIcon, ArrowPathIcon, SparklesIcon, BeakerIcon, DocumentMagnifyingGlassIcon, InboxArrowDownIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://salty-eyes-visit.loca.lt/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const FILECOIN_GATEWAY = 'https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io';
 
 // --- TYPE DEFINITIONS ---
@@ -115,7 +115,7 @@ const Ld50AnalysisPage: React.FC = () => {
     }
     
     try {
-      const response = await fetch(`${API_BASE}/analyze-ld50`, {
+      const response = await fetch(`${API_BASE}/analyze/ld50`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
@@ -217,6 +217,8 @@ const Ld50AnalysisPage: React.FC = () => {
           </div>
         </div>
 
+        {
+          /*
         <div className="text-center text-gray-500 text-sm flex items-center gap-4"><hr className="flex-grow border-gray-700"/><p>OR</p><hr className="flex-grow border-gray-700"/></div>
 
         <div>
@@ -226,6 +228,8 @@ const Ld50AnalysisPage: React.FC = () => {
             <input id="dataUrl" type="url" value={dataUrl} onChange={(e) => setDataUrl(e.target.value)} placeholder="https://.../data.csv" className="w-full bg-gray-700 border border-gray-600 rounded-md py-2.5 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500" disabled={isLoading}/>
           </div>
         </div>
+          */
+        }
         
         <div className="pt-4 border-t border-gray-700/50 flex flex-col sm:flex-row justify-between items-center gap-4">
             <button onClick={() => handleAnalysis(true)} disabled={isLoading} className="text-blue-400 hover:underline text-xs order-last sm:order-first">Run with sample data</button>
