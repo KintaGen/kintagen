@@ -1,6 +1,7 @@
 // src/pages/Ld50AnalysisPage.tsx
 import React, { useState, useEffect } from 'react';
 import { ChartBarIcon, LinkIcon, ArrowPathIcon, SparklesIcon, BeakerIcon, DocumentMagnifyingGlassIcon, InboxArrowDownIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
+import JSZip from 'jszip'; // <-- Import the new library
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const FILECOIN_GATEWAY = 'https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io';
@@ -136,50 +137,45 @@ const Ld50AnalysisPage: React.FC = () => {
     setError(null);
 
     try {
+      const zip = new JSZip();
+      const sourceFile = experimentFiles.find(f => f.cid === selectedFileCid);
+      const baseTitle = sourceFile ? `LD50_from_${sourceFile.title.replace(/ /g, '_')}` : "LD50_Analysis";
+
+      // 1. Add plot to the zip
       const plotBase64 = results.results.plot_b64.split(',')[1];
       const plotBlob = await (await fetch(`data:image/png;base64,${plotBase64}`)).blob();
-      const metricsBlob = new Blob([JSON.stringify(results.results, null, 2)], { type: 'application/json' });
+      zip.file("ld50_plot.png", plotBlob);
       
-      const sourceFile = experimentFiles.find(f => f.cid === selectedFileCid);
-      const baseTitle = sourceFile ? `LD50 from ${sourceFile.title}` : "LD50 Analysis";
+      // 2. Add metrics JSON to the zip
+      const metricsJsonString = JSON.stringify(results.results, null, 2);
+      zip.file("ld50_metrics.json", metricsJsonString);
 
-      // --- THE KEY CHANGE: AWAIT each upload sequentially ---
-      
-      console.log("Step 1: Uploading plot result...");
-      const plotFormData = new FormData();
-      plotFormData.append('file', plotBlob, `${baseTitle}_plot.png`);
-      plotFormData.append('dataType', 'analysis');
-      plotFormData.append('title', `${baseTitle} - Plot`);
-      plotFormData.append('projectId', selectedProjectId);
-      const plotResponse = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: plotFormData });
-      const plotResult = await plotResponse.json();
-      if (!plotResponse.ok) throw new Error('Failed to upload plot result.');
-      console.log("Step 1 Complete. Plot CID:", plotResult.rootCID);
-      
-      console.log("Step 2: Uploading metrics result...");
-      const metricsFormData = new FormData();
-      metricsFormData.append('file', metricsBlob, `${baseTitle}_metrics.json`);
-      metricsFormData.append('dataType', 'analysis');
-      metricsFormData.append('title', `${baseTitle} - Metrics`);
-      metricsFormData.append('projectId', selectedProjectId);
-      const metricsResponse = await fetch('http://localhost:3001/api/upload', { method: 'POST', body: metricsFormData });
-      const metricsResult = await metricsResponse.json();
-      if (!metricsResponse.ok) throw new Error('Failed to upload metrics result.');
-      console.log("Step 2 Complete. Metrics CID:", metricsResult.rootCID);
+      // 3. Generate the final ZIP file as a Blob
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
 
-      // --- The rest of the logic remains the same ---
+      // 4. Upload the single ZIP file
+      const formData = new FormData();
+      formData.append('file', zipBlob, `${baseTitle}_results.zip`);
+      formData.append('dataType', 'analysis'); // Categorize as an 'analysis'
+      formData.append('title', `${baseTitle} Results`);
+      formData.append('projectId', selectedProjectId);
+
+      const uploadResponse = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+      const uploadResult = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
+
+      // 5. If the project has an NFT, add the log entry
       const project = projects.find(p => p.id === Number(selectedProjectId));
       if (project?.nft_id) {
-        console.log("Step 3: Adding entry to on-chain log...");
-        const actionDescription = `Performed LD50 Analysis on "${baseTitle}". Results stored as Plot (CID: ${plotResult.rootCID}) and Metrics (CID: ${metricsResult.rootCID}).`;
-        const logResponse = await fetch(`http://localhost:3001/api/projects/${selectedProjectId}/log`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: actionDescription, outputCID: plotResult.rootCID })
-        });
-        if (!logResponse.ok) throw new Error('Result files were saved, but failed to add log to NFT.');
-        console.log("Step 3 Complete.");
+          const actionDescription = `Performed LD50 Analysis. Results saved to CID: ${uploadResult.rootCID}`;
+          const logResponse = await fetch(`${API_BASE}/projects/${selectedProjectId}/log`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID })
+          });
+          if (!logResponse.ok) throw new Error('Result file was saved, but failed to add log to NFT.');
       }
+      
       setSaveSuccess(true);
     } catch (err: any) {
       setError(err.message);

@@ -6,6 +6,7 @@ import {
   InboxArrowDownIcon, CheckCircleIcon, XCircleIcon, ScaleIcon, DocumentChartBarIcon as ProfilingIcon,
 } from '@heroicons/react/24/solid';
 import InfoPopover from '../components/InfoPopover';
+import JSZip from 'jszip'; // <-- Import the new library
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 const FILECOIN_GATEWAY = 'https://ipfs.io/ipfs';
@@ -147,35 +148,56 @@ const GCMSAnalysisPage: React.FC = () => {
     if (!results || !selectedProjectId) return;
     setIsSaving(true);
     setError(null);
+
     try {
-        const sourceData = experimentFiles.find(f => f.cid === selectedDataCid)?.title || `Sample ${analysisType} Analysis`;
-        const baseTitle = `${analysisType === 'differential' ? 'XCMS Diff.' : 'Profiling'} on ${sourceData}`;
-        const plotsToUpload = Object.entries(results.results).filter(([key, value]) => key.endsWith('_b64') && typeof value === 'string');
-        const uploadPromises = plotsToUpload.map(async ([key, base64Data]) => {
-            const plotName = key.replace('_b64', '');
-            const blob = await (await fetch(base64Data as string)).blob();
-            const formData = new FormData();
-            formData.append('file', blob, `${baseTitle}_${plotName}.png`);
-            formData.append('dataType', 'analysis');
-            formData.append('title', `${baseTitle} - ${plotName}`);
-            formData.append('projectId', selectedProjectId);
-            const response = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
-            return response.json();
-        });
-        const uploadResults = await Promise.all(uploadPromises);
-        if (uploadResults.some(res => !res.rootCID)) throw new Error("One or more result files failed to upload.");
-        const project = projects.find(p => p.id === Number(selectedProjectId));
-        if (project?.nft_id) {
-            const resultSummary = uploadResults.map(res => `${res.title.split(' - ')[1]} (CID: ${res.rootCID.substring(0,10)}...)`).join(', ');
-            const actionDescription = `Performed GC-MS ${analysisType} Analysis. Results: ${resultSummary}`;
-            const logResponse = await fetch(`${API_BASE}/projects/${selectedProjectId}/log`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: actionDescription, outputCID: uploadResults[0].rootCID })
-            });
-            if (!logResponse.ok) throw new Error('Result files were saved, but failed to add log to NFT.');
-        }
-        setSaveSuccess(true);
+      const zip = new JSZip();
+      const sourceData = experimentFiles.find(f => f.cid === selectedDataCid)?.title || `Sample ${analysisType} Analysis`;
+      const baseTitle = `${analysisType === 'differential' ? 'XCMS_Diff' : 'Profiling'}_on_${sourceData.replace(/ /g, '_')}`;
+
+      // 1. Add all plots to the zip
+      const plotsToUpload = Object.entries(results.results).filter(([key, value]) => key.endsWith('_b64') && typeof value === 'string');
+      for (const [key, base64Data] of plotsToUpload) {
+        const plotName = key.replace('_b64', '.png');
+        const plotBlob = await (await fetch(base64Data as string)).blob();
+        zip.file(plotName, plotBlob);
+      }
+      
+      // 2. Add the data table as a CSV file to the zip
+      const tableData = results.results.stats_table || results.results.feature_table;
+      if (tableData && tableData.length > 0) {
+        const header = Object.keys(tableData[0]).join(',');
+        const rows = tableData.map(row => Object.values(row).join(','));
+        const csvContent = [header, ...rows].join('\n');
+        zip.file('results_table.csv', csvContent);
+      }
+
+      // 3. Generate the final ZIP file as a Blob
+      const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+      // 4. Upload the single ZIP file
+      const formData = new FormData();
+      formData.append('file', zipBlob, `${baseTitle}_results.zip`);
+      formData.append('dataType', 'analysis'); // Always an 'analysis' type
+      formData.append('title', `${baseTitle} Results`);
+      formData.append('projectId', selectedProjectId);
+
+      const uploadResponse = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+      const uploadResult = await uploadResponse.json();
+      if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
+
+      // 5. If the project has an NFT, add the log entry
+      const project = projects.find(p => p.id === Number(selectedProjectId));
+      if (project?.nft_id) {
+          const actionDescription = `Saved analysis results for "${baseTitle}"`;
+          const logResponse = await fetch(`${API_BASE}/projects/${selectedProjectId}/log`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID })
+          });
+          if (!logResponse.ok) throw new Error('Result files were saved, but failed to add log to NFT.');
+      }
+      
+      setSaveSuccess(true);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -197,7 +219,7 @@ const GCMSAnalysisPage: React.FC = () => {
               <div className="flex items-start"><ScaleIcon className="h-7 w-7 mr-3 mt-1 flex-shrink-0"/><div><h3 className="font-bold text-white">Differential Analysis</h3><p className="text-sm text-gray-300">Compare two groups (e.g., WT vs KO) to find statistically significant differences.</p></div></div>
             </button>
             <button onClick={() => { setAnalysisType('profiling'); resetState(); }} className={`p-4 rounded-lg text-left transition-all ${analysisType === 'profiling' ? 'bg-teal-600 ring-2 ring-teal-400' : 'bg-gray-700 hover:bg-gray-600'}`}>
-              <div className="flex items-start"><ProfilingIcon className="h-7 w-7 mr-3 mt-1 flex-shrink-0"/><div><h3 className="font-bold text-white">Phytochemical Profiling</h3><p className="text-sm text-gray-300">Identify all chemical features present in a set of samples without group comparison.</p></div></div>
+              <div className="flex items-start"><ProfilingIcon className="h-7 w-7 mr-3 mt-1 flex-shrink-0"/><div><h3 className="font-bold text-white">Chemical Profiling</h3><p className="text-sm text-gray-300">Identify all chemical features present in a set of samples without group comparison.</p></div></div>
             </button>
         </div>
       </div>
