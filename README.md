@@ -1,97 +1,140 @@
-# Project Kintagen: Your AI Research Co-pilot
-
-**Project Kintagen** is a decentralized, AI-powered research assistant designed for scientific labs. It provides a secure, collaborative platform to ingest, analyze, and query private research data, turning your lab's collective knowledge into an interactive and intelligent resource.
-
-Built on a foundation of decentralized technologies like Filecoin and Lit, Kintagen ensures that your sensitive research data remains private, verifiable, and owned by you.
-
-
-*(**Action Required:** Replace this with a real screenshot of dashboard!)*
-
-## The Problem
-
-Scientific research labs generate a massive amount of valuable data:
-*   Published papers and literature reviews.
-*   Raw experimental data from equipment (GC-MS, NMR, etc.).
-*   Internal notes, theses, and reports.
-
-This knowledge is often siloed, difficult to search, and hard to share securely. New researchers spend months getting up to speed, and valuable insights can be lost in a sea of PDFs and disconnected files.
-
-## The Solution
-
-Project Kintagen acts as a centralized "brain" for your lab. It allows you to:
-
-*   **🧠 Ingest Knowledge:** Securely upload research papers, experimental data, and notes. The system processes and understands the content, storing it on the decentralized Filecoin network.
-*   **🤖 Chat with Your Data:** Use a familiar AI chat interface to ask complex questions about your ingested documents. Get instant, context-aware answers grounded in your lab's private data.
-*   **🔬 Accelerate Research:** Quickly find chemical structures, experimental methods, or previously published findings without manually sifting through hundreds of documents.
-*   **🤝 Collaborate Securely:** (Future) Use Flow Protocol to create rules for sharing specific knowledge between partner labs, fostering collaboration without giving up data ownership.
-
-## Core Features
-
-*   **AI-Powered Chat Interface:** Ask natural language questions and get precise answers from an AI that uses your private data as its knowledge base.
-*   **Decentralized Data Ingestion:** Upload documents and data files. They are processed and stored on the Filecoin network, ensuring data persistence and verifiability.
-*   **Secure API Architecture:** A robust Node.js backend acts as a secure proxy, protecting your AI service API keys and managing business logic.
-*   **Modern, Responsive UI:** A clean and intuitive dashboard built with React, TypeScript, and Tailwind CSS.
-*   **Project-Based Organization:** (Future) Group your data and chats into "Projects" to mirror real-world research workflows.
-
-## Tech Stack & Architecture
-
-Project Kintagen is built on a modern, decentralized technology stack:
-
-*   **Frontend:**
-    *   [React](https://reactjs.org/) & [TypeScript](https://www.typescriptlang.org/): For a robust and scalable user interface.
-    *   [Tailwind CSS](https://tailwindcss.com/): For rapid, utility-first styling.
-
-*   **Backend:**
-    *   [Node.js](https://nodejs.org/) & [Express](https://expressjs.com/): A lightweight and powerful API server.
-    *   [OpenAI SDK](https://github.com/openai/openai-node): To communicate with AI models like DeepSeek or OpenAI.
-
-*   **Decentralized Infrastructure (The Vision):**
-    *   **Filecoin:** For persistent, content-addressed storage of research data.
-    *   **Flow Protocol:** For decentralized access control and secure knowledge sharing between agents/labs.
-    *   **Bio.xyz:** For verifiable identity of human contributors.
-    *   **Mosaia:** For cross-referencing and validating information across the network.
-
-
-*(**Action Required:** Create a simple diagram showing React -> Node Backend -> AI Service -> Filecoin)*
 
 ---
 
-## Getting Started
+# KintaGen UI (Frontend)
 
-Follow these instructions to get a local copy of Project Cortex up and running for development.
+> React 19 · TypeScript · Vite · TailwindCSS · Wagmi
 
-### Prerequisites
+This repository contains the **browser-based client** for the KintaGen platform. Follow the steps below to install dependencies, configure environment variables, and run the development and production builds.
 
-*   [Node.js](https://nodejs.org/) (v18 or later recommended)
-*   [pnpm](https://pnpm.io/installation) (recommended package manager) or npm/yarn
-*   A Mosaia API Key
+---
 
-### Installation & Setup
+## 1. Prerequisites
+
+| Tool | Version | Install Guide |
+| :--- | :--- | :--- |
+| **Node.js** | ≥ 18 (LTS) | [nodejs.org](https://nodejs.org/en) |
+| **pnpm** | ≥ 8 (recommended) | `npm i -g pnpm` |
+| **Flow/EVM Wallet** | Blocto, MetaMask, etc. | Connect in-app when prompted |
+
+*Note: The backend server must be running for the frontend to function correctly. See the backend setup guide.*
+
+---
+
+## 2. Key Technologies
+
+This project is built with a modern, type-safe stack:
+
+*   **UI Framework:** [React 19](https://react.dev/) with TypeScript.
+*   **Build Tool:** [Vite](https://vitejs.dev/) for fast development and optimized builds.
+*   **Routing:** [React Router](https://reactrouter.com/) for SPA navigation.
+*   **Styling:** [Tailwind CSS](https://tailwindcss.com/) for utility-first styling.
+*   **Icons:** [Heroicons](https://heroicons.com/) for a consistent icon set.
+*   **Blockchain Integration:** [Wagmi](https://wagmi.sh/) for connecting to EVM-compatible chains (like Flow EVM).
+*   **Client-Side Encryption:** [Lit Protocol SDK](https://litprotocol.com/) for in-browser file encryption and decryption.
+*   **Data Fetching & State:** [TanStack Query](https://tanstack.com/query/latest) for managing server state, caching, and background data fetching.
+*   **Data Visualization:** [Recharts](https://recharts.org/) for rendering charts on the dashboard.
+
+---
+
+## 3. Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/KintaGen/kintagen
+    git clone https://github.com/KintaGen/kintagen.git
     cd kintagen
     ```
 
-2.  **Set up the Frontend Application:**
-    *   Install frontend dependencies:
+2.  **Install all dependencies:**
     ```bash
     pnpm install
     ```
+    > This single command installs dependencies for both the frontend and backend workspaces.
 
-### Running the Application
-
-Project Kintagen requires two separate terminal processes to run concurrently: one for the backend and one for the frontend.
-
-```bash
-# Make sure you are in the project's root directory
-pnpm start
-```
-    This will automatically open your browser to `http://localhost:3000`.
 ---
 
+## 4. Environment Variables
 
-## License
+Copy the example environment file and edit the values as needed.
 
-Distributed under the MIT License. See `LICENSE` for more information.
+```bash
+# Ensure you are in the root directory of the project
+cp .env.example .env
+```
+
+The frontend uses the following variables from the `.env` file at the root:
+
+| Variable | Purpose | Example |
+| :--- | :--- | :--- |
+| `VITE_API_BASE_URL` | The full URL of the backend REST API. | `http://localhost:3001/api` |
+| `DISABLE_ESLINT_PLUGIN` | *(Optional)* Skips ESLint in Vite dev mode if your editor already runs it. | `true` |
+
+> **Tip:** No need to restart `pnpm dev` when you change `.env`; Vite reloads automatically.
+
+---
+
+## 5. Running in Development
+
+To run the frontend development server:
+
+```bash
+# From the repository root
+pnpm dev
+```
+
+*   This will open a browser window at `http://localhost:5173` (or the next available port).
+*   The Vite server proxies any request starting with `/flow-rpc` to the real Flow EVM Testnet RPC endpoint, avoiding CORS issues during development (see `vite.config.ts`).
+
+---
+
+## 6. Available Scripts
+
+All scripts should be run from the repository root.
+
+| Command | Description |
+| :--- | :--- |
+| `pnpm dev` | Starts the Vite development server with Hot Module Replacement (HMR). |
+| `pnpm build` | Creates a production-ready build in the `dist/` directory. |
+| `pnpm preview` | Serves the `dist/` folder locally to verify the production build. |
+| `pnpm lint` | Runs ESLint to check for code quality and style issues. |
+
+---
+
+## 7. Project Structure
+
+The frontend source code is organized as follows:
+
+```
+src/
+├── components/   # Reusable React components (Sidebar, StatCard, etc.)
+├── config/       # Shared configuration (Wagmi chain definitions)
+├── lit/          # Lit Protocol integration (hooks, providers, actions)
+├── pages/        # Top-level route components (Dashboard, ProjectsPage, etc.)
+├── App.tsx       # Main application component with routing setup
+└── main.tsx      # Application entry point, providers setup
+```
+
+---
+
+## 8. Production Deployment
+
+1.  **Build the application:**
+    ```bash
+    pnpm build
+    ```
+
+2.  **Deploy the output:**
+    *   Upload the contents of the `dist/` directory to any static hosting provider (Vercel, Netlify, AWS S3, etc.).
+    *   Ensure your hosting service is configured to handle Single-Page Applications (SPAs) by rewriting all routes to `index.html`.
+
+---
+
+## 9. Troubleshooting
+
+| Symptom | Common Fix |
+| :--- | :--- |
+| **API requests fail (404 or CORS error)** | Ensure the backend server is running and that `VITE_API_BASE_URL` in your `.env` file is correct and points to the backend's address. |
+| **"Cannot read properties of undefined" on wallet connection** | Check that your browser wallet (e.g., MetaMask) is installed, enabled, and set to the correct network (Flow EVM Testnet). |
+| **Lit Protocol decryption fails** | Verify you are connected with the wallet that holds the correct access key NFT. Check the browser console for specific Lit Protocol errors. |
+| **On-chain actions hang or fail (e.g., `grantAccess`)** | Make sure your connected wallet has a small amount of testnet FLOW for gas fees. You can get some from the [Flow Testnet Faucet](https://testnet-faucet.onflow.org/). |
+| **Page appears unstyled** | This can happen if Tailwind CSS fails to initialize. Run `pnpm install` again and restart the dev server. |
