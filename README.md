@@ -1,7 +1,7 @@
 
 📖 **Full README:** [View the documentation on GitHub](https://github.com/KintaGen)
 
-🚀 **Live Demo:** [Try the KintaGen appl](https://kintagen.vercel.app)
+🚀 **Live Demo:** [Try the KintaGen app](https://kintagen.vercel.app)
 
 
 ---
