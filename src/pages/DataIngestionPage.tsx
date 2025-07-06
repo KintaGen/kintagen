@@ -1,5 +1,7 @@
 // src/pages/DataIngestionPage.tsx
 import React, { useState, useEffect, useRef } from 'react';
+import { flowEvmTestnet } from '../config/chain'; // <-- Add this import
+
 import {
   ArrowUpTrayIcon, DocumentTextIcon,
   ArrowPathIcon, CheckCircleIcon, XCircleIcon,
@@ -39,6 +41,7 @@ interface Project {
 }
 
 const ACCESS_MANAGER_CONTRACT_ADDRESS = "0x5bc5A6E3dD358b67A752C9Dd58df49E863eA95F2";
+const TARGET_CHAIN = flowEvmTestnet; // <-- Add this constant
 
 const DataIngestionPage: React.FC = () => {
   // --- STATE MANAGEMENT ---
@@ -55,7 +58,7 @@ const DataIngestionPage: React.FC = () => {
   const [logAdded, setLogAdded] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
 
-  const { isConnected, address } = useAccount();
+  const { isConnected, address,chainId } = useAccount();
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const { data: hash, writeContract, isPending, error: contractError } = useWriteContract();
@@ -71,6 +74,7 @@ const DataIngestionPage: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [areProjectsLoading, setAreProjectsLoading] = useState(true);
   const [encryptFile, setEncryptFile] = useState(false);
+  const [networkWarning, setNetworkWarning] = useState<string | null>(null); // <-- Add this state
 
 
   const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
@@ -225,7 +229,18 @@ const DataIngestionPage: React.FC = () => {
       setIsLogging(false);
     }
   };
+  const handleEncryptToggle = (isChecked: boolean) => {
+    setEncryptFile(isChecked);
 
+    // If the user checks the box AND is connected on the WRONG network...
+    if (isChecked && isConnected && chainId !== TARGET_CHAIN.id) {
+      // ...set the warning message.
+      setNetworkWarning("Please ensure your wallet is on the Flow EVM Testnet to encrypt files.");
+    } else {
+      // Otherwise (if unchecking, not connected, or on the correct network), clear the message.
+      setNetworkWarning(null);
+    }
+  };
   useEffect(() => {
     if (!receipt || !selectedFile) return;
     const processTransactionAndEncrypt = async () => {
@@ -321,10 +336,24 @@ const DataIngestionPage: React.FC = () => {
           {dataType === 'experiment' && (<div className="mt-4"><label htmlFor="expTitle" className="block text-sm font-medium text-gray-300 mb-1">Experiment Title</label><input id="expTitle" type="text" value={experimentTitle} onChange={(e) => setExperimentTitle(e.target.value)} placeholder="e.g., Compound XYZ Synthesis, Run 1" className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white" /></div>)}
         </div>
         <div className="mt-4 flex items-center justify-center p-3 bg-gray-900/50 rounded-lg">
-          <input id="encrypt-toggle" type="checkbox" checked={encryptFile} onChange={(e) => setEncryptFile(e.target.checked)} className="h-4 w-4 rounded border-gray-500 text-blue-600 focus:ring-blue-500" />
+        <input
+            id="encrypt-toggle"
+            type="checkbox"
+            checked={encryptFile}
+            // 👇 UPDATE THIS ONCHANGE HANDLER 👇
+            onChange={(e) => handleEncryptToggle(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-500 text-blue-600 focus:ring-blue-500"
+          />
           <label htmlFor="encrypt-toggle" className="ml-3 block text-sm font-medium text-gray-300">Encrypt this file with an on-chain key via Lit Protocol</label>
           <KeyIcon className="h-5 w-5 ml-2 text-amber-400" />
         </div>
+        {/* 👇 ADD THIS SNIPPET to display the warning message 👇 */}
+        {networkWarning && (
+          <div className="mt-3 text-center text-amber-300 bg-amber-900/50 border border-amber-800 p-3 rounded-lg text-sm flex items-center justify-center gap-2 transition-opacity duration-300">
+            <LockClosedIcon className="h-5 w-5 flex-shrink-0" />
+            <p>{networkWarning}</p>
+          </div>
+        )}
         <button onClick={handleProcessFileClick} disabled={!selectedFile || isProcessing || (dataType === 'experiment' && !experimentTitle.trim())} className="w-full mt-6 bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-500 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center">
           <ArrowUpTrayIcon className="h-6 w-6 mr-2" />
           {isProcessing ? status : `Process & Upload ${dataType.charAt(0).toUpperCase() + dataType.slice(1)}`}
