@@ -16,7 +16,6 @@ import AccessControlPage from './pages/AccessControlPage';
 const App: React.FC = () => {
   return (
     <BrowserRouter>
-      <NetworkGuard>
 
       <div className="bg-gray-900 min-h-screen text-gray-200 flex">
         <Sidebar />
@@ -30,12 +29,15 @@ const App: React.FC = () => {
             <Route path="/analyze-gcms" element={<GCMSAnalysisPage />} /> 
 
             {/* --- 2. Add the new route for /network --- */}
-            <Route path="/network" element={<AccessControlPage />} />
+            <Route path="/network" element={
+              <NetworkGuard>
+                <AccessControlPage />
+              </NetworkGuard>
+            } />
 
           </Routes>
         </main>
       </div>
-      </NetworkGuard>
 
     </BrowserRouter>
   );
