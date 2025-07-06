@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import ProjectsPage from './pages/ProjectsPage';
@@ -15,7 +15,7 @@ import AccessControlPage from './pages/AccessControlPage';
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter>
+    <HashRouter>
 
       <div className="bg-gray-900 min-h-screen text-gray-200 flex">
         <Sidebar />
@@ -39,7 +39,7 @@ const App: React.FC = () => {
         </main>
       </div>
 
-    </BrowserRouter>
+    </HashRouter>
   );
 };
 
