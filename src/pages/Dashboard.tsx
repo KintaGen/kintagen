@@ -73,7 +73,14 @@ const Dashboard: React.FC = () => {
 
   /* ---- fetching helpers ---- */
   const getJSON = async <T,>(url: string): Promise<T> => {
-    const r = await fetch(url);
+    // The second argument to fetch is the options object
+    const r = await fetch(url, {
+      headers: {
+        // Add this header to bypass the localtunnel warning page
+        'Bypass-Tunnel-Reminder': 'true'
+      }
+    });
+  
     if (!r.ok) throw new Error(`${url} → ${r.status}`);
     return r.json();
   };
