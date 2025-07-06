@@ -97,14 +97,17 @@ const ResearchChatPage: React.FC = () => {
                             }
                             return res.json();
                         })
-                        .then(data => data.text || '') // Get the 'text' property from the JSON response
+                        .then(data => {
+                          return data.content || ''
+                        }) // Get the 'text' property from the JSON response
                 );
                 // --- END MODIFIED BLOCK ---
-                
                 const documentsContent = await Promise.all(fetchPromises);
                 
-                knowledgeBaseContext = documentsContent.map((content, index) => 
-                    `--- DOCUMENT START: ${papers[index].title} ---\n${content}\n--- DOCUMENT END ---`
+                knowledgeBaseContext = documentsContent.map((content, index) => {
+                  return `--- DOCUMENT START: ${papers[index].title} ---\n${content}\n--- DOCUMENT END ---`
+
+                }
                 ).join('\n\n');
             }
         } else {
