@@ -1,4 +1,9 @@
 
+📖 **Full README:** [View the documentation on GitHub](https://github.com/KintaGen)
+
+🚀 **Live Demo:** [Try the KintaGen app on Vercel](https://kintagen.vercel.app)
+
+
 ---
 
 # KintaGen UI (Frontend)
