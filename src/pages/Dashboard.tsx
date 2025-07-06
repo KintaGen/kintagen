@@ -5,7 +5,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import StatCard, { type StatCardProps } from '../components/StatCard';
 import {
   ArrowPathIcon,
-  ClockIcon,
+
   DocumentTextIcon,
   BeakerIcon,
   SparklesIcon,
@@ -186,7 +186,7 @@ const Dashboard: React.FC = () => {
     Analyses: analyses.length,
   }).map(([name, total]) => ({ name, total }));
 
-  const top5 = <T,>(a: T[]) => a.slice(0, 5);
+
 
   /* ---------------- RENDER ---------------- */
   return (

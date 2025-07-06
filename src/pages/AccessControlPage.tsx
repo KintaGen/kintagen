@@ -332,7 +332,7 @@ const AccessControlPage: React.FC = () => {
               {contractError && (
                 <div className="text-red-300 flex items-start space-x-2 text-sm">
                   <XCircleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" />
-                  <span>Error: {contractError.shortMessage}</span>
+                  <span>Error: {contractError.message}</span>
                 </div>
               )}
             </div>

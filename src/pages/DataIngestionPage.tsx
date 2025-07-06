@@ -1,9 +1,9 @@
 // src/pages/DataIngestionPage.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  ArrowUpTrayIcon, DocumentTextIcon, MagnifyingGlassIcon,
+  ArrowUpTrayIcon, DocumentTextIcon,
   ArrowPathIcon, CheckCircleIcon, XCircleIcon,
-  BeakerIcon, SparklesIcon, KeyIcon, LockClosedIcon
+  SparklesIcon, KeyIcon, LockClosedIcon
 } from '@heroicons/react/24/solid';
 import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useLitFlow } from '../lit/useLitFlow';
@@ -60,7 +60,7 @@ const DataIngestionPage: React.FC = () => {
   const { disconnect } = useDisconnect();
   const { data: hash, writeContract, isPending, error: contractError } = useWriteContract();
   const { isLoading: isConfirming, data: receipt } = useWaitForTransactionReceipt({ hash });
-  const { encryptFileAndPackage, loading: isLitLoading, base64ToUint8Array } = useLitFlow();
+  const { encryptFileAndPackage, loading: isLitLoading } = useLitFlow();
 
   const [historyData, setHistoryData] = useState<GenericDataInfo[]>([]);
   const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
@@ -238,8 +238,8 @@ const DataIngestionPage: React.FC = () => {
       setStatus("Key created. Encrypting file with Lit Protocol...");
       try {
         const logs = parseEventLogs({ abi: accessKeyAbi, logs: receipt.logs, eventName: 'KeyCreated' });
-        if (logs.length === 0 || !logs[0].args.tokenId) throw new Error("Could not find KeyCreated event in transaction logs.");
-        const tokenId = (logs[0].args as { tokenId: bigint }).tokenId.toString();
+        if (logs.length === 0 || !(logs[0] as any).args?.tokenId) throw new Error("Could not find KeyCreated event in transaction logs.");
+        const tokenId = ((logs[0] as any).args as { tokenId: bigint }).tokenId.toString();
         const encryptedJsonString = await encryptFileAndPackage(selectedFile);
         if (!encryptedJsonString) throw new Error("Lit encryption returned an empty result.");
         await handleEncryptedUpload(selectedFile.name, encryptedJsonString, tokenId);
@@ -329,7 +329,7 @@ const DataIngestionPage: React.FC = () => {
           <ArrowUpTrayIcon className="h-6 w-6 mr-2" />
           {isProcessing ? status : `Process & Upload ${dataType.charAt(0).toUpperCase() + dataType.slice(1)}`}
         </button>
-        {contractError && <p className="text-red-400 mt-2 text-center text-sm">Wallet Error: {contractError.shortMessage}</p>}
+        {contractError && <p className="text-red-400 mt-2 text-center text-sm">Wallet Error: {contractError.message}</p>}
         <div className="mt-6 text-center min-h-[100px] flex items-center justify-center">
           {isProcessing && (<div className="flex flex-col items-center text-blue-300"><ArrowPathIcon className="h-12 w-12 text-blue-400 animate-spin mb-3" /><p className="text-lg font-medium">{status}</p></div>)}
           {!isProcessing && error && (<div className="w-full bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">An Error Occurred</h3><p className="text-sm">{error}</p></div></div>)}
