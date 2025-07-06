@@ -2,7 +2,7 @@ import type { Chain } from 'wagmi/chains';
 
 // This is our shared, isolated chain definition.
 export const flowEvmTestnet = {
-  id: 7001,
+  id: 545,
   name: "Flow EVM Testnet",
   nativeCurrency: { name: "Flow", symbol: "FLOW", decimals: 18 },
   rpcUrls: {

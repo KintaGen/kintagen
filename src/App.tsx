@@ -7,6 +7,7 @@ import DataIngestionPage from './pages/DataIngestionPage';
 import ResearchChatPage from './pages/ResearchChatPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
 import GCMSAnalysisPage from './pages/GCMSAnalysisPage';
+import NetworkGuard from './components/NetworkGuard';
 
 // --- 1. Import the new AccessControlPage ---
 import AccessControlPage from './pages/AccessControlPage';
@@ -15,6 +16,8 @@ import AccessControlPage from './pages/AccessControlPage';
 const App: React.FC = () => {
   return (
     <BrowserRouter>
+      <NetworkGuard>
+
       <div className="bg-gray-900 min-h-screen text-gray-200 flex">
         <Sidebar />
         <main className="flex-1 ml-64 p-8">
@@ -32,6 +35,8 @@ const App: React.FC = () => {
           </Routes>
         </main>
       </div>
+      </NetworkGuard>
+
     </BrowserRouter>
   );
 };
