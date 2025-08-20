@@ -1,7 +1,7 @@
-// src/pages/ResearchChatPage.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { PaperAirplaneIcon, BeakerIcon } from '@heroicons/react/24/solid';
 import { UserCircleIcon, CpuChipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { v4 as uuidv4 } from 'uuid';
 
 // --- TYPE DEFINITIONS ---
 interface ChatMessage {
@@ -19,8 +19,36 @@ interface PaperInfo {
   title: string;
 }
 
+interface JobStatus {
+  id: string;
+  status: 'waiting' | 'active' | 'completed' | 'failed' | 'delayed';
+  result?: { reply: string };
+  error?: string;
+}
+
+interface PromptHistoryItem {
+    id: string;
+    prompt: string;
+    status: 'completed' | 'failed' | 'active' | 'waiting' | 'delayed';
+}
+
+
 // --- CONSTANTS ---
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
+const POLLING_INTERVAL_MS = 2000; // Poll every 2 seconds
+
+// --- PERSISTENT USER ID HELPER ---
+// Get or create a unique ID for the user in their browser's local storage.
+function getUserId() {
+  let userId = localStorage.getItem('chatUserId');
+  if (!userId) {
+    userId = uuidv4();
+    localStorage.setItem('chatUserId', userId);
+  }
+  return userId;
+}
+const USER_ID = getUserId();
+
 
 // --- COMPONENT ---
 const ResearchChatPage: React.FC = () => {
@@ -28,49 +56,173 @@ const ResearchChatPage: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [status, setStatus] = useState("Select a project or ask a general question.");
+  const [status, setStatus] = useState("Initializing...");
+
+  const [pollingJobId, setPollingJobId] = useState<string | null>(null);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [isProjectsLoading, setIsProjectsLoading] = useState(true);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const pollIntervalRef = useRef<number | null>(null);
 
-  // --- DATA FETCHING & EFFECTS ---
+
+  // --- INITIAL DATA FETCHING (PROJECTS & HISTORY) ---
   useEffect(() => {
-    const fetchProjects = async () => {
+    const loadInitialData = async () => {
+      setStatus("Loading projects and chat history...");
       setIsProjectsLoading(true);
+
       try {
-        const response = await fetch(`${API_BASE}/projects`);
-        if (!response.ok) throw new Error('Could not fetch projects');
-        const data: Project[] = await response.json();
-        setProjects(data);
+        // Fetch projects and history in parallel
+        const [projectsResponse, historyResponse] = await Promise.all([
+          fetch(`${API_BASE}/projects`),
+          fetch(`${API_BASE}/prompts?user=${USER_ID}&limit=50`) // Fetch last 50 prompts for this user
+        ]);
+
+        // Process projects
+        if (!projectsResponse.ok) throw new Error('Could not fetch projects');
+        const projectsData: Project[] = await projectsResponse.json();
+        setProjects(projectsData);
+
+        // Process chat history
+        if (!historyResponse.ok) throw new Error('Could not fetch chat history');
+        const historyData: { items: PromptHistoryItem[] } = await historyResponse.json();
+        
+        const reconstructedMessages: ChatMessage[] = [];
+        let jobToResumePolling: string | null = null;
+
+        // The API returns newest first, so we reverse to build the chat chronologically
+        const sortedJobs = historyData.items.reverse(); 
+
+        for (const job of sortedJobs) {
+          // Attempt to extract the original user question from the full prompt payload
+          const userQuestion = job.prompt.split('Question: ')[1]?.trim() || job.prompt;
+          reconstructedMessages.push({ sender: 'user', text: userQuestion });
+
+          if (job.status === 'completed') {
+            // The list endpoint doesn't contain the result, so we must fetch it individually.
+            const jobDetailsRes = await fetch(`${API_BASE}/prompts/${job.id}`);
+            if (jobDetailsRes.ok) {
+              const jobDetails: JobStatus = await jobDetailsRes.json();
+              reconstructedMessages.push({ sender: 'ai', text: jobDetails.result?.reply || "Response not found." });
+            } else {
+              reconstructedMessages.push({ sender: 'ai', text: "Could not retrieve this response." });
+            }
+          } else if (job.status === 'failed') {
+            reconstructedMessages.push({ sender: 'ai', text: `Sorry, this request failed.` });
+          } else if (job.status === 'active' || job.status === 'waiting' || job.status === 'delayed') {
+            // If an unfinished job is in history, we should resume polling it.
+            jobToResumePolling = job.id;
+          }
+        }
+        
+        setMessages(reconstructedMessages);
+
+        if (jobToResumePolling) {
+          setIsLoading(true);
+          setPollingJobId(jobToResumePolling);
+          setStatus("Resuming previous request...");
+        } else {
+          setStatus("Select a project or ask a general question.");
+        }
+
       } catch (error) {
-        console.error("Failed to fetch projects:", error);
-        setStatus("Could not load projects. General chat is available.");
+        console.error("Failed to load initial data:", error);
+        setStatus("Could not load projects or history. General chat is available.");
       } finally {
         setIsProjectsLoading(false);
       }
     };
-    fetchProjects();
-  }, []);
+
+    loadInitialData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty dependency array ensures this runs only once on mount.
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Scroll to bottom, giving a small delay after initial load to ensure rendering is complete
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   }, [messages]);
 
+
+  // --- POLLING LOGIC ---
+  useEffect(() => {
+    // Stop any existing polling interval when the effect re-runs or component unmounts
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+
+    // If there's no job to poll, do nothing.
+    if (!pollingJobId) {
+      return;
+    }
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`${API_BASE}/prompts/${pollingJobId}`);
+        if (!response.ok) {
+          throw new Error(`Failed to get job status: ${response.statusText}`);
+        }
+        const data: JobStatus = await response.json();
+
+        if (data.status === 'completed') {
+          clearInterval(pollIntervalRef.current!);
+          setPollingJobId(null);
+          const aiMessage: ChatMessage = { sender: 'ai', text: data.result?.reply || "The AI returned an empty response." };
+          setMessages((prev) => [...prev, aiMessage]);
+          setIsLoading(false);
+          setStatus("Ready for your next question.");
+
+        } else if (data.status === 'failed') {
+          clearInterval(pollIntervalRef.current!);
+          setPollingJobId(null);
+          const errorMessage: ChatMessage = { sender: 'ai', text: `Sorry, an error occurred: ${data.error || 'Unknown job failure.'}` };
+          setMessages((prev) => [...prev, errorMessage]);
+          setIsLoading(false);
+          setStatus("An error occurred. Please try again.");
+
+        } else {
+          // Job is still 'waiting' or 'active', continue polling...
+          setStatus(`AI is processing... (Status: ${data.status})`);
+        }
+      } catch (error: any) {
+        console.error("Polling error:", error);
+        clearInterval(pollIntervalRef.current!);
+        setPollingJobId(null);
+        const errorMessage: ChatMessage = { sender: 'ai', text: `A network error occurred while checking the result: ${error.message}` };
+        setMessages((prev) => [...prev, errorMessage]);
+        setIsLoading(false);
+        setStatus("An error occurred. Please try again.");
+      }
+    };
+
+    poll(); // Start polling immediately
+    pollIntervalRef.current = window.setInterval(poll, POLLING_INTERVAL_MS);
+
+    // Cleanup function to clear the interval
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [pollingJobId]);
+
+
+  // --- SEND MESSAGE HANDLER ---
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
 
     const userMessage: ChatMessage = { sender: 'user', text: inputValue };
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = inputValue; // Capture value before clearing
     setInputValue('');
     setIsLoading(true);
 
     try {
         let knowledgeBaseContext = '';
-
         if (selectedProjectId) {
             setStatus("Finding project documents...");
             const papersResponse = await fetch(`${API_BASE}/data/paper?projectId=${selectedProjectId}`);
@@ -81,65 +233,55 @@ const ResearchChatPage: React.FC = () => {
 
             if (papers.length === 0) {
                 knowledgeBaseContext = "Note to AI: The user selected a project with no documents. Inform them of this.";
-                setStatus(`Project has no documents. Asking AI...`);
+                setStatus(`Project has no documents. Submitting question to AI...`);
             } else {
                 setStatus(`Found ${papers.length} documents. Preparing knowledge base...`);
                 
-                // --- THIS IS THE MODIFIED BLOCK ---
-                // We now call our backend endpoint for each paper to get its text content.
                 const fetchPromises = papers.map(paper => 
                     fetch(`${API_BASE}/document-content/${paper.cid}`)
-                        .then(res => {
-                            if (!res.ok) {
-                                console.error(`Failed to get text for CID: ${paper.cid}`);
-                                // Return an empty string on failure so Promise.all doesn't break
-                                return { text: '' }; 
-                            }
-                            return res.json();
-                        })
-                        .then(data => {
-                          return data.content || ''
-                        }) // Get the 'text' property from the JSON response
+                        .then(res => res.ok ? res.json() : { content: '' })
+                        .then(data => data.content || '')
                 );
-                // --- END MODIFIED BLOCK ---
+                
                 const documentsContent = await Promise.all(fetchPromises);
                 
-                knowledgeBaseContext = documentsContent.map((content, index) => {
-                  return `--- DOCUMENT START: ${papers[index].title} ---\n${content}\n--- DOCUMENT END ---`
-
-                }
+                knowledgeBaseContext = documentsContent.map((content, index) => 
+                  `--- DOCUMENT START: ${papers[index].title} ---\n${content}\n--- DOCUMENT END ---`
                 ).join('\n\n');
             }
         } else {
             setStatus("Engaging general AI model...");
         }
         
-        setStatus("Asking AI...");
+        setStatus("Submitting job to AI queue...");
+        const fullPrompt = `Context:\n${knowledgeBaseContext || 'None'}\n\n---\n\nQuestion: ${currentInput}`;
 
-        const completionResponse = await fetch(`${API_BASE}/chat`, {
+        const createPromptResponse = await fetch(`${API_BASE}/prompts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                messages: [...messages, userMessage],
-                filecoinContext: knowledgeBaseContext
+                user: USER_ID, // Pass the persistent user ID
+                prompt: fullPrompt
             })
         });
         
-        if (!completionResponse.ok) throw new Error("The AI service failed to respond.");
+        if (!createPromptResponse.ok) throw new Error("The AI service failed to accept the job.");
     
-        const aiResponseData = await completionResponse.json();
-        const aiMessage: ChatMessage = { sender: 'ai', text: aiResponseData.reply };
-        setMessages((prev) => [...prev, aiMessage]);
-
+        const jobData = await createPromptResponse.json();
+        
+        setStatus("Job submitted. Waiting for result...");
+        setPollingJobId(jobData.jobId);
+        
     } catch (error: any) {
-        console.error("Error during chat process:", error);
-        const errorMessage: ChatMessage = { sender: 'ai', text: `Sorry, an error occurred: ${error.message}` };
+        console.error("Error submitting job:", error);
+        const errorMessage: ChatMessage = { sender: 'ai', text: `Sorry, an error occurred when submitting your question: ${error.message}` };
         setMessages((prev) => [...prev, errorMessage]);
-    } finally {
+        // Reset state on submission failure
         setIsLoading(false);
+        setPollingJobId(null);
         setStatus("Ready for your next question.");
     }
-};
+  };
 
   const selectedProject = projects.find(p => p.id === Number(selectedProjectId));
 
@@ -159,7 +301,7 @@ const ResearchChatPage: React.FC = () => {
             value={selectedProjectId}
             onChange={(e) => {
               setSelectedProjectId(e.target.value);
-              setMessages([]);
+              // Do not clear messages, history is now persistent
               setStatus(e.target.value ? "Project selected. Ready for your question." : "Switched to General Chat.");
             }}
             disabled={isProjectsLoading || isLoading}
@@ -177,11 +319,11 @@ const ResearchChatPage: React.FC = () => {
 
       {/* --- Chat Messages Area --- */}
       <div className="flex-grow overflow-y-auto p-4 space-y-6">
-        {messages.length === 0 && (
+        {messages.length === 0 && !isLoading && (
             <div className="text-center text-gray-500 pt-10">
                 {selectedProjectId 
                   ? `Ask a question about the "${selectedProject?.name}" project.` 
-                  : `Ask a general question. No project-specific knowledge will be used.`}
+                  : `Ask a general question. Your conversation history will be saved.`}
             </div>
         )}
 
@@ -218,15 +360,12 @@ const ResearchChatPage: React.FC = () => {
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            // --- MODIFIED: Placeholder text now reflects the mode ---
             placeholder={selectedProjectId ? `Ask about "${selectedProject?.name}"...` : "Ask a general question..."}
-            // --- MODIFIED: No longer disabled when a project isn't selected ---
             disabled={isLoading}
             className="flex-grow bg-gray-700 border border-gray-600 rounded-md py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
           />
           <button
             type="submit"
-            // --- MODIFIED: No longer disabled when a project isn't selected ---
             disabled={isLoading || !inputValue.trim()}
             className="bg-blue-600 text-white p-3 rounded-md hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
           >
