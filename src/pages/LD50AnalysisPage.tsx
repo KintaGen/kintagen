@@ -1,74 +1,111 @@
-// src/pages/Ld50AnalysisPage.tsx
-import React, { useState, useEffect } from 'react';
-import { ChartBarIcon, LinkIcon, ArrowPathIcon, SparklesIcon, BeakerIcon, DocumentMagnifyingGlassIcon, InboxArrowDownIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
-import JSZip from 'jszip'; // <-- Import the new library
+// src/pages/LD50AnalysisPage.tsx
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChartBarIcon, LinkIcon, ArrowPathIcon, SparklesIcon,
+  BeakerIcon, DocumentMagnifyingGlassIcon, InboxArrowDownIcon,
+  CheckCircleIcon, XCircleIcon, TrashIcon, ArrowDownTrayIcon,
+} from '@heroicons/react/24/solid';
+import JSZip from 'jszip'; // keep & use
+import { fetchWithBypass } from '../utils/fetchWithBypass';
+
+// --- shared polling utils ---
+import {
+  jobsStorage,
+  startJobPolling,
+  type Job,
+  type JobState,
+} from '../utils/jobs';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-const FILECOIN_GATEWAY = 'https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io';
+const FILECOIN_GATEWAY = 'https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io'; // preserved
 
-// --- TYPE DEFINITIONS ---
-interface Ld50ResultData {
-  ld50_estimate: number;
-  standard_error: number;
-  confidence_interval_lower: number;
-  confidence_interval_upper: number;
-  model_coefficients: number[][];
-  plot_b64: string;
-}
-
-interface Ld50ApiResponse {
-  status: 'success' | 'error';
-  error: string | null;
-  log: string[];
-  results: Ld50ResultData;
-}
-
-interface Project {
-  id: number;
-  name: string;
-  nft_id: number | null;
-}
-
-interface ExperimentFile {
-  cid: string;
-  title: string;
-}
+// keep helper
+const ipfsUrl = (cid: string) => `${FILECOIN_GATEWAY}/ipfs/${cid}`;
 
 const Ld50AnalysisPage: React.FC = () => {
-  // --- STATE MANAGEMENT ---
-  const [dataUrl, setDataUrl] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<Ld50ApiResponse | null>(null);
-
-  // Project and File Selection State
-  const [projects, setProjects] = useState<Project[]>([]);
+  // inputs
+  const [projects, setProjects] = useState<Array<{ id: number; name: string; nft_id: number | null }>>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [experimentFiles, setExperimentFiles] = useState<ExperimentFile[]>([]);
+  const [experimentFiles, setExperimentFiles] = useState<Array<{ cid: string; title: string }>>([]);
   const [selectedFileCid, setSelectedFileCid] = useState<string>('');
+  const [dataUrl, setDataUrl] = useState<string>('');
+  const [label, setLabel] = useState<string>('LD50 run');
+
+  // state
   const [areProjectsLoading, setAreProjectsLoading] = useState(true);
   const [areFilesLoading, setAreFilesLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Post-analysis state
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  // jobs (persisted)
+  const [jobs, setJobs] = useState<Job[]>(() => jobsStorage.load());
+  useEffect(() => jobsStorage.save(jobs), [jobs]);
 
-  // --- DATA FETCHING & EFFECTS ---
+  // poller
+  const stopRef = useRef<null | (() => void)>(null);
+  const ld50Jobs = useMemo(() => jobs.filter(j => j.kind === 'ld50'), [jobs]);
+  const incompleteIds = useMemo(
+    () => ld50Jobs.filter(j => j.state !== 'completed' && j.state !== 'failed').map(j => j.id),
+    [ld50Jobs]
+  );
+
   useEffect(() => {
-    const fetchProjects = async () => {
-      setAreProjectsLoading(true);
-      try {
-        const response = await fetch(`${API_BASE}/projects`);
-        if (!response.ok) throw new Error("Could not fetch projects");
-        setProjects(await response.json());
-      } catch (err) {
-        console.error("Failed to fetch projects", err);
-        setError("Could not load project list.");
-      } finally {
-        setAreProjectsLoading(false);
+    // stop any running poller first
+    if (stopRef.current) {
+      stopRef.current();
+      stopRef.current = null;
+    }
+
+    if (incompleteIds.length === 0) return;
+
+    // start shared poller
+    stopRef.current = startJobPolling({
+      ids: incompleteIds,
+      intervalMs: 1500,
+      // how to fetch a job status
+      fetcher: async (id: string) => {
+        const r = await fetchWithBypass(`${API_BASE}/analyze/jobs/${id}`);
+        if (!r.ok) throw new Error(`Failed to fetch job ${id}`);
+        return r.json();
+      },
+      // how to merge updates into local state
+      onUpdate: (snapshot) => {
+        // snapshot is the freshly fetched job state from server
+        setJobs(prev =>
+          prev.map(j => j.id === snapshot.id
+            ? {
+                ...j,
+                state: snapshot.state as JobState,
+                progress: typeof snapshot.progress === 'number' ? snapshot.progress : j.progress,
+                failedReason: snapshot.failedReason ?? null,
+                returnvalue: snapshot.returnvalue ?? j.returnvalue ?? null,
+                logs: Array.isArray(snapshot.logs) ? snapshot.logs : j.logs,
+                finishedOn: snapshot.finishedOn ?? j.finishedOn ?? null,
+              }
+            : j
+          )
+        );
+      },
+    });
+
+    return () => {
+      if (stopRef.current) {
+        stopRef.current();
+        stopRef.current = null;
       }
     };
-    fetchProjects();
+  }, [incompleteIds.join('|')]);
+
+  // data loads
+  useEffect(() => {
+    (async () => {
+      setAreProjectsLoading(true);
+      try {
+        const res = await fetchWithBypass(`${API_BASE}/projects`);
+        if (!res.ok) throw new Error('Could not fetch projects');
+        setProjects(await res.json());
+      } catch (e: any) { setError(e.message); }
+      finally { setAreProjectsLoading(false); }
+    })();
   }, []);
 
   useEffect(() => {
@@ -77,216 +114,240 @@ const Ld50AnalysisPage: React.FC = () => {
       setSelectedFileCid('');
       return;
     }
-    const fetchExperimentFiles = async () => {
+    (async () => {
       setAreFilesLoading(true);
-      setExperimentFiles([]);
-      setSelectedFileCid('');
       try {
-        const response = await fetch(`${API_BASE}/data/experiment?projectId=${selectedProjectId}`);
-        const data = await response.json();
+        const res = await fetchWithBypass(`${API_BASE}/data/experiment?projectId=${selectedProjectId}`);
+        const data = await res.json();
         setExperimentFiles(data.data || []);
-      } catch (err) {
-        console.error("Failed to fetch experiment files", err);
-        setError("Could not load experiment files for this project.");
-      } finally {
-        setAreFilesLoading(false);
-      }
-    };
-    fetchExperimentFiles();
+      } catch (e: any) { setError(e.message || 'Failed to load experiment files.'); }
+      finally { setAreFilesLoading(false); }
+    })();
   }, [selectedProjectId]);
 
-  // --- API CALL HANDLERS ---
-  const handleAnalysis = async (useSampleData = false) => {
-    setIsLoading(true);
+  // queue LD50 job
+  const queueJob = async () => {
     setError(null);
-    setResults(null);
-    setSaveSuccess(false);
-
-    let requestBody = {};
-    if (useSampleData) {
-      // Body remains empty for sample data
-    } else if (selectedFileCid) {
-      requestBody = { dataUrl: `${FILECOIN_GATEWAY}/${selectedFileCid}` };
-    } else if (dataUrl) {
-      requestBody = { dataUrl };
-    } else {
-        setError("Please select a project file or provide a URL.");
-        setIsLoading(false);
-        return;
-    }
-    
     try {
-      const response = await fetch(`${API_BASE}/analyze/ld50`, {
+      const body: any = {
+        label: label || 'LD50 run',
+        projectId: selectedProjectId ? Number(selectedProjectId) : null,
+      };
+      if (selectedFileCid) body.dataCid = selectedFileCid;
+      else if (dataUrl) body.dataUrl = dataUrl;
+      else body.sample = true;
+
+      const res = await fetchWithBypass(`${API_BASE}/analyze/ld50?async=1`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify(body),
       });
-      const data: Ld50ApiResponse = await response.json();
-      if (!response.ok || data.status === 'error') throw new Error(data.error || 'Analysis failed on the server.');
-      setResults(data);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+      if (!res.ok) throw new Error(`Failed to start LD50 job (${res.status})`);
+      const { jobId } = await res.json();
+
+      const newJob: Job = {
+        id: String(jobId),
+        kind: 'ld50',
+        label: body.label,
+        projectId: body.projectId,
+        createdAt: Date.now(),
+        state: 'waiting',
+      };
+      setJobs(prev => [newJob, ...prev]);
+    } catch (e: any) {
+      setError(e.message || 'Failed to queue job');
     }
   };
-  
-  const handleSaveAndLog = async () => {
-    if (!results || !selectedProjectId) return;
-    setIsSaving(true);
-    setError(null);
 
-    try {
-      const zip = new JSZip();
-      const sourceFile = experimentFiles.find(f => f.cid === selectedFileCid);
-      const baseTitle = sourceFile ? `LD50_from_${sourceFile.title.replace(/ /g, '_')}` : "LD50_Analysis";
+  const projectIdNum = selectedProjectId ? Number(selectedProjectId) : null;
+  const projectJobs = ld50Jobs.filter(j => j.projectId === projectIdNum);
 
-      // 1. Add plot to the zip
-      const plotBase64 = results.results.plot_b64.split(',')[1];
-      const plotBlob = await (await fetch(`data:image/png;base64,${plotBase64}`)).blob();
-      zip.file("ld50_plot.png", plotBlob);
-      
-      // 2. Add metrics JSON to the zip
-      const metricsJsonString = JSON.stringify(results.results, null, 2);
-      zip.file("ld50_metrics.json", metricsJsonString);
-
-      // 3. Generate the final ZIP file as a Blob
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-
-      // 4. Upload the single ZIP file
-      const formData = new FormData();
-      formData.append('file', zipBlob, `${baseTitle}_results.zip`);
-      formData.append('dataType', 'analysis'); // Categorize as an 'analysis'
-      formData.append('title', `${baseTitle} Results`);
-      formData.append('projectId', selectedProjectId);
-
-      const uploadResponse = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
-      const uploadResult = await uploadResponse.json();
-      if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
-
-      // 5. If the project has an NFT, add the log entry
-      const project = projects.find(p => p.id === Number(selectedProjectId));
-      if (project?.nft_id) {
-          const actionDescription = `Performed LD50 Analysis. Results saved to CID: ${uploadResult.rootCID}`;
-          const logResponse = await fetch(`${API_BASE}/projects/${selectedProjectId}/log`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID })
-          });
-          if (!logResponse.ok) throw new Error('Result file was saved, but failed to add log to NFT.');
-      }
-      
-      setSaveSuccess(true);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsSaving(false);
-    }
+  // zip downloader (uses JSZip so we don't remove it)
+  const downloadBundle = async (job: Job) => {
+    const zip = new JSZip();
+    zip.file('meta.json', JSON.stringify({
+      id: job.id,
+      label: job.label,
+      projectId: job.projectId,
+      createdAt: job.createdAt,
+      finishedOn: job.finishedOn ?? null,
+      state: job.state ?? null,
+    }, null, 2));
+    if (job.returnvalue) zip.file('result.json', JSON.stringify(job.returnvalue, null, 2));
+    if (Array.isArray(job.logs)) zip.file('logs.txt', job.logs.join('\n'));
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ld50_${job.id}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
-  const canAnalyze = selectedFileCid || dataUrl;
 
-  // --- RENDER ---
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8">
-      <h1 className="text-3xl font-bold mb-4">LD50 Dose-Response Analysis</h1>
-      <p className="text-gray-400 mb-8">
-        Select a project and an existing experiment file, or provide a public URL to a raw CSV to calculate the LD50.
-      </p>
+    <div className="text-left">
+      <h1 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+        <BeakerIcon className="h-7 w-7 text-cyan-400" />
+        LD50 Analysis
+      </h1>
 
-      {/* --- Input Section --- */}
-      <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="bg-gray-800 rounded border border-gray-700 p-4">
+        <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label htmlFor="project-select" className="block text-sm font-medium text-gray-300 mb-2 flex items-center"><BeakerIcon className="h-5 w-5 inline mr-2"/>Project</label>
-            <select id="project-select" value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} disabled={areProjectsLoading || isLoading} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2.5 px-3 text-white focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select a Project --</option>
+            <label className="block text-sm text-gray-400 mb-1">Project</label>
+            <select
+              className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-gray-200"
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              disabled={areProjectsLoading}
+            >
+              <option value="">General (no project)</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-          </div>
-          <div>
-            <label htmlFor="file-select" className="block text-sm font-medium text-gray-300 mb-2 flex items-center"><DocumentMagnifyingGlassIcon className="h-5 w-5 inline mr-2"/>Experiment File (from Project)</label>
-            <select id="file-select" value={selectedFileCid} onChange={(e) => setSelectedFileCid(e.target.value)} disabled={!selectedProjectId || areFilesLoading || isLoading} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2.5 px-3 text-white focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select a File --</option>
-              {areFilesLoading && <option disabled>Loading files...</option>}
-              {experimentFiles.map(f => <option key={f.cid} value={f.cid}>{f.title}</option>)}
-            </select>
-          </div>
-        </div>
 
-        {
-          /*
-        <div className="text-center text-gray-500 text-sm flex items-center gap-4"><hr className="flex-grow border-gray-700"/><p>OR</p><hr className="flex-grow border-gray-700"/></div>
+            <div className="mt-3">
+              <label className="block text-sm text-gray-400 mb-1">Experiment file (optional)</label>
+              <select
+                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-gray-200"
+                value={selectedFileCid}
+                onChange={(e) => setSelectedFileCid(e.target.value)}
+                disabled={areFilesLoading || !selectedProjectId}
+              >
+                <option value="">— none —</option>
+                {experimentFiles.map(f => <option key={f.cid} value={f.cid}>{f.title}</option>)}
+              </select>
+              {areFilesLoading && <div className="text-xs text-gray-500 mt-1">Loading files…</div>}
+            </div>
 
-        <div>
-          <label htmlFor="dataUrl" className="block text-sm font-medium text-gray-300 mb-2">Provide a Public CSV URL</label>
-          <div className="relative">
-            <LinkIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input id="dataUrl" type="url" value={dataUrl} onChange={(e) => setDataUrl(e.target.value)} placeholder="https://.../data.csv" className="w-full bg-gray-700 border border-gray-600 rounded-md py-2.5 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500" disabled={isLoading}/>
+            <div className="mt-3">
+              <label className="block text-sm text-gray-400 mb-1">or CSV URL</label>
+              <input
+                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-gray-200"
+                placeholder="https://…/ld50.csv"
+                value={dataUrl}
+                onChange={(e) => setDataUrl(e.target.value)}
+              />
+            </div>
+
+            <div className="mt-3">
+              <label className="block text-sm text-gray-400 mb-1">Label</label>
+              <input
+                className="w-full bg-gray-900 border border-gray-700 rounded p-2 text-gray-200"
+                value={label} onChange={(e) => setLabel(e.target.value)}
+              />
+            </div>
+
+            <div className="mt-4 flex gap-2">
+              <button onClick={queueJob} className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white">
+                Queue LD50 Job
+              </button>
+            </div>
+            {error && <div className="text-red-400 text-sm mt-2">{error}</div>}
           </div>
-        </div>
-          */
-        }
-        
-        <div className="pt-4 border-t border-gray-700/50 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <button onClick={() => handleAnalysis(true)} disabled={isLoading} className="text-blue-400 hover:underline text-xs order-last sm:order-first">Run with sample data</button>
-            <button onClick={() => handleAnalysis(false)} disabled={isLoading || !canAnalyze} className="w-full sm:w-auto flex items-center justify-center bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-500 disabled:bg-gray-600">
-                <ChartBarIcon className="h-5 w-5 mr-2" />
-                {isLoading ? 'Analyzing...' : 'Run Analysis'}
-            </button>
+
+          <div className="bg-gray-900/40 rounded p-4 border border-gray-700">
+            <div className="flex items-center gap-2 text-gray-300">
+              <ChartBarIcon className="h-5 w-5" />
+              Jobs are queued server-side. Status is polled every ~1.5s and <strong className="ml-1">persists across refresh</strong>.
+            </div>
+            <div className="mt-3 text-xs text-gray-400 flex items-center gap-2">
+              <LinkIcon className="h-4 w-4" />
+              Filecoin gateway in use: <code className="font-mono">{FILECOIN_GATEWAY}</code>
+            </div>
+          </div>
         </div>
       </div>
 
-      {isLoading && ( <div className="text-center p-10 flex flex-col items-center"><ArrowPathIcon className="h-12 w-12 text-blue-400 animate-spin mb-4" /><p className="text-lg text-blue-300">Running dose-response analysis...</p></div> )}
-      {error && ( <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Analysis Failed</h3><p>{error}</p></div></div> )}
-      
-      {results && results.status === 'success' && (
-        <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                    <h2 className="text-xl font-semibold mb-6 border-b border-gray-700 pb-3">Key Metrics</h2>
-                    <div className="space-y-4">
-                    <div className="flex justify-between items-baseline">
-                        <span className="text-gray-400">LD50 Estimate:</span>
-                        <span className="text-2xl font-bold text-green-400">{results.results.ld50_estimate.toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                        <span className="text-gray-400">Standard Error:</span>
-                        <span className="font-mono text-lg text-white">{results.results.standard_error.toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                        <span className="text-gray-400">95% Confidence Interval:</span>
-                        <span className="font-mono text-lg text-white">
-                        [{results.results.confidence_interval_lower.toFixed(4)}, {results.results.confidence_interval_upper.toFixed(4)}]
-                        </span>
-                    </div>
-                    </div>
-                </div>
-                <div className="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col items-center justify-center min-h-[300px]">
-                    <h2 className="text-xl font-semibold mb-4 text-center">Dose-Response Plot</h2>
-                    <img 
-                    src={results.results.plot_b64}
-                    alt="LD50 Dose-Response Curve"
-                    className="w-full h-auto rounded-lg bg-white p-1"
-                    />
-                </div>
-            </div>
-            {selectedProjectId && (
-              <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-                <h3 className="text-lg font-semibold mb-4">Save & Log Results</h3>
-                {saveSuccess ? (
-                  <div className="text-green-400 flex items-center justify-center"><CheckCircleIcon className="h-6 w-6 mr-2"/>Results saved and logged successfully!</div>
-                ) : (
-                  <>
-                    <p className="text-gray-400 mb-4 text-sm">Save the plot and metrics as new experiment files and add an entry to the project's on-chain log (if available).</p>
-                    <button onClick={handleSaveAndLog} disabled={isSaving} className="flex items-center justify-center mx-auto bg-purple-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600">
-                      {isSaving ? <ArrowPathIcon className="h-5 w-5 animate-spin"/> : <><InboxArrowDownIcon className="h-5 w-5 mr-2"/>Save Results & Add to Log</>}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+      {/* Job tray */}
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-lg font-semibold text-white">Recent Jobs</h3>
+          <button
+            onClick={() =>
+              setJobs(prev =>
+                prev.filter(
+                  j =>
+                    !(
+                      j.kind === 'ld50' &&
+                      j.projectId === projectIdNum &&
+                      (j.state === 'completed' || j.state === 'failed')
+                    )
+                )
+              )
+            }
+            className="text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center gap-1"
+            title="Clear completed/failed"
+          >
+            <TrashIcon className="h-4 w-4" />
+            Clear done
+          </button>
         </div>
-      )}
+
+        <ul className="space-y-2">
+          {projectJobs.length === 0 && <li className="text-sm text-gray-500">No jobs yet for this scope.</li>}
+          {projectJobs.map(job => {
+            const state = job.state ?? 'waiting';
+            const created = new Date(job.createdAt).toLocaleString();
+            const badge = state === 'completed'
+              ? <span className="inline-flex items-center gap-1 text-xs bg-emerald-600/20 text-emerald-300 px-2 py-0.5 rounded"><CheckCircleIcon className="h-4 w-4" />completed</span>
+              : state === 'failed'
+              ? <span className="inline-flex items-center gap-1 text-xs bg-red-600/20 text-red-300 px-2 py-0.5 rounded"><XCircleIcon className="h-4 w-4" />failed</span>
+              : <span className="inline-flex items-center gap-1 text-xs bg-blue-600/20 text-blue-300 px-2 py-0.5 rounded"><ArrowPathIcon className="h-4 w-4 animate-spin" />{state}</span>;
+
+            return (
+              <li key={job.id} className="bg-gray-800 border border-gray-700 rounded p-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm">
+                    <div className="text-white font-medium">{job.label}</div>
+                    <div className="text-gray-400">jobId: <span className="font-mono">{job.id}</span></div>
+                    <div className="text-gray-500 text-xs mt-1">{created}</div>
+                  </div>
+                  <div className="flex items-center gap-2">{badge}</div>
+                </div>
+
+                {typeof job.progress === 'number' && state === 'active' && (
+                  <div className="mt-2">
+                    <div className="w-full bg-gray-700 h-2 rounded">
+                      <div className="bg-blue-500 h-2 rounded" style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} />
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">{job.progress}%</div>
+                  </div>
+                )}
+
+                {/* IPFS links if present in returnvalue */}
+                {job.returnvalue && (
+                  <div className="mt-2 text-xs text-gray-300 space-y-1">
+                    {['cid', 'resultCid', 'artifactCid', 'dataCid'].map(k => (
+                      job.returnvalue?.[k] ? (
+                        <div key={k}>
+                          <span className="text-gray-400">{k}:</span>{' '}
+                          <a className="text-cyan-300 underline break-all" href={ipfsUrl(job.returnvalue[k])} target="_blank" rel="noreferrer">
+                            {ipfsUrl(job.returnvalue[k])}
+                          </a>
+                        </div>
+                      ) : null
+                    ))}
+                  </div>
+                )}
+
+                {state === 'failed' && job.failedReason && (
+                  <div className="mt-2 text-xs text-red-300">Reason: {job.failedReason}</div>
+                )}
+                {state === 'completed' && job.returnvalue && (
+                  <div className="mt-3 flex gap-2">
+                    <button onClick={() => downloadBundle(job)} className="px-3 py-1.5 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-100 flex items-center gap-1">
+                      <ArrowDownTrayIcon className="h-4 w-4" /> Download bundle
+                    </button>
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-gray-400">View JSON</summary>
+                      <pre className="text-gray-300 bg-gray-900 p-2 rounded overflow-x-auto">{JSON.stringify(job.returnvalue, null, 2)}</pre>
+                    </details>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 };
