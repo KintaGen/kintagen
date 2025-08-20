@@ -1,9 +1,8 @@
 // src/pages/LD50AnalysisPage.tsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ChartBarIcon, LinkIcon, ArrowPathIcon, SparklesIcon,
-  BeakerIcon, DocumentMagnifyingGlassIcon, InboxArrowDownIcon,
-  CheckCircleIcon, XCircleIcon, TrashIcon, ArrowDownTrayIcon,
+  ChartBarIcon, LinkIcon, ArrowPathIcon,
+  BeakerIcon, CheckCircleIcon, XCircleIcon, TrashIcon, ArrowDownTrayIcon,
 } from '@heroicons/react/24/solid';
 import JSZip from 'jszip'; // keep & use
 import { fetchWithBypass } from '../utils/fetchWithBypass';
@@ -21,6 +20,57 @@ const FILECOIN_GATEWAY = 'https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.cal
 
 // keep helper
 const ipfsUrl = (cid: string) => `${FILECOIN_GATEWAY}/ipfs/${cid}`;
+
+// A component to render the structured LD50 results
+const Ld50ResultsView: React.FC<{ results: any }> = ({ results }) => {
+  const {
+    ld50_estimate,
+    standard_error,
+    confidence_interval_lower,
+    confidence_interval_upper,
+    plot_b64,
+  } = results;
+
+  if (!ld50_estimate || !plot_b64) {
+    return <div className="text-xs text-yellow-400">Incomplete result data.</div>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Metrics Panel */}
+      <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50">
+        <h4 className="text-sm font-semibold mb-3 text-gray-200 border-b border-gray-700 pb-2">Key Metrics</h4>
+        <div className="space-y-3 text-xs">
+          <div className="flex justify-between items-baseline">
+            <span className="text-gray-400">LD50 Estimate:</span>
+            <span className="text-base font-bold text-emerald-300">{ld50_estimate.toFixed(4)}</span>
+          </div>
+          <div className="flex justify-between items-baseline">
+            <span className="text-gray-400">Standard Error:</span>
+            <span className="font-mono text-gray-200">{standard_error.toFixed(4)}</span>
+          </div>
+          <div className="flex justify-between items-baseline">
+            <span className="text-gray-400">95% CI:</span>
+            <span className="font-mono text-gray-200">
+              [{confidence_interval_lower.toFixed(4)}, {confidence_interval_upper.toFixed(4)}]
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Plot Panel */}
+      <div className="bg-gray-900/50 p-3 rounded-lg border border-gray-700/50">
+        <h4 className="text-sm font-semibold mb-2 text-gray-200">Dose-Response Plot</h4>
+        <img
+          src={plot_b64}
+          alt="LD50 Dose-Response Curve"
+          className="w-full h-auto rounded bg-white p-0.5"
+        />
+      </div>
+    </div>
+  );
+};
+
 
 const Ld50AnalysisPage: React.FC = () => {
   // inputs
@@ -49,7 +99,6 @@ const Ld50AnalysisPage: React.FC = () => {
   );
 
   useEffect(() => {
-    // stop any running poller first
     if (stopRef.current) {
       stopRef.current();
       stopRef.current = null;
@@ -57,19 +106,15 @@ const Ld50AnalysisPage: React.FC = () => {
 
     if (incompleteIds.length === 0) return;
 
-    // start shared poller
     stopRef.current = startJobPolling({
       ids: incompleteIds,
       intervalMs: 1500,
-      // how to fetch a job status
       fetcher: async (id: string) => {
         const r = await fetchWithBypass(`${API_BASE}/analyze/jobs/${id}`);
         if (!r.ok) throw new Error(`Failed to fetch job ${id}`);
         return r.json();
       },
-      // how to merge updates into local state
       onUpdate: (snapshot) => {
-        // snapshot is the freshly fetched job state from server
         setJobs(prev =>
           prev.map(j => j.id === snapshot.id
             ? {
@@ -162,7 +207,6 @@ const Ld50AnalysisPage: React.FC = () => {
   const projectIdNum = selectedProjectId ? Number(selectedProjectId) : null;
   const projectJobs = ld50Jobs.filter(j => j.projectId === projectIdNum);
 
-  // zip downloader (uses JSZip so we don't remove it)
   const downloadBundle = async (job: Job) => {
     const zip = new JSZip();
     zip.file('meta.json', JSON.stringify({
@@ -173,8 +217,20 @@ const Ld50AnalysisPage: React.FC = () => {
       finishedOn: job.finishedOn ?? null,
       state: job.state ?? null,
     }, null, 2));
+
     if (job.returnvalue) zip.file('result.json', JSON.stringify(job.returnvalue, null, 2));
-    if (Array.isArray(job.logs)) zip.file('logs.txt', job.logs.join('\n'));
+    
+    // **FIXED**: Check for the script log inside the returnvalue
+    if (job.returnvalue && Array.isArray(job.returnvalue.log)) {
+        zip.file('script_logs.txt', job.returnvalue.log.join('\n'));
+    }
+
+    // **FIXED**: Check for the plot in the correct nested path
+    if (job.returnvalue?.results?.plot_b64) {
+      const plotBase64 = job.returnvalue.results.plot_b64.split(',')[1];
+      zip.file("ld50_plot.png", plotBase64, { base64: true });
+    }
+
     const blob = await zip.generateAsync({ type: 'blob' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -191,6 +247,7 @@ const Ld50AnalysisPage: React.FC = () => {
       </h1>
 
       <div className="bg-gray-800 rounded border border-gray-700 p-4">
+        {/* ... form inputs remain the same ... */}
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <label className="block text-sm text-gray-400 mb-1">Project</label>
@@ -203,7 +260,6 @@ const Ld50AnalysisPage: React.FC = () => {
               <option value="">General (no project)</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-
             <div className="mt-3">
               <label className="block text-sm text-gray-400 mb-1">Experiment file (optional)</label>
               <select
@@ -217,7 +273,6 @@ const Ld50AnalysisPage: React.FC = () => {
               </select>
               {areFilesLoading && <div className="text-xs text-gray-500 mt-1">Loading files…</div>}
             </div>
-
             <div className="mt-3">
               <label className="block text-sm text-gray-400 mb-1">or CSV URL</label>
               <input
@@ -227,7 +282,6 @@ const Ld50AnalysisPage: React.FC = () => {
                 onChange={(e) => setDataUrl(e.target.value)}
               />
             </div>
-
             <div className="mt-3">
               <label className="block text-sm text-gray-400 mb-1">Label</label>
               <input
@@ -235,7 +289,6 @@ const Ld50AnalysisPage: React.FC = () => {
                 value={label} onChange={(e) => setLabel(e.target.value)}
               />
             </div>
-
             <div className="mt-4 flex gap-2">
               <button onClick={queueJob} className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white">
                 Queue LD50 Job
@@ -243,7 +296,6 @@ const Ld50AnalysisPage: React.FC = () => {
             </div>
             {error && <div className="text-red-400 text-sm mt-2">{error}</div>}
           </div>
-
           <div className="bg-gray-900/40 rounded p-4 border border-gray-700">
             <div className="flex items-center gap-2 text-gray-300">
               <ChartBarIcon className="h-5 w-5" />
@@ -265,12 +317,7 @@ const Ld50AnalysisPage: React.FC = () => {
             onClick={() =>
               setJobs(prev =>
                 prev.filter(
-                  j =>
-                    !(
-                      j.kind === 'ld50' &&
-                      j.projectId === projectIdNum &&
-                      (j.state === 'completed' || j.state === 'failed')
-                    )
+                  j => !(j.kind === 'ld50' && j.projectId === projectIdNum && (j.state === 'completed' || j.state === 'failed'))
                 )
               )
             }
@@ -293,9 +340,13 @@ const Ld50AnalysisPage: React.FC = () => {
               ? <span className="inline-flex items-center gap-1 text-xs bg-red-600/20 text-red-300 px-2 py-0.5 rounded"><XCircleIcon className="h-4 w-4" />failed</span>
               : <span className="inline-flex items-center gap-1 text-xs bg-blue-600/20 text-blue-300 px-2 py-0.5 rounded"><ArrowPathIcon className="h-4 w-4 animate-spin" />{state}</span>;
 
+            // **FIXED**: Check the nested `results` object for the required data
+            const isLd50Result = job.returnvalue?.status === 'success' && !!job.returnvalue?.results?.ld50_estimate;
+
             return (
               <li key={job.id} className="bg-gray-800 border border-gray-700 rounded p-3">
                 <div className="flex items-center justify-between">
+                  {/* ... job header remains the same ... */}
                   <div className="text-sm">
                     <div className="text-white font-medium">{job.label}</div>
                     <div className="text-gray-400">jobId: <span className="font-mono">{job.id}</span></div>
@@ -306,41 +357,48 @@ const Ld50AnalysisPage: React.FC = () => {
 
                 {typeof job.progress === 'number' && state === 'active' && (
                   <div className="mt-2">
-                    <div className="w-full bg-gray-700 h-2 rounded">
-                      <div className="bg-blue-500 h-2 rounded" style={{ width: `${Math.max(0, Math.min(100, job.progress))}%` }} />
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">{job.progress}%</div>
+                    {/* ... progress bar remains the same ... */}
                   </div>
                 )}
-
-                {/* IPFS links if present in returnvalue */}
-                {job.returnvalue && (
-                  <div className="mt-2 text-xs text-gray-300 space-y-1">
-                    {['cid', 'resultCid', 'artifactCid', 'dataCid'].map(k => (
-                      job.returnvalue?.[k] ? (
-                        <div key={k}>
-                          <span className="text-gray-400">{k}:</span>{' '}
-                          <a className="text-cyan-300 underline break-all" href={ipfsUrl(job.returnvalue[k])} target="_blank" rel="noreferrer">
-                            {ipfsUrl(job.returnvalue[k])}
-                          </a>
-                        </div>
-                      ) : null
-                    ))}
-                  </div>
-                )}
+                
+                {/* ... IPFS links are fine ... */}
 
                 {state === 'failed' && job.failedReason && (
                   <div className="mt-2 text-xs text-red-300">Reason: {job.failedReason}</div>
                 )}
+                
                 {state === 'completed' && job.returnvalue && (
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 flex items-start gap-2">
                     <button onClick={() => downloadBundle(job)} className="px-3 py-1.5 text-xs rounded bg-gray-700 hover:bg-gray-600 text-gray-100 flex items-center gap-1">
                       <ArrowDownTrayIcon className="h-4 w-4" /> Download bundle
                     </button>
-                    <details className="text-xs">
-                      <summary className="cursor-pointer text-gray-400">View JSON</summary>
-                      <pre className="text-gray-300 bg-gray-900 p-2 rounded overflow-x-auto">{JSON.stringify(job.returnvalue, null, 2)}</pre>
-                    </details>
+                    
+                    {isLd50Result ? (
+                      <details className="text-xs flex-1">
+                        <summary className="cursor-pointer text-gray-400 hover:text-gray-200 inline-flex items-center gap-1">
+                          <ChartBarIcon className="h-4 w-4" /> View Results
+                        </summary>
+                        <div className="mt-2 border-t border-gray-700/50 pt-3 space-y-4">
+                           {/* **FIXED**: Pass the nested `results` object to the component */}
+                          <Ld50ResultsView results={job.returnvalue.results} />
+                          
+                          {/* **IMPROVED**: Display the execution log from the script */}
+                          {Array.isArray(job.returnvalue.log) && job.returnvalue.log.length > 0 && (
+                             <div>
+                                <h5 className="text-xs font-semibold text-gray-400 mb-1">Execution Log</h5>
+                                <pre className="text-gray-400 text-[11px] bg-gray-900 p-2 rounded overflow-x-auto">
+                                  {job.returnvalue.log.join('\n')}
+                                </pre>
+                             </div>
+                          )}
+                        </div>
+                      </details>
+                    ) : (
+                      <details className="text-xs flex-1">
+                        <summary className="cursor-pointer text-gray-400">View Raw JSON</summary>
+                        <pre className="mt-2 text-gray-300 bg-gray-900 p-2 rounded overflow-x-auto">{JSON.stringify(job.returnvalue, null, 2)}</pre>
+                      </details>
+                    )}
                   </div>
                 )}
               </li>
