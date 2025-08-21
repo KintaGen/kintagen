@@ -304,4 +304,4 @@ const LD50AnalysisPage: React.FC = () => {
   );
 };
 
-export default Ld50AnalysisPage;
+export default LD50AnalysisPage;

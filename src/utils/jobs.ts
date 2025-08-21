@@ -275,6 +275,23 @@ export function startJobPolling(params: {
     clearInterval(handle);
   };
 }
+
+export async function queueChatJob(args: {
+  apiBase: string;
+  body: Record<string, any>;
+  fetcher?: any; // Use `any` to match your existing file's flexibility
+}): Promise<{ jobId: string | number; job: Job }> {
+  // We re-use the generic queueWorkerJob with chat-specific parameters
+  const lastUserMessage = args.body.messages?.filter((m: any) => m.sender === 'user').pop();
+  
+  return queueWorkerJob({
+    ...args,
+    endpoint: '/chat', // Chat endpoint does not have /analyze prefix
+    kind: 'chat',
+    label: lastUserMessage?.text || 'Chat Conversation',
+    projectId: null, // Chat jobs are not tied to a project in the jobs list
+  });
+}
 // keep this legacy alias working too
 export const startjobpoling = startJobPolling;
 
