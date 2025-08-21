@@ -167,7 +167,7 @@ const GCMSAnalysisPage: React.FC = () => {
       formData.append('dataType', 'analysis');
       formData.append('title', `${baseTitle} Results`);
       formData.append('projectId', selectedProjectId);
-      const uploadResponse = await fetchWithBypass(`${API_BASE}/upload`, { method: 'POST', body: formData });
+      const uploadResponse = await fetchWithBypass(`${API_BASE}/upload?async=1`, { method: 'POST', body: formData });
       const uploadResult = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
       const project = projects.find(p => p.id === Number(selectedProjectId));
