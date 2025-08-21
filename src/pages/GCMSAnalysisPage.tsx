@@ -3,51 +3,36 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   BeakerIcon, ArrowPathIcon, TableCellsIcon, ChartPieIcon, PresentationChartLineIcon,
   SparklesIcon, MapIcon, PresentationChartBarIcon, XCircleIcon, ScaleIcon,
-  DocumentChartBarIcon as ProfilingIcon, LinkIcon, CheckCircleIcon, TrashIcon, ArrowDownTrayIcon,
+  DocumentChartBarIcon as ProfilingIcon, CheckCircleIcon, TrashIcon, ArrowDownTrayIcon,
   EyeIcon, DocumentTextIcon,
 } from '@heroicons/react/24/solid';
-import InfoPopover from '../components/InfoPopover';
 import JSZip from 'jszip';
 import { fetchWithBypass } from '../utils/fetchWithBypass';
-import {
-  loadJobs, saveJobs, useJobPolling, queueWorkerJob,
-  type Job, type JobState
-} from '../utils/jobs';
+import { queueWorkerJob, type Job, type JobState } from '../utils/jobs';
+import { useJobs } from '../contexts/JobContext'; // Import the global job context hook
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-const FILECOIN_GATEWAY = 'https://ipfs.io/ipfs';
 
 // --- TYPE DEFINITIONS ---
 interface StatsTableEntry {
-  feature: string;
-  mzmed: number;
-  rtmed: number;
-  log2FC?: number;
-  p_value?: number;
-  p_adj?: number;
-  feature_id?: string;
-  mz?: number;
-  rt?: number;
-  [sample: string]: any;
+  feature: string; mzmed: number; rtmed: number; log2FC?: number; p_value?: number;
+  p_adj?: number; feature_id?: string; mz?: number; rt?: number; [sample: string]: any;
 }
-interface FeaturePlots { eic_plot_b64: string | null; spectrum_plot_b64: string | null; }
 interface ResultData {
-  stats_table?: StatsTableEntry[];
-  pca_plot_b64?: string;
-  volcano_plot_b64?: string;
-  feature_table?: StatsTableEntry[];
-  bpc_plot_b64?: string;
-  top_spectra_plot_b64?: string;
+  stats_table?: StatsTableEntry[]; pca_plot_b64?: string; volcano_plot_b64?: string;
+  feature_table?: StatsTableEntry[]; bpc_plot_b64?: string; top_spectra_plot_b64?: string;
   metabolite_map_b64?: string;
-  top_feature_plots?: { [featureId: string]: FeaturePlots; };
 }
-interface ApiResponse { status: 'success' | 'error' | 'processing'; error: string | null; log: string[]; results: ResultData; }
+interface ApiResponse { status: 'success' | 'error'; error: string | null; log: string[]; results: ResultData; }
 interface Project { id: number; name: string; nft_id: number | null; }
 interface ExperimentFile { cid: string; title: string; }
-
 type AnalysisType = 'differential' | 'profiling' | null;
 
 const GCMSAnalysisPage: React.FC = () => {
+  // Use the global job state instead of local state
+  const { jobs, setJobs } = useJobs();
+
+  // Page-specific state for UI and results
   const [analysisType, setAnalysisType] = useState<AnalysisType>(null);
   const [isQueuing, setIsQueuing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,10 +46,7 @@ const GCMSAnalysisPage: React.FC = () => {
   const [areFilesLoading, setAreFilesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [jobs, setJobs] = useState<Job[]>(() => loadJobs());
-
-  useEffect(() => saveJobs(jobs), [jobs]);
-  useJobPolling({ jobs, setJobs, apiBase: API_BASE, intervalMs: 1500 });
+  const [viewedJobId, setViewedJobId] = useState<string | null>(null);
 
   const projectIdNum = selectedProjectId ? Number(selectedProjectId) : null;
   const projectGcmsJobs = useMemo(
@@ -72,9 +54,7 @@ const GCMSAnalysisPage: React.FC = () => {
     [jobs, projectIdNum]
   );
 
-  const tableData = useMemo(() => {
-    return results?.results?.stats_table || results?.results?.feature_table;
-  }, [results]);
+  const tableData = useMemo(() => results?.results?.stats_table || results?.results?.feature_table, [results]);
   
   const profilingSampleColumns = useMemo(() => {
     if (analysisType === 'profiling' && tableData?.length) {
@@ -86,7 +66,7 @@ const GCMSAnalysisPage: React.FC = () => {
   }, [analysisType, tableData]);
 
   useEffect(() => {
-    const fetchProjects = async () => {
+    (async () => {
       setAreProjectsLoading(true);
       try {
         const response = await fetchWithBypass(`${API_BASE}/projects`);
@@ -94,42 +74,29 @@ const GCMSAnalysisPage: React.FC = () => {
         setProjects(await response.json());
       } catch (err: any) { setError("Could not load project list."); }
       finally { setAreProjectsLoading(false); }
-    };
-    fetchProjects();
+    })();
   }, []);
 
   useEffect(() => {
     if (!selectedProjectId) {
-      setExperimentFiles([]);
-      setSelectedDataCid('');
-      setSelectedPhenoCid('');
-      return;
+      setExperimentFiles([]); setSelectedDataCid(''); setSelectedPhenoCid(''); return;
     }
-    const fetchExperimentFiles = async () => {
-      setAreFilesLoading(true);
-      setExperimentFiles([]);
-      setSelectedDataCid('');
-      setSelectedPhenoCid('');
+    (async () => {
+      setAreFilesLoading(true); setExperimentFiles([]); setSelectedDataCid(''); setSelectedPhenoCid('');
       try {
         const [expRes, anaRes] = await Promise.all([
           fetchWithBypass(`${API_BASE}/data/experiment?projectId=${selectedProjectId}`),
           fetchWithBypass(`${API_BASE}/data/analysis?projectId=${selectedProjectId}`)
         ]);
         if (!expRes.ok || !anaRes.ok) throw new Error("Could not load files for this project.");
-        const expData = (await expRes.json()).data || [];
-        const anaData = (await anaRes.json()).data || [];
-        setExperimentFiles([...expData, ...anaData]);
+        setExperimentFiles([...(await expRes.json()).data || [], ...(await anaRes.json()).data || []]);
       } catch (err: any) { setError(err.message); }
       finally { setAreFilesLoading(false); }
-    };
-    fetchExperimentFiles();
+    })();
   }, [selectedProjectId]);
 
   const resetState = () => {
-    setIsQueuing(false);
-    setError(null);
-    setResults(null);
-    setSaveSuccess(false);
+    setIsQueuing(false); setError(null); setResults(null); setSaveSuccess(false); setViewedJobId(null);
   };
 
   const queueGcmsJob = async (useSampleData: boolean) => {
@@ -139,7 +106,9 @@ const GCMSAnalysisPage: React.FC = () => {
     try {
       const kind = analysisType === 'differential' ? 'gcms-differential' : 'gcms-profiling';
       const endpoint = analysisType === 'differential' ? '/analyze/gcms-differential' : '/analyze/gcms-profiling';
-      const label = analysisType === 'differential' ? 'GCMS Differential Analysis' : 'GCMS Profiling';
+      const sourceFile = experimentFiles.find(f => f.cid === selectedDataCid);
+      const label = useSampleData ? `Sample ${kind}` : `${kind} on ${sourceFile?.title || 'selected file'}`;
+      
       const body: Record<string, any> = { projectId: projectIdNum, label };
 
       if (useSampleData) {
@@ -163,36 +132,28 @@ const GCMSAnalysisPage: React.FC = () => {
       setAnalysisType(job.kind === 'gcms-profiling' ? 'profiling' : 'differential');
       setResults(job.returnvalue as ApiResponse);
       setSelectedProjectId(String(job.projectId));
+      setViewedJobId(job.id);
       setError(null);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
       setResults(null);
-      setError(`Job ${job.id} did not complete successfully or has no results. Reason: ${job.failedReason || 'Unknown'}`);
+      setError(`Job ${job.id} has no results to display or was pruned. Please re-run if needed.`);
     }
   };
   
   const handleSaveAndLog = async () => {
-    if (!results || !selectedProjectId) {
-      setError("Cannot save: results or project context is missing.");
-      return;
-    }
-    setIsSaving(true);
-    setError(null);
-
+    if (!results || !selectedProjectId) { setError("Cannot save: results or project context is missing."); return; }
+    setIsSaving(true); setError(null);
     try {
       const zip = new JSZip();
       const sourceFile = experimentFiles.find(f => f.cid === selectedDataCid);
-      const baseTitle = sourceFile 
-        ? `${analysisType === 'differential' ? 'Diff' : 'Prof'}_on_${sourceFile.title.replace(/ /g, '_')}`
-        : `${analysisType} Analysis Results`;
-      
+      const baseTitle = sourceFile ? `${analysisType === 'differential' ? 'Diff' : 'Prof'}_on_${sourceFile.title.replace(/ /g, '_')}` : `${analysisType} Analysis Results`;
       const plotsToUpload = Object.entries(results.results).filter(([key, value]) => key.endsWith('_b64') && typeof value === 'string');
       for (const [key, base64Data] of plotsToUpload) {
         const plotName = key.replace('_b64', '.png');
         const plotBlob = await (await fetch(base64Data as string)).blob();
         zip.file(plotName, plotBlob);
       }
-      
       const currentTableData = results.results.stats_table || results.results.feature_table;
       if (currentTableData && currentTableData.length > 0) {
         const header = Object.keys(currentTableData[0]).join(',');
@@ -200,37 +161,25 @@ const GCMSAnalysisPage: React.FC = () => {
         const csvContent = [header, ...rows].join('\n');
         zip.file('results_table.csv', csvContent);
       }
-      
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const formData = new FormData();
       formData.append('file', zipBlob, `${baseTitle}_results.zip`);
       formData.append('dataType', 'analysis');
       formData.append('title', `${baseTitle} Results`);
       formData.append('projectId', selectedProjectId);
-      
       const uploadResponse = await fetchWithBypass(`${API_BASE}/upload`, { method: 'POST', body: formData });
       const uploadResult = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
-      
       const project = projects.find(p => p.id === Number(selectedProjectId));
       if (project?.nft_id) {
         const actionDescription = `Saved analysis results for "${baseTitle}"`;
         const logResponse = await fetchWithBypass(`${API_BASE}/projects/${selectedProjectId}/log`, { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID }) 
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID }) 
         });
-        if (!logResponse.ok) {
-          const errData = await logResponse.json();
-          throw new Error(errData.error || 'Result files were saved, but failed to add log to NFT.');
-        }
+        if (!logResponse.ok) { throw new Error((await logResponse.json()).error || 'Result files were saved, but failed to add log to NFT.'); }
       }
       setSaveSuccess(true);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (err: any) { setError(err.message); } finally { setIsSaving(false); }
   };
 
   const downloadBundle = async (job: Job) => {
@@ -256,8 +205,6 @@ const GCMSAnalysisPage: React.FC = () => {
     <div className="max-w-7xl mx-auto p-4 md:p-8">
       <h1 className="text-3xl font-bold mb-4">Metabolomics Analysis</h1>
       <p className="text-gray-400 mb-8">Choose a pipeline, select your project data, and run a complete GC-MS analysis workflow.</p>
-
-      {/* --- Section 1: Choose Analysis Type --- */}
       <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8">
         <h2 className="text-xl font-semibold mb-4">1. Choose Analysis Type</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -269,8 +216,6 @@ const GCMSAnalysisPage: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* --- Section 2: Select Input Data --- */}
       {analysisType && (
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8">
           <h2 className="text-xl font-semibold mb-4">2. Select Input Data</h2>
@@ -304,20 +249,15 @@ const GCMSAnalysisPage: React.FC = () => {
           <div className="pt-6 border-t border-gray-700/50 flex justify-between items-center">
             <button onClick={() => queueGcmsJob(true)} disabled={isQueuing || !selectedProjectId} className="text-indigo-400 hover:underline text-xs disabled:text-gray-500 disabled:no-underline">Run with sample data</button>
             <button onClick={() => queueGcmsJob(false)} disabled={isQueuing || !canAnalyze} className="flex items-center justify-center bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed">
-              <BeakerIcon className="h-5 w-5 mr-2" />
-              {isQueuing ? 'Queuing…' : 'Run Analysis'}
+              <BeakerIcon className="h-5 w-5 mr-2" /> {isQueuing ? 'Queuing…' : 'Run Analysis'}
             </button>
           </div>
         </div>
       )}
-
       {error && (<div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg flex items-start space-x-3 my-8"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Error</h3><p>{error}</p></div></div>)}
-      
-      {/* --- Section 3: Results Display --- */}
       {results && results.status === 'success' && (
         <div className="space-y-12">
             <div className="bg-gray-800 p-4 rounded-lg text-center"><h2 className="text-2xl font-bold text-green-400">Analysis Complete!</h2></div>
-            
             {analysisType === 'differential' && tableData && (
               <div className="space-y-8">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -329,7 +269,6 @@ const GCMSAnalysisPage: React.FC = () => {
                 <div className="bg-gray-800 p-6 rounded-lg shadow-lg"><h3 className="text-xl font-semibold mb-4 flex items-center"><TableCellsIcon className="h-6 w-6 mr-2 text-indigo-400"/>Statistical Results</h3><div className="overflow-x-auto max-h-[500px] border border-gray-700 rounded-lg"><table className="min-w-full divide-y divide-gray-700"><thead className="bg-gray-700 sticky top-0"><tr><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Feature</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">m/z</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">RT (sec)</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">log2 FC</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">p-value</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Adj. p-value</th></tr></thead><tbody className="bg-gray-800 divide-y divide-gray-700">{tableData.map((row, i) => (<tr key={row.feature || row.feature_id || i} className="hover:bg-gray-700/50"><td className="px-4 py-2 whitespace-nowrap text-sm font-mono text-gray-300">{row.feature || row.feature_id}</td><td className="px-4 py-2 whitespace-nowrap text-sm text-white">{(row.mz || row.mzmed)?.toFixed(4)}</td><td className="px-4 py-2 whitespace-nowrap text-sm text-white">{(row.rt || row.rtmed)?.toFixed(2)}</td><td className={`px-4 py-2 whitespace-nowrap text-sm font-bold ${row.log2FC && row.log2FC > 0 ? 'text-green-400' : 'text-red-400'}`}>{row.log2FC?.toFixed(2)}</td><td className="px-4 py-2 whitespace-nowrap text-sm text-white">{row.p_value?.toExponential(2)}</td><td className="px-4 py-2 whitespace-nowrap text-sm text-white">{row.p_adj?.toExponential(2)}</td></tr>))}</tbody></table></div></div>
               </div>
             )}
-            
             {analysisType === 'profiling' && tableData && (
                 <div className="space-y-8">
                     {results.results.bpc_plot_b64 && <div className="bg-gray-800 p-6 rounded-lg"><h3 className="text-xl font-semibold mb-4 flex items-center"><PresentationChartBarIcon className="h-6 w-6 mr-2 text-teal-400"/>Base Peak Chromatogram</h3><img src={results.results.bpc_plot_b64} alt="BPC Plot" className="w-full h-auto rounded-md bg-white p-1"/></div>}
@@ -338,15 +277,12 @@ const GCMSAnalysisPage: React.FC = () => {
                     <div className="bg-gray-800 p-6 rounded-lg shadow-lg"><h3 className="text-xl font-semibold mb-4 flex items-center"><TableCellsIcon className="h-6 w-6 mr-2 text-teal-400"/>Feature Table</h3><div className="overflow-x-auto max-h-[500px] border border-gray-700 rounded-lg"><table className="min-w-full divide-y divide-gray-700"><thead className="bg-gray-700 sticky top-0"><tr><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Feature ID</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">m/z</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">RT (sec)</th>{profilingSampleColumns.map(colName => (<th key={colName} className="px-4 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">{colName}</th>))}</tr></thead><tbody className="bg-gray-800 divide-y divide-gray-700">{tableData.map((row, i) => (<tr key={row.feature_id || i} className="hover:bg-gray-700/50"><td className="px-4 py-2 whitespace-nowrap text-sm font-mono text-gray-300">{row.feature_id}</td><td className="px-4 py-2 whitespace-nowrap text-sm text-white">{(row.mz ?? row.mzmed)?.toFixed(4)}</td><td className="px-4 py-2 whitespace-nowrap text-sm text-white">{(row.rt ?? row.rtmed)?.toFixed(2)}</td>{profilingSampleColumns.map(colName => (<td key={colName} className="px-4 py-2 whitespace-nowrap text-sm text-white">{typeof row[colName] === 'number' ? (row[colName] as number).toExponential(2) : row[colName]}</td>))}</tr>))}</tbody></table></div></div>
                 </div>
             )}
-            
             {selectedProjectId && (<div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center"><h3 className="text-lg font-semibold mb-4">Save & Log Results</h3>{saveSuccess ? (<div className="text-green-400 flex items-center justify-center"><CheckCircleIcon className="h-6 w-6 mr-2"/>Results saved and logged successfully!</div>) : (<><p className="text-gray-400 mb-4 text-sm">Save all plots and tables as new analysis files and add an entry to the project's on-chain log (if available).</p><button onClick={handleSaveAndLog} disabled={isSaving} className="flex items-center justify-center mx-auto bg-purple-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600">{isSaving ? <ArrowPathIcon className="h-5 w-5 animate-spin"/> : (<><ArrowDownTrayIcon className="h-5 w-5 mr-2"/>Save Results & Log</>)}</button></>)}</div>)}
         </div>
       )}
-
-      {/* --- Section 4: Job Tray --- */}
       <div className="mt-10">
         <div className="bg-gray-800 rounded border border-gray-700 p-4">
-          <div className="flex items-center justify-between"><div className="text-gray-300 flex items-center gap-2"><PresentationChartBarIcon className="h-5 w-5" /><span className="font-semibold">Recent GCMS Jobs</span></div><button onClick={() => setJobs(prev => prev.filter(j =>!((j.kind === 'gcms-differential' || j.kind === 'gcms-profiling') && j.projectId === projectIdNum && (j.state === 'completed' || j.state === 'failed'))))} className="ml-4 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center gap-1" title="Clear completed/failed"><TrashIcon className="h-4 w-4" />Clear done</button></div>
+          <div className="flex items-center justify-between"><div className="text-gray-300 flex items-center gap-2"><PresentationChartBarIcon className="h-5 w-5" /><span className="font-semibold">Recent GCMS Jobs</span></div><button onClick={() => setJobs(prev => prev.filter(j =>!((j.kind === 'gcms-differential' || j.kind === 'gcms-profiling') && j.projectId === projectIdNum)))} className="ml-4 text-xs px-2 py-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-200 flex items-center gap-1" title="Clear completed/failed"><TrashIcon className="h-4 w-4" />Clear done</button></div>
           <ul className="mt-4 space-y-2">
             {projectGcmsJobs.length === 0 && (<li className="text-sm text-gray-500">No jobs yet for this project.</li>)}
             {projectGcmsJobs.map(job => {
