@@ -3,13 +3,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { PaperAirplaneIcon, BeakerIcon } from '@heroicons/react/24/solid';
 import { UserCircleIcon, CpuChipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import SessionHistoryDropdown, { type ChatSession } from '../components/SessionHistoryDropdown';
-import {
-  loadJobs,
-  saveJobs,
-  useJobPolling,
-  queueChatJob,
-  type Job,
-} from '../utils/jobs';
+import { queueChatJob, type Job } from '../utils/jobs';
+import { useJobs } from '../contexts/JobContext';
 import { fetchWithBypass } from '../utils/fetchWithBypass';
 
 // --- TYPE DEFINITIONS ---
@@ -28,11 +23,14 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api
 
 // --- COMPONENT ---
 const ResearchChatPage: React.FC = () => {
+  // Global Job State from Context
+  const { jobs, setJobs } = useJobs();
+
+  // Page-Specific State
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [isProjectsLoading, setIsProjectsLoading] = useState(true);
-
-  const [jobs, setJobs] = useState<Job[]>(() => loadJobs());
+  
   const [sessions, setSessions] = useState<ChatSession[]>(() => sessionStore.load());
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
@@ -40,12 +38,11 @@ const ResearchChatPage: React.FC = () => {
   const [isQueuing, setIsQueuing] = useState<boolean>(false);
 
   // --- HOOKS & EFFECTS ---
-  useEffect(() => saveJobs(jobs), [jobs]);
   useEffect(() => sessionStore.save(sessions), [sessions]);
-  useJobPolling({ jobs, setJobs, apiBase: API_BASE });
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   
+  // --- DERIVED STATE ---
   const projectIdOrNull = selectedProjectId ? selectedProjectId : null;
   const visibleSessions = useMemo(() => sessions.filter(s => s.projectId === projectIdOrNull), [sessions, projectIdOrNull]);
   const activeMessages = useMemo(() => sessions.find(s => s.id === activeSessionId)?.messages || [], [activeSessionId, sessions]);
@@ -56,19 +53,18 @@ const ResearchChatPage: React.FC = () => {
     return activeJob ? (activeJob.state !== 'completed' && activeJob.state !== 'failed') : false;
   }, [activeSessionId, jobs]);
 
-  // Effect to process finished jobs
+  // Effect to process finished jobs, add replies, and prevent storage quota errors
   useEffect(() => {
-    let sessionsWereUpdated = false;
+    let sessionsNeedUpdate = false;
     let jobsNeedPruning = false;
 
-    const newSessions = [...sessions];
+    const updatedSessions = [...sessions];
 
-    // First, update sessions with new messages
     jobs.forEach(job => {
       if (job.kind !== 'chat' || (job.state !== 'completed' && job.state !== 'failed')) return;
 
-      const sessionIndex = newSessions.findIndex(s => s.id === job.id);
-      if (sessionIndex === -1 || newSessions[sessionIndex].messages.some(m => m.sender === 'ai')) return;
+      const sessionIndex = updatedSessions.findIndex(s => s.id === job.id);
+      if (sessionIndex === -1 || updatedSessions[sessionIndex].messages.some(m => m.sender === 'ai')) return;
 
       let newMessage: ChatMessage | null = null;
       if (job.state === 'completed') {
@@ -78,32 +74,29 @@ const ResearchChatPage: React.FC = () => {
       }
 
       if (newMessage) {
-        newSessions[sessionIndex] = { ...newSessions[sessionIndex], messages: [...newSessions[sessionIndex].messages, newMessage] };
-        sessionsWereUpdated = true;
+        updatedSessions[sessionIndex] = { ...updatedSessions[sessionIndex], messages: [...updatedSessions[sessionIndex].messages, newMessage] };
+        sessionsNeedUpdate = true;
         jobsNeedPruning = true;
       }
     });
 
-    if (sessionsWereUpdated) {
-      setSessions(newSessions);
+    if (sessionsNeedUpdate) {
+      setSessions(updatedSessions);
     }
 
-    // *** THE QUOTAEXCEEDEDERROR FIX ***
-    // After updating sessions, prune the large `returnvalue` from any processed chat job
-    // to keep the `jobs` array in localStorage small.
     if (jobsNeedPruning) {
       setJobs(prevJobs =>
         prevJobs.map(job => {
-          // If it's a processed chat job with a large return value, nullify it.
-          if (job.kind === 'chat' && job.returnvalue && sessions.some(s => s.id === job.id && s.messages.some(m => m.sender === 'ai'))) {
-            return { ...job, returnvalue: null };
+          if (job.kind === 'chat' && job.returnvalue != null && (job.state === 'completed' || job.state === 'failed')) {
+            return { ...job, returnvalue: null }; // Prune the large data
           }
           return job;
         })
       );
     }
-  }, [jobs]); // This effect correctly runs only when jobs are updated
+  }, [jobs, setJobs, sessions]);
 
+  // Effect to fetch projects on mount
   useEffect(() => {
     (async () => {
       setIsProjectsLoading(true);
@@ -121,7 +114,9 @@ const ResearchChatPage: React.FC = () => {
   
   const handleSelectSession = (sessionId: string | null) => setActiveSessionId(sessionId);
   const handleClearHistory = () => {
+    const sessionsToClear = sessions.filter(s => s.projectId === projectIdOrNull).map(s => s.id);
     setSessions(prev => prev.filter(s => s.projectId !== projectIdOrNull));
+    setJobs(prev => prev.filter(j => !sessionsToClear.includes(j.id)));
     setActiveSessionId(null);
   };
 
@@ -150,7 +145,7 @@ const ResearchChatPage: React.FC = () => {
         }
       }
       const { job } = await queueChatJob({
-        apiBase: API_BASE, body: { messages: [userMessage], filecoinContext: knowledgeBaseContext, },
+        apiBase: API_BASE, body: { messages: [userMessage], filecoinContext: knowledgeBaseContext },
       });
       const newSession: ChatSession = {
         id: job.id, projectId: projectIdOrNull, initialPrompt: job.label, createdAt: job.createdAt, messages: [userMessage],
@@ -168,7 +163,9 @@ const ResearchChatPage: React.FC = () => {
       <div className="pb-4 border-b border-gray-700">
         <h1 className="text-3xl font-bold mb-4">Research Chat</h1>
         <div className="mb-4">
-          <label htmlFor="project-select" className="block text-sm font-medium text-gray-300 mb-2 flex items-center"><BeakerIcon className="h-5 w-5 mr-2 text-cyan-400" /> Knowledge Base Scope</label>
+          <label htmlFor="project-select" className="block text-sm font-medium text-gray-300 mb-2 flex items-center">
+            <BeakerIcon className="h-5 w-5 mr-2 text-cyan-400" /> Knowledge Base Scope
+          </label>
           <select id="project-select" value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} disabled={isProjectsLoading} className="w-full max-w-md bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none disabled:opacity-50">
             <option value="">General Knowledge (No Project)</option>
             {projects.map(project => (<option key={project.id} value={project.id.toString()}>Project: {project.name}</option>))}

@@ -8,14 +8,18 @@ import ResearchChatPage from './pages/ResearchChatPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
 import GCMSAnalysisPage from './pages/GCMSAnalysisPage';
 import NetworkGuard from './components/NetworkGuard';
-
-// --- 1. Import the new AccessControlPage ---
 import AccessControlPage from './pages/AccessControlPage';
+import { JobProvider, useJobs } from './contexts/JobContext';
+import GlobalJobStatusToast from './components/GlobalJobStatusToast';
 
-
+const ToastManager = () => {
+  const { jobs } = useJobs(); // Get the global jobs state
+  return <GlobalJobStatusToast jobs={jobs} />;
+};
 const App: React.FC = () => {
   return (
     <HashRouter>
+      <JobProvider>
 
       <div className="bg-gray-900 min-h-screen text-gray-200 flex">
         <Sidebar />
@@ -38,7 +42,8 @@ const App: React.FC = () => {
           </Routes>
         </main>
       </div>
-
+      <ToastManager />
+      </JobProvider>
     </HashRouter>
   );
 };
