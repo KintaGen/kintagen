@@ -292,6 +292,7 @@ export async function queueChatJob(args: {
     projectId: null, // Chat jobs are not tied to a project in the jobs list
   });
 }
+
 // keep this legacy alias working too
 export const startjobpoling = startJobPolling;
 

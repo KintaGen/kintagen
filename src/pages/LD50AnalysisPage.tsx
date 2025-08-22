@@ -29,10 +29,8 @@ interface Project { id: number; name: string; nft_id: number | null; }
 interface ExperimentFile { cid: string; title: string; }
 
 const LD50AnalysisPage: React.FC = () => {
-  // Use the global job state
   const { jobs, setJobs } = useJobs();
 
-  // Page-specific state for UI and results display
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [experimentFiles, setExperimentFiles] = useState<ExperimentFile[]>([]);
@@ -109,8 +107,6 @@ const LD50AnalysisPage: React.FC = () => {
       setError("Job has no successful results to display.");
       return;
     }
-    // This function is now very simple: just copy the data to local state for rendering.
-    // No pruning logic is needed here anymore.
     setResults(job.returnvalue as Ld50ApiResponse);
     setViewedJob(job);
     setError(null);
@@ -136,15 +132,24 @@ const LD50AnalysisPage: React.FC = () => {
       zip.file('metrics.json', JSON.stringify(metrics, null, 2));
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const formData = new FormData();
-      formData.append('file', zipBlob, `${baseTitle}_results.zip`);
+      const zipFileName = `${baseTitle}_results.zip`;
+      formData.append('file', zipBlob, zipFileName);
       formData.append('dataType', 'analysis');
       formData.append('title', `${baseTitle} Results`);
       formData.append('projectId', String(viewedJob.projectId));
-      const uploadResponse = await fetchWithBypass(`${API_BASE}/upload`, { method: 'POST', body: formData });
+      
+      const uploadResponse = await fetchWithBypass(`${API_BASE}/upload?async=1`, { method: 'POST', body: formData });
       const uploadResult = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
+      if (uploadResult.jobId) {
+        const newJob: Job = { id: uploadResult.jobId, kind: 'upload-file', label: `${baseTitle}_results.zip`, projectId: projectIdNum, createdAt: Date.now(), state: 'waiting' };
+        setJobs(prev => [newJob, ...prev]);
+      }
+      
       const project = projects.find(p => p.id === viewedJob.projectId);
       if (project?.nft_id) {
+        // This logic remains decoupled. We can enhance it later to create a
+        // "log-after-upload" job that waits for the upload job to complete.
         const actionDescription = `Saved LD50 analysis results for "${baseTitle}"`;
         const logResponse = await fetchWithBypass(`${API_BASE}/projects/${viewedJob.projectId}/log`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID })
@@ -218,7 +223,7 @@ const LD50AnalysisPage: React.FC = () => {
               <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
                 <h3 className="text-lg font-semibold mb-4">Save & Log Results</h3>
                 {saveSuccess ? (
-                  <div className="text-green-400 flex items-center justify-center"><CheckCircleIcon className="h-6 w-6 mr-2"/>Results saved and logged!</div>
+                  <div className="text-green-400 flex items-center justify-center"><CheckCircleIcon className="h-6 w-6 mr-2"/>Results are uploading and will be logged.</div>
                 ) : (
                   <>
                     <p className="text-gray-400 mb-4 text-sm">Save plot and metrics as a new analysis file and add to the project's on-chain log.</p>
@@ -255,7 +260,6 @@ const LD50AnalysisPage: React.FC = () => {
                   <div className="flex items-center gap-2">{badge}</div>
                 </div>
                 {state === 'failed' && job.failedReason && (<div className="mt-2 text-xs text-red-300">Reason: {job.failedReason}</div>)}
-                {/* The button now correctly checks for the full plot data in the in-memory state */}
                 {state === 'completed' && job.returnvalue?.results?.plot_b64 && (
                   <div className="mt-3 flex gap-2">
                     <button onClick={() => handleViewResults(job)} className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-1.5"><EyeIcon className="h-4 w-4"/> View Results</button>
