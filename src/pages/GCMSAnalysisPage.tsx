@@ -130,6 +130,7 @@ const GCMSAnalysisPage: React.FC = () => {
     if (!results || !selectedProjectId) { setError("Cannot save: results or project context is missing."); return; }
     setIsSaving(true); setError(null);
     try {
+      // Step 1: Prepare the data and ZIP file
       const zip = new JSZip();
       const sourceFile = experimentFiles.find(f => f.cid === selectedDataCid);
       const baseTitle = sourceFile ? `${analysisType === 'differential' ? 'Diff' : 'Prof'}_on_${sourceFile.title.replace(/ /g, '_')}` : `${analysisType} Analysis Results`;
@@ -148,28 +149,41 @@ const GCMSAnalysisPage: React.FC = () => {
       }
       const zipBlob = await zip.generateAsync({ type: 'blob' });
       const formData = new FormData();
-      formData.append('file', zipBlob, `${baseTitle}_results.zip`);
+      const zipFileName = `${baseTitle}_results.zip`;
+      formData.append('file', zipBlob, zipFileName);
       formData.append('dataType', 'analysis');
       formData.append('title', `${baseTitle} Results`);
       formData.append('projectId', selectedProjectId);
+      
+      // Step 2: Call the upload endpoint directly
       const uploadResponse = await fetchWithBypass(`${API_BASE}/upload?async=1`, { method: 'POST', body: formData });
       const uploadResult = await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
-      if (uploadResult.jobId) {
-        const newJob: Job = { id: uploadResult.jobId, kind: 'upload-file', label: `${baseTitle}_results.zip`, projectId: projectIdNum, createdAt: Date.now(), state: 'waiting' };
-        setJobs(prev => [newJob, ...prev]);
-      }
+
+      // Step 3: Create the job object with the "meta" tag for the follow-up action
       const project = projects.find(p => p.id === Number(selectedProjectId));
-      if (project?.nft_id) {
-        const actionDescription = `Saved analysis results for "${baseTitle}"`;
-        const logResponse = await fetchWithBypass(`${API_BASE}/projects/${selectedProjectId}/log`, { 
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID }) 
-        });
-        if (!logResponse.ok) { throw new Error((await logResponse.json()).error || 'Result files were saved, but failed to add log to NFT.'); }
-      }
+      const actionDescription = `Saved analysis results for "${baseTitle}"`;
+
+      const newJob: Job = {
+        id: uploadResult.jobId,
+        kind: 'upload-file',
+        label: `Uploading: ${zipFileName}`,
+        projectId: projectIdNum,
+        createdAt: Date.now(),
+        state: 'waiting',
+        meta: {
+          logAfterUpload: project?.nft_id ? {
+            action: actionDescription,
+            cid: uploadResult.rootCID,
+          } : undefined,
+        },
+      };
+      
+      setJobs(prev => [newJob, ...prev]);
       setSaveSuccess(true);
     } catch (err: any) { setError(err.message); } finally { setIsSaving(false); }
   };
+
 
   const downloadBundle = async (job: Job) => {
     const zip = new JSZip();

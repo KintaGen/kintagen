@@ -1,6 +1,7 @@
 // src/contexts/JobContext.tsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import { loadJobs, saveJobs, useJobPolling, type Job } from '../utils/jobs';
+import { fetchWithBypass } from '../utils/fetchWithBypass'; // Import fetch
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
@@ -11,52 +12,63 @@ interface JobContextType {
 
 const JobContext = createContext<JobContextType | undefined>(undefined);
 
-// A helper function to remove large base64 strings from a job's returnvalue
-const createPrunedJob = (job: Job): Job => {
-  if (!job.returnvalue || typeof job.returnvalue !== 'object') {
-    return job;
-  }
-  
-  // Deep copy to avoid mutating the original object
-  const newJob = JSON.parse(JSON.stringify(job));
-  
-  // Prune any key ending in _b64 from the results object
-  if (newJob.returnvalue.results) {
-    for (const key in newJob.returnvalue.results) {
-      if (key.endsWith('_b64')) {
-        delete newJob.returnvalue.results[key];
-      }
-    }
-  }
-  // Also prune chat replies to be safe
-  if (newJob.returnvalue.reply) {
-      delete newJob.returnvalue.reply;
-  }
-
-  return newJob;
-};
-
 export const JobProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // This `jobs` state is the "source of truth" in memory, with full data
   const [jobs, setJobs] = useState<Job[]>(() => loadJobs());
   
-  // This effect is now responsible for saving a lightweight version to localStorage
   useEffect(() => {
-    // Before saving, create a sanitized version of the jobs array
-    // that doesn't include large payloads.
-    const sanitizedJobs = jobs.map(job => {
-      // We only need to prune completed jobs that have a return value
-      if (job.returnvalue && (job.state === 'completed' || job.state === 'failed')) {
-        return createPrunedJob(job);
-      }
-      return job;
-    });
-    
-    saveJobs(sanitizedJobs);
+    saveJobs(jobs);
   }, [jobs]);
 
-  // The poller works with the full in-memory state
   useJobPolling({ jobs, setJobs, apiBase: API_BASE });
+
+  // *** THE DEFINITIVE FIX: Global Follow-Up Logic ***
+  // This effect watches for completed jobs that need a follow-up action.
+  useEffect(() => {
+    // Find completed upload jobs that have the "logAfterUpload" marker and haven't been processed yet.
+    const jobsToLog = jobs.filter(
+      j => j.state === 'completed' &&
+           j.meta?.logAfterUpload &&
+           !j.meta?.logged
+    );
+
+    if (jobsToLog.length > 0) {
+      jobsToLog.forEach(async (job) => {
+        try {
+          // The upload job's returnvalue contains the CID.
+          const cid = job.returnvalue?.cid;
+          const { action } = job.meta?.logAfterUpload;
+          
+          if (!action || !cid || !job.projectId) {
+            throw new Error(`Missing data for logging job ${job.id}`);
+          }
+          
+          console.log(`[JobContext] Performing follow-up log for Job ID: ${job.id} with CID: ${cid}`);
+          
+          // Perform the logging action directly from the context.
+          const logResponse = await fetchWithBypass(`${API_BASE}/projects/${job.projectId}/log`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, outputCID: cid })
+          });
+
+          if (!logResponse.ok) {
+            const errorText = await logResponse.text();
+            throw new Error(`API error during logging: ${errorText}`);
+          }
+
+        } catch (err) {
+          console.error(`[JobContext] Error during post-upload logging for job ${job.id}:`, err);
+        } finally {
+          // Mark the job as logged to prevent this from ever running again.
+          setJobs(prevJobs =>
+            prevJobs.map(j =>
+              j.id === job.id ? { ...j, meta: { ...j.meta, logged: true } } : j
+            )
+          );
+        }
+      });
+    }
+  }, [jobs, setJobs]); // It runs whenever the global jobs state changes.
 
   return (
     <JobContext.Provider value={{ jobs, setJobs }}>

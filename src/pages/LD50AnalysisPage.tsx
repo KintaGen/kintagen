@@ -74,6 +74,42 @@ const LD50AnalysisPage: React.FC = () => {
       finally { setAreFilesLoading(false); }
     })();
   }, [selectedProjectId]);
+  useEffect(() => {
+    // Find completed upload jobs that have the "logAfterUpload" marker and haven't been processed yet
+    const jobsToLog = jobs.filter(
+      j => j.state === 'completed' &&
+           j.meta?.logAfterUpload &&
+           !j.meta?.logged
+    );
+
+    if (jobsToLog.length > 0) {
+      jobsToLog.forEach(async (job) => {
+        try {
+          const { action, cid } = job.meta?.logAfterUpload;
+          if (!action || !cid || !job.projectId) return;
+
+          // Perform the logging action
+          const logResponse = await fetchWithBypass(`${API_BASE}/projects/${job.projectId}/log`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action, outputCID: cid })
+          });
+          if (!logResponse.ok) {
+            console.error(`Failed to log job ${job.id}:`, await logResponse.text());
+          }
+        } catch (err) {
+          console.error(`Error during post-upload logging for job ${job.id}:`, err);
+        } finally {
+          // Mark the job as logged to prevent this from running again
+          setJobs(prevJobs =>
+            prevJobs.map(j =>
+              j.id === job.id ? { ...j, meta: { ...j.meta, logged: true } } : j
+            )
+          );
+        }
+      });
+    }
+  }, [jobs, setJobs]);
 
   const resetState = () => {
     setError(null);
@@ -121,6 +157,7 @@ const LD50AnalysisPage: React.FC = () => {
     setIsSaving(true);
     setError(null);
     try {
+      // Step 1: Prepare the data and ZIP file (unchanged)
       const zip = new JSZip();
       const baseTitle = viewedJob.label || `LD50_Analysis_${viewedJob.id}`;
       if (results.results.plot_b64) {
@@ -138,24 +175,32 @@ const LD50AnalysisPage: React.FC = () => {
       formData.append('title', `${baseTitle} Results`);
       formData.append('projectId', String(viewedJob.projectId));
       
+      // Step 2: Call the upload endpoint directly. This is fast.
       const uploadResponse = await fetchWithBypass(`${API_BASE}/upload?async=1`, { method: 'POST', body: formData });
       const uploadResult = await uploadResponse.json();
-      if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
-      if (uploadResult.jobId) {
-        const newJob: Job = { id: uploadResult.jobId, kind: 'upload-file', label: `${baseTitle}_results.zip`, projectId: projectIdNum, createdAt: Date.now(), state: 'waiting' };
-        setJobs(prev => [newJob, ...prev]);
-      }
-      
+      if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to start upload job.");
+
+      // Step 3: Create the job object with the special "meta" tag for the follow-up action.
+      // NOTE: We don't need the CID here anymore. The context will get it from the job's returnvalue.
       const project = projects.find(p => p.id === viewedJob.projectId);
-      if (project?.nft_id) {
-        // This logic remains decoupled. We can enhance it later to create a
-        // "log-after-upload" job that waits for the upload job to complete.
-        const actionDescription = `Saved LD50 analysis results for "${baseTitle}"`;
-        const logResponse = await fetchWithBypass(`${API_BASE}/projects/${viewedJob.projectId}/log`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID })
-        });
-        if (!logResponse.ok) throw new Error('Result files were saved, but failed to add log to NFT.');
-      }
+      const actionDescription = `Saved LD50 analysis results for "${baseTitle}"`;
+
+      const newJob: Job = {
+        id: uploadResult.jobId,
+        kind: 'upload-file',
+        label: `Uploading: ${zipFileName}`,
+        projectId: viewedJob.projectId,
+        createdAt: Date.now(),
+        state: 'waiting',
+        meta: {
+          // This tells the JobContext to perform a log action after this job completes.
+          logAfterUpload: project?.nft_id ? {
+            action: actionDescription,
+          } : undefined,
+        },
+      };
+      
+      setJobs(prev => [newJob, ...prev]);
       setSaveSuccess(true);
     } catch (err: any) {
       setError(err.message);

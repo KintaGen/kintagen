@@ -18,6 +18,8 @@ export interface Job {
   returnvalue?: any | null;
   logs?: string[];
   finishedOn?: number | null;
+  meta?: { [key: string]: any }; // A flexible space for extra data
+
 }
 
 export interface JobStatusFromAPI {
@@ -292,6 +294,7 @@ export async function queueChatJob(args: {
     projectId: null, // Chat jobs are not tied to a project in the jobs list
   });
 }
+
 
 // keep this legacy alias working too
 export const startjobpoling = startJobPolling;
