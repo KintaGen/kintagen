@@ -27,7 +27,7 @@ interface DataItem {
 // This is the correct, simpler structure that your analysis pages save
 interface LogEntry {
   action: string;
-  outputCID: string | null;
+  resultCID: string | null;
   timestamp: string; // This will be a Unix timestamp string like "1681333733.0"
 }
 
@@ -160,15 +160,15 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
                     {story.map((entry, index) => (
                       <li key={index} className="text-sm border-l-2 border-purple-500 pl-4 space-y-1">
                         <p className="font-bold text-white">{entry.action}</p>
-                        {entry.outputCID && (
+                        {entry.resultCID && (
                           <a
-                            href={`https://ipfs.io/ipfs/${entry.outputCID}`}
+                            href={`https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io/${entry.resultCID}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-purple-300 font-mono hover:underline break-all"
-                            title={entry.outputCID}
+                            title={entry.resultCID}
                           >
-                            Result CID: {shortenCID(entry.outputCID)}
+                            Result CID: {shortenCID(entry.resultCID)}
                           </a>
                         )}
                         <p className="text-gray-400 font-mono text-xs">
