@@ -6,6 +6,11 @@ import {
   EyeIcon, DocumentTextIcon, PresentationChartBarIcon, InboxArrowDownIcon,
 } from '@heroicons/react/24/solid';
 import JSZip from 'jszip';
+
+import { useFlowCurrentUser, useFlowMutate } from '@onflow/react-sdk';
+import { addToLog } from '../flow/kintagen-nft'; // Your reusable helper
+import { tx } from '@onflow/fcl'; // For reliable polling on emulator
+
 import { fetchWithBypass } from '../utils/fetchWithBypass';
 import { queueWorkerJob, type Job, type JobState } from '../utils/jobs';
 import { useJobs } from '../contexts/JobContext';
@@ -36,6 +41,11 @@ const GCMSAnalysisPage: React.FC = () => {
   const [areFilesLoading, setAreFilesLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const { user, authenticate } = useFlowCurrentUser();
+  const { mutate: sendAddToLogTx, data: logTxId, reset: resetLogMutate } = useFlowMutate();
+  // We need state to track which job we are currently processing on-chain
+  const [loggingJob, setLoggingJob] = useState<Job | null>(null);
 
   const projectIdNum = selectedProjectId ? Number(selectedProjectId) : null;
   const projectGcmsJobs = useMemo(
@@ -74,6 +84,80 @@ const GCMSAnalysisPage: React.FC = () => {
       finally { setAreFilesLoading(false); }
     })();
   }, [selectedProjectId]);
+  useEffect(() => {
+    // Find the first completed upload job that is tagged for logging but hasn't been logged yet.
+    // We specifically look for `kind: 'upload-file'` to distinguish from the analysis jobs.
+    const jobToLog = jobs.find(
+      j => j.kind === 'upload-file' &&
+           j.state === 'completed' && 
+           j.meta?.logAfterUpload && 
+           !j.meta?.logged
+    );
+
+    // Only proceed if we found a job and the Flow user is connected.
+    if (jobToLog && user?.loggedIn) {
+      const performOnChainLog = async () => {
+        try {
+          const { action } = jobToLog.meta.logAfterUpload;
+          // The CID is now in the job's return value after the upload completes
+          const cid = (jobToLog.returnvalue as { cid: string })?.cid;
+          const project = projects.find(p => p.id === jobToLog.projectId);
+
+          if (!action || !cid || !project || !project.nft_id) {
+            console.error("Incomplete data for on-chain logging for job:", jobToLog.id);
+            // Mark as logged to prevent retries if data is bad
+            setJobs(prev => prev.map(j => j.id === jobToLog.id ? { ...j, meta: { ...j.meta, logged: true } } : j));
+            return;
+          }
+          
+          setLoggingJob(jobToLog); // Set the job we are currently processing
+
+          // Use our clean helper function to submit the transaction
+          await addToLog(sendAddToLogTx, {
+            nftId: project.nft_id,
+            agent: user.addr,
+            actionDescription: action,
+            outputCID: cid
+          });
+          // The next useEffect will now handle the polling based on `logTxId`.
+          
+        } catch (err: any) {
+          console.error(`Error submitting log transaction for job ${jobToLog.id}:`, err);
+        }
+      };
+      
+      performOnChainLog();
+    }
+  }, [jobs, user, projects, sendAddToLogTx, setJobs]); // Dependencies for *starting* the log
+
+
+  useEffect(() => {
+    if (logTxId && loggingJob) {
+      const pollForResult = async () => {
+        try {
+          const sealedResult = await tx(logTxId).onceSealed();
+          if (sealedResult.status === 4 && sealedResult.errorMessage === "") {
+            console.log(`Successfully logged job ${loggingJob.id} on-chain.`);
+            // Mark the job as logged in the global state to prevent re-runs
+            setJobs(prevJobs =>
+              prevJobs.map(j =>
+                j.id === loggingJob.id ? { ...j, meta: { ...j.meta, logged: true } } : j
+              )
+            );
+          } else {
+            throw new Error(sealedResult.errorMessage || "Transaction failed.");
+          }
+        } catch (err) {
+          console.error(`Error confirming on-chain log for job ${loggingJob.id}:`, err);
+        } finally {
+          // Clean up state
+          resetLogMutate();
+          setLoggingJob(null);
+        }
+      };
+      pollForResult();
+    }
+  }, [logTxId, loggingJob, setJobs, resetLogMutate]);
 
   const resetState = () => {
     setIsLoading(false); setError(null); setResults(null); setSaveSuccess(false);
@@ -163,7 +247,7 @@ const GCMSAnalysisPage: React.FC = () => {
       // Step 3: Create the job object with the "meta" tag for the follow-up action
       const project = projects.find(p => p.id === Number(selectedProjectId));
       const actionDescription = `Saved analysis results for "${baseTitle}"`;
-
+  
       const newJob: Job = {
         id: uploadResult.jobId,
         kind: 'upload-file',
@@ -172,9 +256,9 @@ const GCMSAnalysisPage: React.FC = () => {
         createdAt: Date.now(),
         state: 'waiting',
         meta: {
+          // We no longer need to pass the CID here. The listener will get it.
           logAfterUpload: project?.nft_id ? {
             action: actionDescription,
-            cid: uploadResult.rootCID,
           } : undefined,
         },
       };

@@ -7,6 +7,11 @@ import {
   SparklesIcon, KeyIcon, LockClosedIcon
 } from '@heroicons/react/24/solid';
 import { useAccount, useConnect, useDisconnect, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+// MODIFIED: Added useFlowTransactionStatus import
+import { useFlowCurrentUser, useFlowMutate, useFlowTransactionStatus } from '@onflow/react-sdk';
+import { tx } from "@onflow/fcl";
+import { addToLog } from '../flow/kintagen-nft'; 
+
 import { useLitFlow } from '../lit/useLitFlow';
 import { accessKeyAbi } from '../lit/accessKeyAbi';
 import { parseEventLogs } from 'viem';
@@ -18,6 +23,8 @@ import { type Job } from '../utils/jobs'; // We only need the Job type
 interface GenericDataInfo {
   cid: string; title: string; is_encrypted: boolean; lit_token_id?: string;
   year?: string; authors?: string[]; doi?: string; keywords?: string[];
+  project_id: number | null;
+  is_logged: boolean;
 }
 interface SuccessInfo { // This is now derived from job.returnvalue
   cid: string; title: string; projectId: number | null;
@@ -45,11 +52,9 @@ const DataIngestionPage: React.FC = () => {
   const [historyData, setHistoryData] = useState<GenericDataInfo[]>([]);
   const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
   
-  // State to track the most recently created job on this page
   const [latestJobId, setLatestJobId] = useState<string | null>(null);
-  const [isLogging, setIsLogging] = useState(false);
-  const [logAdded, setLogAdded] = useState(false);
-  
+  const [loggingCid, setLoggingCid] = useState<string | null>(null);
+
   // Web3 state
   const { isConnected, address, chainId } = useAccount();
   const { connect, connectors } = useConnect();
@@ -57,6 +62,11 @@ const DataIngestionPage: React.FC = () => {
   const { data: hash, writeContract, isPending: isWalletPending, error: contractError } = useWriteContract();
   const { isLoading: isConfirming, data: receipt } = useWaitForTransactionReceipt({ hash });
   const { encryptFileAndPackage, loading: isLitLoading } = useLitFlow();
+  const { user, authenticate } = useFlowCurrentUser();
+  const { mutate: sendAddToLogTx, isPending: isSubmittingToChain, data: logTxId, reset: resetLogMutate } = useFlowMutate();
+  
+  // ADDED: Hook to get detailed transaction status for the logging action
+  const { transactionStatus } = useFlowTransactionStatus({ id: logTxId || '' });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -78,7 +88,7 @@ const DataIngestionPage: React.FC = () => {
     setIsDataLoading(true);
     setHistoryData([]);
     let queryParams = new URLSearchParams();
-    if (selectedProjectId) queryParams.append('projectId', selectedProjectId);
+    queryParams.append('projectId', selectedProjectId);
     const url = `${API_BASE}/data/${dataType}?${queryParams.toString()}`;
     try {
       const resp = await fetch(url);
@@ -119,7 +129,6 @@ const DataIngestionPage: React.FC = () => {
 
   const handleProcessFileClick = () => {
     if (!selectedFile) return;
-    setLogAdded(false);
     setLatestJobId(null);
     if (encryptFile) {
       if (!isConnected) return alert("Please connect your wallet to encrypt files.");
@@ -135,27 +144,26 @@ const DataIngestionPage: React.FC = () => {
     }
   };
 
-  const handleAddToLog = async () => {
-    if (!successInfo || !successInfo.projectId) return;
-    setIsLogging(true);
+  const handleAddToLog = async (itemToLog: GenericDataInfo) => {
+    const projectForLog = projects.find(p => p.id === itemToLog.project_id);
+    if (!projectForLog || !projectForLog.nft_id || !user?.loggedIn) {
+      if (!user?.loggedIn) authenticate();
+      console.error("Cannot log: Missing info or user not authenticated.", { itemToLog, projectForLog, user });
+      return;
+    }
+    setLoggingCid(itemToLog.cid);
+    resetLogMutate();
+    const actionDescription = `Ingested data: "${itemToLog.title}"`;
     try {
-      const actionDescription = `Ingested ${dataType}: "${successInfo.title}"`;
-      const response = await fetch(`${API_BASE}/projects/${successInfo.projectId}/log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: actionDescription,
-          outputCID: successInfo.cid
-        })
+      await addToLog(sendAddToLogTx, {
+        nftId: projectForLog.nft_id,
+        agent: user.addr,
+        actionDescription: actionDescription,
+        outputCID: itemToLog.cid
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Failed to add log entry.');
-      setLogAdded(true);
     } catch (err: any) {
-      // You could set a page-level error here
-      console.error(`Failed to add to on-chain log: ${err.message}`);
-    } finally {
-      setIsLogging(false);
+      console.error(`Failed to submit 'add to log' transaction: ${err.message}`);
+      setLoggingCid(null);
     }
   };
 
@@ -167,6 +175,28 @@ const DataIngestionPage: React.FC = () => {
       setNetworkWarning(null);
     }
   };
+
+  useEffect(() => {
+    if (logTxId) {
+      const pollForResult = async () => {
+        try {
+          const sealedResult = await tx(logTxId).onceSealed();
+          console.log("Add to Log TX Sealed:", sealedResult);
+          if (sealedResult.status === 4 && sealedResult.errorMessage === "") {
+            await fetchHistory();
+          } else {
+            throw new Error(sealedResult.errorMessage || "Transaction failed");
+          }
+        } catch (err: any) {
+          console.error(`Failed to confirm log entry on-chain: ${err.message}`);
+        } finally {
+          setLoggingCid(null);
+          resetLogMutate();
+        }
+      };
+      pollForResult();
+    }
+  }, [logTxId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!receipt || !selectedFile) return;
@@ -189,7 +219,7 @@ const DataIngestionPage: React.FC = () => {
         await handleUpload(formData, newFileName);
       } catch (e: any) { console.error("Error during encryption process:", e); }
     })();
-  }, [receipt]);
+  }, [receipt]); // eslint-disable-line react-hooks/exhaustive-deps
   
   useEffect(() => {
     (async () => {
@@ -209,14 +239,10 @@ const DataIngestionPage: React.FC = () => {
     if (files && files.length > 0) {
       setSelectedFile(files[0]);
       setLatestJobId(null);
-      setLogAdded(false);
     }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); setIsDragging(false); handleFileSelect(e.dataTransfer.files); };
-
-  const selectedProjectObject = projects.find(p => p.id === Number(selectedProjectId));
-  const canLogToNft = selectedProjectObject?.nft_id && successInfo?.projectId === selectedProjectObject.id;
 
   return (
     <>
@@ -264,43 +290,65 @@ const DataIngestionPage: React.FC = () => {
         {contractError && <p className="text-red-400 mt-2 text-center text-sm">Wallet Error: {contractError.message}</p>}
         
         <div className="mt-6 text-center min-h-[100px] flex items-center justify-center">
-          {isProcessing && (
-            <div className="flex flex-col items-center text-blue-300">
-              <ArrowPathIcon className="h-12 w-12 text-blue-400 animate-spin mb-3" />
-              <p className="text-lg font-medium">
-                {isWalletPending ? 'Waiting for wallet confirmation...' :
-                 isConfirming ? 'Confirming transaction on-chain...' :
-                 isLitLoading ? 'Encrypting file...' :
-                 latestJob?.state === 'active' ? `Processing... (${latestJob.progress ?? 0}%)` :
-                 'Job is queued...'}
-              </p>
-            </div>
-          )}
-          {processError && (
-            <div className="w-full bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg flex items-start space-x-3">
-              <XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" />
-              <div><h3 className="font-bold">An Error Occurred</h3><p className="text-sm">{processError}</p></div>
-            </div>
-          )}
-          {successInfo && (
-            <div className="w-full text-left bg-green-900/50 border border-green-700 text-green-200 p-4 rounded-lg space-y-3">
-              <div className="flex items-start space-x-3"><CheckCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" />
-                <div><h3 className="font-bold">Success!</h3><p className="text-sm">{`File "${successInfo.title}" processed successfully.`}</p><p className="text-xs text-gray-400 mt-1 truncate" title={successInfo.cid}>CID: {successInfo.cid}</p></div>
-              </div>
-              {canLogToNft && (
-                <div className="pt-3 border-t border-green-700/50">
-                  {logAdded ? (<p className="text-sm text-center text-purple-300 font-semibold flex items-center justify-center"><CheckCircleIcon className="h-5 w-5 mr-2" />Added to on-chain log!</p>) : (<button onClick={handleAddToLog} disabled={isLogging} className="w-full flex items-center justify-center bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 disabled:cursor-wait">{isLogging ? <ArrowPathIcon className="h-5 w-5 animate-spin" /> : <><SparklesIcon className="h-5 w-5 mr-2" /><span>Add to On-Chain Log</span></>}</button>)}
-                </div>
-              )}
-            </div>
-          )}
+          {isProcessing && ( <div className="flex flex-col items-center text-blue-300"> <ArrowPathIcon className="h-12 w-12 text-blue-400 animate-spin mb-3" /> <p className="text-lg font-medium"> {isWalletPending ? 'Waiting for wallet confirmation...' : isConfirming ? 'Confirming transaction on-chain...' : isLitLoading ? 'Encrypting file...' : latestJob?.state === 'active' ? `Processing... (${latestJob.progress ?? 0}%)` : 'Job is queued...'} </p> </div> )}
+          {processError && ( <div className="w-full bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg flex items-start space-x-3"> <XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /> <div><h3 className="font-bold">An Error Occurred</h3><p className="text-sm">{processError}</p></div> </div> )}
+          {successInfo && ( <div className="w-full text-left bg-green-900/50 border border-green-700 text-green-200 p-4 rounded-lg space-y-3"> <div className="flex items-start space-x-3"><CheckCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /> <div><h3 className="font-bold">Success!</h3><p className="text-sm">{`File "${successInfo.title}" processed successfully.`}</p><p className="text-xs text-gray-400 mt-1 truncate" title={successInfo.cid}>CID: {successInfo.cid}</p></div> </div> </div> )}
         </div>
         <div className="mt-10 gap-8">
           <div>
             <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-semibold">{dataType.charAt(0).toUpperCase() + dataType.slice(1)} History</h2></div>
             <div className="bg-gray-800 rounded-lg shadow">
               <ul className="divide-y divide-gray-700">
-                {historyData.length > 0 ? (historyData.map((item) => (<li key={item.cid} className="p-4 flex items-start space-x-4 hover:bg-gray-700/50 cursor-pointer transition-colors" onClick={() => setViewingItem(item)}><div className="flex-shrink-0"><DocumentTextIcon className="h-8 w-8 text-gray-400 mt-1" /></div><div className="flex-grow overflow-hidden"><p className="text-lg font-semibold text-white truncate flex items-center" title={item.title}>{item.is_encrypted && <LockClosedIcon className="h-4 w-4 mr-2 text-amber-400 flex-shrink-0" />}{item.title || 'Untitled Document'}</p>{item.authors && item.authors.length > 0 && (<p className="text-sm text-gray-400 mt-1 truncate" title={item.authors.join(', ')}>by {item.authors.join(', ')}</p>)}<div className="text-xs text-gray-500 mt-2 space-x-4">{item.doi && (<a href={`https://doi.org/${item.doi}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">DOI: {item.doi}</a>)}<span className="truncate" title={item.cid}>CID: {item.cid}</span></div>{item.keywords && item.keywords.length > 0 && (<div className="mt-3 flex flex-wrap gap-2">{item.keywords.map((keyword, index) => (<span key={index} className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded-full">{keyword}</span>))}</div>)}</div>{item.year && (<div className="flex-shrink-0 text-right"><p className="text-base font-medium text-white">{item.year}</p></div>)}</li>))) : (<li className="p-4 text-center text-gray-500">{isDataLoading ? 'Loading history...' : 'No items found for this selection.'}</li>)}
+                {historyData.length > 0 ? (historyData.map((item) => {
+                  const projectForItem = projects.find(p => p.id === item.project_id);
+                  const canLogItem = projectForItem && projectForItem.nft_id && user?.loggedIn;
+
+                  return (
+                    <li key={item.cid} className="p-4 flex flex-col hover:bg-gray-700/50 transition-colors">
+                      <div className="flex items-start space-x-4 w-full cursor-pointer" onClick={() => setViewingItem(item)}>
+                        <div className="flex-shrink-0"><DocumentTextIcon className="h-8 w-8 text-gray-400 mt-1" /></div>
+                        <div className="flex-grow overflow-hidden">
+                          <p className="text-lg font-semibold text-white truncate flex items-center" title={item.title}>{item.is_encrypted && <LockClosedIcon className="h-4 w-4 mr-2 text-amber-400 flex-shrink-0" />}{item.title || 'Untitled Document'}</p>
+                          {item.authors && item.authors.length > 0 && (<p className="text-sm text-gray-400 mt-1 truncate" title={item.authors.join(', ')}>by {item.authors.join(', ')}</p>)}
+                          <div className="text-xs text-gray-500 mt-2 space-x-4">{item.doi && (<a href={`https://doi.org/${item.doi}`} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">DOI: {item.doi}</a>)}<span className="truncate" title={item.cid}>CID: {item.cid}</span></div>
+                          {item.keywords && item.keywords.length > 0 && (<div className="mt-3 flex flex-wrap gap-2">{item.keywords.map((keyword, index) => (<span key={index} className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded-full">{keyword}</span>))}</div>)}
+                        </div>
+                        {item.year && (<div className="flex-shrink-0 text-right"><p className="text-base font-medium text-white">{item.year}</p></div>)}
+                      </div>
+
+                      {/* --- NEW PER-ITEM LOGGING UI --- */}
+                      {canLogItem && (
+                        <div className="mt-3 pt-3 border-t border-gray-700/60 ml-12">
+                          {item.is_logged ? (
+                            <p className="text-sm text-center text-purple-300 font-semibold flex items-center justify-center">
+                              <CheckCircleIcon className="h-5 w-5 mr-2" />
+                              Added to on-chain log
+                            </p>
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleAddToLog(item); }}
+                              disabled={isSubmittingToChain && loggingCid === item.cid}
+                              className="w-full flex items-center justify-center bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 disabled:cursor-wait"
+                            >
+                              {/* --- MODIFIED: Dynamic Button Content --- */}
+                              {(isSubmittingToChain && loggingCid === item.cid) ? (
+                                <>
+                                  <ArrowPathIcon className="h-5 w-5 animate-spin mr-2" />
+                                  <span>{transactionStatus?.statusString || 'Submitting...'}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <SparklesIcon className="h-5 w-5 mr-2" />
+                                  <span>Add to On-Chain Log</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })) : (<li className="p-4 text-center text-gray-500">{isDataLoading ? 'Loading history...' : 'No items found for this selection.'}</li>)}
               </ul>
             </div>
           </div>
