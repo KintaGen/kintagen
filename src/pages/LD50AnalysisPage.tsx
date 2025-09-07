@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import { useJobs, type Job } from '../contexts/JobContext';
 import { useFlowCurrentUser, useFlowConfig, TransactionDialog } from '@onflow/react-sdk';
+import JSZip from 'jszip'; 
 
 import { getAddToLogTransaction } from '../flow/cadence';
 import { useOwnedNftProjects } from '../flow/kintagen-nft';
+import { useLighthouse } from '../hooks/useLighthouse';
 import { initWebR, runLd50Analysis } from '../services/webr-service';
 import rScriptContent from '../R/ld50_script.R?raw';
 
@@ -47,6 +49,9 @@ const LD50AnalysisPage: React.FC = () => {
 
   const flowConfig = useFlowConfig();
   const { user } = useFlowCurrentUser();
+
+  const { uploadFile, isLoading: isUploading, error: uploadError } = useLighthouse();
+  const [cid,setCID] = useState();
 
   const displayJobs = useMemo(() => {
     if (!selectedProjectId) return [];
@@ -98,6 +103,8 @@ const LD50AnalysisPage: React.FC = () => {
         ? { ...j, state: result.status === 'success' ? 'completed' : 'failed', returnvalue: result, failedReason: result.error }
         : j
       ));
+      handleUpload();
+
     } catch (e: any) {
       setJobs(prevJobs => prevJobs.map(j => 
         j.id === newJob.id 
@@ -114,6 +121,38 @@ const LD50AnalysisPage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   
+  const handleUpload = async () => {
+    if (!viewedJob || viewedJob.state !== 'completed' || !viewedJob.projectId || !user?.addr) return null;
+    const results = viewedJob.returnvalue;
+    console.log(results);
+    
+    if (!results?.results) {
+      setPageError("No results found in the job to save.");
+      return;
+    }
+    const project = projects.find(p => p.id === viewedJob.projectId);
+    if (!project?.nft_id) return null;
+    const zip = new JSZip();
+    const baseTitle = project.name.replace(/[^a-zA-Z0-9]/g, '_'); // Sanitize filename
+
+    // 1. Add plot image to the zip
+    const plotBase64 = results.results.plot_b64.split(',')[1];
+    const plotBlob = await (await fetch(`data:image/png;base64,${plotBase64}`)).blob();
+    zip.file("ld50_plot.png", plotBlob);
+    
+    // 2. Add metrics JSON to the zip
+    const metricsJsonString = JSON.stringify(results.results, null, 2);
+    zip.file("ld50_metrics.json", metricsJsonString);
+
+    // 3. Generate the final ZIP file as a Blob
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const zipFile = new File([zipBlob], `${baseTitle}_results.zip`);
+
+    // 4. Upload the single ZIP file to IPFS
+    const newCID = await uploadFile(zipFile);
+    setCID(newCID);
+  }
+
   const getLogResultsTransaction = () => {
     if (!viewedJob || viewedJob.state !== 'completed' || !viewedJob.projectId || !user?.addr) return null;
 
@@ -131,7 +170,12 @@ const LD50AnalysisPage: React.FC = () => {
     }
 
     const cadence = getAddToLogTransaction(addresses);
-    const outputCID = `bafy_demo_cid_${Math.random().toString(36).substring(7)}`;
+
+    if (!cid) {
+      throw new Error(uploadError || "Failed to upload results to IPFS.");
+    }
+    console.log("Results ZIP uploaded to IPFS with CID:", cid);
+    //const outputCID = `bafy_demo_cid_${Math.random().toString(36).substring(7)}`;
 
     return {
       cadence,
@@ -139,12 +183,17 @@ const LD50AnalysisPage: React.FC = () => {
         arg(project.nft_id, t.UInt64),
         arg("Analysis", t.String),
         arg(viewedJob.label, t.String),
-        arg(outputCID, t.String)
+        arg(cid, t.String)
       ],
       limit: 9999,
     };
   };
-
+  useEffect(() => {
+    // Need also to check if it has not been added before
+    if (viewedJob && viewedJob.state === 'completed' && user?.addr) {
+      handleUpload();
+    }
+  },[viewedJob?.state])
   return (
     <>
       <div className="max-w-6xl mx-auto p-4 md:p-8">
@@ -164,7 +213,7 @@ const LD50AnalysisPage: React.FC = () => {
         
         {pageError && ( <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg mb-4 flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Error</h3><p>{pageError}</p></div></div> )}
         
-        {viewedJob && (
+        {viewedJob && cid && (
           <AnalysisResultsDisplay
             job={viewedJob}
             transaction={getLogResultsTransaction()}
@@ -181,7 +230,11 @@ const LD50AnalysisPage: React.FC = () => {
             }}
           />
         )}
-        
+        {viewedJob && viewedJob.state === "logged" && (
+          <AnalysisResultsDisplay
+            job={viewedJob}
+          />
+        )}
         <AnalysisJobsList
           jobs={displayJobs}
           onClearJobs={() => setJobs(prev => prev.filter(j => j.projectId !== selectedProjectId))}

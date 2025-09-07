@@ -56,7 +56,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
                 <div key={index} className="bg-gray-900/50 p-4 rounded-lg">
                   <p className="font-semibold text-white">{step.action}</p>
                   <p className="text-sm text-gray-400 mt-1">Agent: <span className="font-mono text-xs">{step.agent}</span></p>
-                  <p className="text-sm text-gray-400">Result CID: <span className="font-mono text-xs">{step.resultCID}</span></p>
+                  <p className="text-sm text-gray-400">Result CID: <span className="font-mono text-xs"><a href={`	https://gateway.lighthouse.storage/ipfs/${step.resultCID}`} target="_blank" >{step.resultCID} </a></span></p>
                   <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
                     <ClockIcon className="h-3 w-3" />
                     {new Date(parseFloat(step.timestamp) * 1000).toLocaleString()}

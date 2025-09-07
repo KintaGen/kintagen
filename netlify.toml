@@ -1,0 +1,18 @@
+# This is the main configuration file for deploying your site on Netlify.
+
+# This section tells Netlify how to build your frontend application.
+[build]
+  # The command to run to build your Vite app for production.
+  # This should match the "build" script in your package.json.
+  command = "pnpm run build"
+
+  # The directory where Vite places the final, built website files.
+  # For Vite, this is always the "dist" folder.
+  publish = "dist"
+
+# This section tells Netlify where to find your serverless functions.
+[functions]
+  # The directory where all your serverless function files (like upload.ts) are located.
+  directory = "netlify/functions"
+
+  external_node_modules = ["bls-eth-wasm"]

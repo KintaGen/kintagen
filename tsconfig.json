@@ -3,5 +3,13 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  "compilerOptions": {
+    "baseUrl": "./",
+    "paths": {
+      // Create a handy alias for your services
+      "@services/*": ["netlify/services/*"] 
+    }
+  }
+
 }

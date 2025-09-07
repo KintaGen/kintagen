@@ -34,7 +34,7 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
             <h3 className="text-lg font-semibold mb-4 text-green-300 flex items-center justify-center gap-2"><CheckCircleIcon className="h-6 w-6" />Analysis Logged On-Chain</h3>
             <div className="text-left bg-gray-900/50 p-4 rounded-lg text-sm space-y-2">
               <p><strong className="text-gray-400">Agent Type:</strong> <span className="font-mono">{job.logData.agent}</span></p>
-              <p><strong className="text-gray-400">Result CID:</strong> <span className="font-mono text-xs">{job.logData.resultCID}</span></p>
+              <p><strong className="text-gray-400">Result CID:</strong> <span className="font-mono text-xs"><a href={`	https://gateway.lighthouse.storage/ipfs/${job.logData.resultCID}`} target="_blank" >{job.logData.resultCID}</a></span></p>
               <p className="flex items-center gap-1"><strong className="text-gray-400">Timestamp:</strong> <span className="font-mono text-xs">{new Date(parseFloat(job.logData.timestamp) * 1000).toLocaleString()}</span></p>
             </div>
           </div>

@@ -2,6 +2,7 @@ import React from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import HomePage from './pages/HomePage';
+import ResearchChatPage from './pages/ResearchChatPage';
 import MintingComponent from './pages/ProjectsPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
 import NetworkGuard from './components/NetworkGuard';
@@ -87,6 +88,8 @@ const App: React.FC = () => {
             <Routes>
               <Route path="/" element={<HomePage />} /> 
               <Route path="/projects" element={<MintingComponent />} />
+              <Route path="/chat" element={<ResearchChatPage />} />
+
               <Route path="/analysis" element={<LD50AnalysisPage />} />
 
               {/* --- 2. Add the new route for /network --- */}
