@@ -57,33 +57,41 @@ is_arg_missing <- function(arg) {
 }
 
 args <- commandArgs(trailingOnly = TRUE)
-#inputFileUrl <- args[1]
-inputFileUrl <- NA
-# --- Read and Prepare Data ---
+# A logging function for better feedback (optional, but good practice)
+log_message <- function(msg) {
+  message(paste(Sys.time(), "-", msg))
+}
+
 tryCatch({
-  if (is_arg_missing(inputFileUrl)) {
-    log_message("No input URL provided. Using internal sample data.")
-    # Generate sample data if no URL is given
-    data <- data.frame(
-      dose = c(0.1, 0.5, 1, 5, 10, 20),
-      total = rep(50, 6),
-      response = c(1, 5, 10, 25, 40, 48)
-    )
-  } else {
-    log_message(paste("Reading data from URL:", inputFileUrl))
-    data <- read.csv(inputFileUrl)
-  }
-  
-  required_cols <- c("dose", "response", "total")
-  if (!all(required_cols %in% colnames(data))) {
-    stop(paste("Input CSV must contain the columns:", paste(required_cols, collapse = ", ")))
-  }
-  log_message("Data successfully loaded and validated.")
-}, error = function(e) {
-  output_data$status <<- "error"
-  output_data$error <<- paste("Failed to read or validate input data:", e$message)
-  cat(toJSON(output_data, auto_unbox = TRUE))
-  quit(status=0,save="no")
+    # NEW LOGIC: We check if a variable named 'inputData' was created by JavaScript.
+    # The exists() function is key here.
+    if (!exists("inputData") || is.na(inputData) || nchar(inputData) == 0) {
+      log_message("No 'inputData' variable provided. Using internal sample data.")
+      # Generate sample data if no input is given
+      data <- data.frame(
+        dose = c(0.1, 0.5, 1, 5, 10, 20),
+        total = rep(50, 6),
+        response = c(1, 5, 10, 25, 40, 48)
+      )
+    } else {
+      # This logic remains the same! It checks if the string is a URL or raw data.
+      is_url <- grepl("^https?://", inputData, perl = TRUE)
+
+      if (is_url) {
+        log_message(paste("Reading data from URL:", inputData))
+        data <- read.csv(inputData)
+      } else {
+        log_message("Reading data from provided CSV text.")
+        # Use the 'text' argument of read.csv to parse the string directly.
+        data <- read.csv(text = inputData)
+      }
+    }
+  },error = function(e) {
+    log_message(paste("An error occurred:", e$message))
+    output_data$status <<- "error"
+    output_data$error <<- paste("Error data read:", e$message)
+    cat(toJSON(output_data, auto_unbox = TRUE))
+    quit(status = 0,save="no")
 })
 
 

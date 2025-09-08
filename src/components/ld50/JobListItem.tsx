@@ -1,46 +1,83 @@
-import React from 'react';
-import { EyeIcon, InformationCircleIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
+// src/components/ld50/JobListItem.tsx
 
-// Assuming your DisplayJob and Project types are in a shared file, e.g., src/types.ts
-// For now, we'll define them here.
+import React from 'react';
+import { ClockIcon, CheckCircleIcon, XCircleIcon, DocumentTextIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
+
 interface DisplayJob {
-    id: string;
-    label: string;
-    state: 'completed' | 'failed' | 'processing' | 'logged';
-    failedReason?: string;
-    returnvalue?: any;
-    logData?: any;
+    id: string; 
+    label: string; 
+    state: 'completed' | 'failed' | 'processing' | 'logged'; 
+    failedReason?: string; 
 }
 
 interface JobListItemProps {
   job: DisplayJob;
-  onViewResults: (job: DisplayJob) => void;
-  onViewLogDetails: (job: DisplayJob) => void;
+  onViewAndLogResults: (job: DisplayJob) => void;
+  isBeingLogged: boolean;
 }
 
-export const JobListItem: React.FC<JobListItemProps> = ({ job, onViewResults, onViewLogDetails }) => {
-  const badge = 
-    job.state === 'logged' ? <span className="inline-flex items-center gap-1 text-xs bg-green-800/20 text-green-300 px-2 py-0.5 rounded"><CheckCircleIcon className="h-4 w-4"/>On-Chain</span> :
-    job.state === 'completed' ? <span className="inline-flex items-center gap-1 text-xs bg-emerald-600/20 text-emerald-300 px-2 py-0.5 rounded"><CheckCircleIcon className="h-4 w-4"/>Completed</span> :
-    job.state === 'failed' ? <span className="inline-flex items-center gap-1 text-xs bg-red-600/20 text-red-300 px-2 py-0.5 rounded"><XCircleIcon className="h-4 w-4"/>failed</span> :
-    <span className="inline-flex items-center gap-1 text-xs bg-blue-600/20 text-blue-300 px-2 py-0.5 rounded"><ArrowPathIcon className="h-4 w-4 animate-spin"/>{job.state}</span>;
+const stateConfig = {
+    logged: { icon: CheckCircleIcon, color: 'text-green-400', label: 'Logged On-Chain' },
+    completed: { icon: CheckCircleIcon, color: 'text-blue-400', label: 'Completed' },
+    processing: { icon: ArrowPathIcon, color: 'text-yellow-400 animate-spin', label: '' },
+    failed: { icon: XCircleIcon, color: 'text-red-400', label: 'Failed' },
+};
+
+export const JobListItem: React.FC<JobListItemProps> = ({ job, onViewAndLogResults, isBeingLogged }) => {
+  const { icon: Icon, color, label } = stateConfig[job.state];
+
+  const renderActionButton = () => {
+    if (isBeingLogged) {
+        return (
+            <button className="text-sm px-3 py-1 rounded bg-purple-600 text-white flex items-center justify-center w-36" disabled>
+                <ArrowPathIcon className="h-4 w-4 mr-2 animate-spin" />
+                Logging...
+            </button>
+        );
+    }
+
+    switch (job.state) {
+        case 'logged':
+            return (
+                <button 
+                    onClick={() => onViewAndLogResults(job)}
+                    className="text-sm px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white flex items-center justify-center w-36"
+                >
+                    <DocumentTextIcon className="h-4 w-4 mr-2"/>
+                    View Log
+                </button>
+            );
+        case 'completed':
+            return (
+                <button 
+                    onClick={() => onViewAndLogResults(job)}
+                    className="text-sm px-3 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white flex items-center justify-center w-36"
+                >
+                    View & Log Results
+                </button>
+            );
+        case 'failed':
+            return (
+                <div className="text-sm text-gray-500 truncate w-36" title={job.failedReason}>
+                    {job.failedReason}
+                </div>
+            );
+        default:
+            return <div className="w-36"></div>; // Placeholder for processing
+    }
+  };
 
   return (
-    <li className="bg-gray-800 border border-gray-700 rounded p-3">
-      <div className="flex items-center justify-between">
-        <div className="text-sm">
-          <div className="text-white font-medium">{job.label}</div>
+    <li className="bg-gray-800/70 p-3 rounded-lg flex items-center justify-between space-x-4">
+      <div className="flex items-center space-x-3 flex-1 min-w-0">
+        <Icon className={`h-6 w-6 flex-shrink-0 ${color}`} />
+        <div className="min-w-0">
+          <p className="text-white font-medium truncate">{job.label}</p>
+          <p className={`text-xs ${color.replace('text-', 'text-opacity-80')}`}>{label}</p>
         </div>
-        <div className="flex items-center gap-2">{badge}</div>
       </div>
-      {job.state === 'failed' && job.failedReason && (<div className="mt-2 text-xs text-red-300">Reason: {job.failedReason}</div>)}
-      <div className="mt-3 flex gap-2">
-        {job.state === 'completed' && (
-          <button onClick={() => onViewResults(job)} className="px-3 py-1.5 text-xs rounded bg-indigo-600 hover:bg-indigo-500 text-white font-semibold flex items-center gap-1.5"><EyeIcon className="h-4 w-4"/> View Results</button>
-        )}
-        {job.state === 'logged' && (
-          <button onClick={() => onViewLogDetails(job)} className="px-3 py-1.5 text-xs rounded bg-gray-600 hover:bg-gray-500 text-white font-semibold flex items-center gap-1.5"><InformationCircleIcon className="h-4 w-4"/> View Log Details</button>
-        )}
+      <div className="flex-shrink-0">
+        {renderActionButton()}
       </div>
     </li>
   );

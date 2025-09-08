@@ -48,11 +48,13 @@ export async function runLd50Analysis(rScriptContent: string, dataCsv?: string):
   const shelter = await new webRInstance.Shelter();
 
   try {
-    // We still write the DATA to the VFS, as this is a reliable method.
-    if (dataCsv) {
-      await webRInstance.FS.writeFile('/tmp/input.csv', dataCsv);
-    }
-    
+    // Determine the value to pass to R. If dataCsv is null or undefined,
+    // pass an empty string. The R script is designed to handle this.
+    const dataForR = dataCsv || "";
+
+    // Step 1: Create the 'inputData' variable directly in the R environment.
+    // This is the only step needed to provide the data.
+    await shelter.evalR(`inputData <- ${JSON.stringify(dataForR)}`);
     // --- THIS IS THE DEFINITIVE FIX ---
     // Instead of writing the script to a file and sourcing it,
     // we pass the entire script content directly to `evalR`.
@@ -73,10 +75,6 @@ export async function runLd50Analysis(rScriptContent: string, dataCsv?: string):
     console.error("Error during R script execution:", e);
     throw e;
   } finally {
-    // Clean up the temporary data file.
-    if (dataCsv) {
-        await webRInstance.FS.unlink('/tmp/input.csv').catch(() => {});
-    }
     await shelter.purge();
   }
 }
