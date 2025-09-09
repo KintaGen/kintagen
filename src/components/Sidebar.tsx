@@ -11,6 +11,7 @@ import {
 } from '@heroicons/react/24/outline';
 // 1. Import the new FeedbackButton component
 import FeedbackButton from './FeedbackButton'; 
+import { Connect } from "@onflow/react-sdk"
 
 // --- No changes to interfaces ---
 interface SubNavLinkInfo {
@@ -30,7 +31,7 @@ const Sidebar: React.FC = () => {
   });
 
   const location = useLocation();
-  const feedbackFormUrl = 'https://forms.gle/your-feedback-form-link';
+  const feedbackFormUrl = 'https://forms.gle/7pZTRdbiQm2V4Nd26';
 
   const toggleMenu = (name: string) => {
     setOpenMenus((prevOpenMenus) => ({
@@ -62,6 +63,12 @@ const Sidebar: React.FC = () => {
       </div>
       <nav className="flex-1 p-4 overflow-y-auto">
         <ul>
+          <li className={`flex items-center justify-between w-full p-3 my-1 rounded-lg transition-colors duration-200`}>
+          <Connect
+            onConnect={() => console.log("Connected!")}
+            onDisconnect={() => console.log("Logged out")}
+          />
+          </li>
           {/* --- No changes to the navigation link mapping logic --- */}
           {navLinks.map((link) => {
             if (link.subLinks) {
