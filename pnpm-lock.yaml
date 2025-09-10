@@ -41,6 +41,9 @@ importers:
       bls-eth-wasm:
         specifier: ^1.4.0
         version: 1.4.0
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
       firebase:
         specifier: ^12.2.1
         version: 12.2.1

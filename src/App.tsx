@@ -1,11 +1,11 @@
-import React from 'react';
+import React,{useState} from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import HomePage from './pages/HomePage';
 import ResearchChatPage from './pages/ResearchChatPage';
 import MintingComponent from './pages/ProjectsPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
-import NetworkGuard from './components/NetworkGuard';
+import Header from './components/Header';
 import { JobProvider, useJobs } from './contexts/JobContext';
 import GlobalJobStatusToast from './components/GlobalJobStatusToast';
 import { FlowProvider } from '@onflow/react-sdk';
@@ -88,7 +88,11 @@ const configToUse = flowNetwork === 'emulator' ? emulatorConfig : testnetConfig;
 const jsonToUse = flowNetwork === 'emulator' ? emulatorJSON : testnetJson;
 
 const App: React.FC = () => {
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
 
+  const toggleSidebar = () => {
+    setSidebarOpen(!isSidebarOpen);
+  };
   return (
       // @ts-ignore
 
@@ -100,31 +104,40 @@ const App: React.FC = () => {
       >
       <HashRouter>
         <JobProvider>
+          {/* --- This is the main layout container --- */}
+          <div className="bg-gray-900 min-h-screen text-gray-200 flex">
+            
+            {/* 4. Pass the state to the Sidebar */}
+            <Sidebar isOpen={isSidebarOpen} />
+            
+            <div className="flex flex-col flex-1 md:ml-64">
+              
+              {/* 5. Add the mobile-only Header */}
+              <Header toggleSidebar={toggleSidebar} />
+              
+              {/* 6. Make the main content margin responsive */}
+              <main className="flex-1 p-4 md:p-8">
+                <Routes>
+                  {/* ... your routes ... */}
+                  <Route path="/" element={<HomePage />} /> 
+                  <Route path="/projects" element={<MintingComponent />} />
+                  <Route path="/chat" element={<ResearchChatPage />} />
+                  <Route path="/analysis" element={<LD50AnalysisPage />} />
+                </Routes>
+              </main>
 
-        <div className="bg-gray-900 min-h-screen text-gray-200 flex">
-          <Sidebar />
-          <main className="flex-1 ml-64 p-8">
+            </div>
+          </div>
 
-            <Routes>
-              <Route path="/" element={<HomePage />} /> 
-              <Route path="/projects" element={<MintingComponent />} />
-              <Route path="/chat" element={<ResearchChatPage />} />
+          {/* 7. (Optional but recommended) Add an overlay */}
+          {isSidebarOpen && (
+            <div
+              onClick={toggleSidebar}
+              className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
+            ></div>
+          )}
 
-              <Route path="/analysis" element={<LD50AnalysisPage />} />
-
-              {/* --- 2. Add the new route for /network --- */}
-              {/*
-              <Route path="/network" element={
-                <NetworkGuard>
-                  <AccessControlPage />
-                </NetworkGuard>
-              } />
-              */}
-
-            </Routes>
-          </main>
-        </div>
-        <ToastManager />
+          <ToastManager />
         </JobProvider>
       </HashRouter>
     </FlowProvider>

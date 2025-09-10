@@ -4,14 +4,12 @@ import {
   HomeIcon,
   FolderIcon,
   ChatBubbleLeftRightIcon,
-  ArrowUpTrayIcon,
   BeakerIcon,
-  UsersIcon,
   ChevronDownIcon,
 } from '@heroicons/react/24/outline';
-// 1. Import the new FeedbackButton component
 import FeedbackButton from './FeedbackButton'; 
-import { Connect } from "@onflow/react-sdk"
+import { Connect } from "@onflow/react-sdk";
+import clsx from 'clsx'; // A tiny utility for constructing `className` strings conditionally
 
 // --- No changes to interfaces ---
 interface SubNavLinkInfo {
@@ -25,13 +23,14 @@ interface NavLinkInfo {
   subLinks?: SubNavLinkInfo[];
 }
 
-const Sidebar: React.FC = () => {
+// The Sidebar now accepts an `isOpen` prop to control its visibility on mobile
+const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
   const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({
     Analysis: true,
   });
 
   const location = useLocation();
-  const feedbackFormUrl = 'https://forms.gle/7pZTRdbiQm2V4Nd26';
+  const feedbackFormUrl = 'https://forms.gle/link_here';
 
   const toggleMenu = (name: string) => {
     setOpenMenus((prevOpenMenus) => ({
@@ -44,20 +43,29 @@ const Sidebar: React.FC = () => {
     { name: 'Home', to: '/', icon: HomeIcon },
     { name: 'Projects', to: '/projects', icon: FolderIcon },
     { name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },
-    //{ name: 'Ingest Data', to: '/ingest', icon: ArrowUpTrayIcon },
     {
       name: 'Analysis',
       icon: BeakerIcon,
       subLinks: [
         { name: 'LD50', to: '/analysis' },
-        //{ name: 'GCMS', to: '/analyze-gcms' },
       ],
     },
-    //{ name: 'Lab Network', to: '/network', icon: UsersIcon },
   ];
 
   return (
-    <div className="w-64 bg-gray-800 text-gray-200 flex flex-col fixed h-full">
+    <div
+      className={clsx(
+        // Base styles for all screen sizes
+        "w-64 bg-gray-800 text-gray-200 flex flex-col fixed h-full z-30",
+        "transition-transform duration-300 ease-in-out",
+
+        // Mobile state: Controlled by the `isOpen` prop
+        isOpen ? 'transform translate-x-0' : 'transform -translate-x-full',
+        
+        // Desktop override: Always visible, regardless of `isOpen` state
+        "md:translate-x-0"
+      )}
+    >
       <div className="bg-gray-900 p-4 flex items-center justify-center border-b border-gray-700">
         <h1 className="text-xl font-bold">KintaGen - Demo</h1>
       </div>
@@ -69,7 +77,7 @@ const Sidebar: React.FC = () => {
             onDisconnect={() => console.log("Logged out")}
           />
           </li>
-          {/* --- No changes to the navigation link mapping logic --- */}
+          
           {navLinks.map((link) => {
             if (link.subLinks) {
               const isMenuOpen = !!openMenus[link.name];
@@ -140,7 +148,6 @@ const Sidebar: React.FC = () => {
         </ul>
       </nav>
 
-      {/* 2. Use the new component here, passing the URL as a prop */}
       <FeedbackButton feedbackFormUrl={feedbackFormUrl} />
     </div>
   );

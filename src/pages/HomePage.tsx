@@ -41,7 +41,7 @@ const HomePage: React.FC = () => {
           <Link to="/projects" className="bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-500 transition-colors">
             Manage Projects
           </Link>
-          <Link to="/ld50-analysis" className="bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-600 transition-colors">
+          <Link to="/analysis" className="bg-gray-700 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-600 transition-colors">
             Run Analysis
           </Link>
         </div>

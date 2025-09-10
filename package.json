@@ -21,6 +21,7 @@
     "@onflow/types": "^1.4.1",
     "@tanstack/react-query": "^5.81.5",
     "bls-eth-wasm": "^1.4.0",
+    "clsx": "^2.1.1",
     "firebase": "^12.2.1",
     "framer-motion": "^12.23.0",
     "jszip": "^3.10.1",
