@@ -8,6 +8,7 @@ import { JobListItem } from './JobListItem';
 interface DisplayJob { 
     id: string; 
     label: string; 
+    projectId: string; 
     state: 'completed' | 'failed' | 'processing' | 'logged'; 
     failedReason?: string; 
 }

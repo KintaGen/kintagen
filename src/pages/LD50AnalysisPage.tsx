@@ -33,6 +33,7 @@ interface DisplayJob {
     returnvalue?: any; 
     logData?: any; 
 }
+const DEMO_PROJECT_ID = 'demo-project';
 
 const LD50AnalysisPage: React.FC = () => {
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
@@ -72,27 +73,41 @@ const LD50AnalysisPage: React.FC = () => {
   } = useFlowMutate();
   
   const displayJobs = useMemo(() => {
-    if (!selectedProjectId) return [];
-    const project = projects.find(p => p.id === selectedProjectId);
-    if (!project?.story) return [];
-
-    const onChainLogs: DisplayJob[] = project.story
-      .filter(step => step.agent === "Analysis")
-      .map((step, index) => ({
-        id: `log-${project.id}-${index}`,
-        label: step.action,
-        projectId: project.id,
-        state: 'logged',
-        logData: step,
+    if(selectedProjectId && selectedProjectId !== DEMO_PROJECT_ID){
+      if (!selectedProjectId) return [];
+      const project = projects.find(p => p.id === selectedProjectId);
+      if (!project?.story) return [];
+  
+      const onChainLogs: DisplayJob[] = project.story
+        .filter(step => step.agent === "Analysis")
+        .map((step, index) => ({
+          id: `log-${project.id}-${index}`,
+          label: step.action,
+          projectId: project.id,
+          state: 'logged',
+          logData: step,
+        }));
+  
+      const onChainLabels = new Set(onChainLogs.map(log => log.label));
+  
+      const localJobs: DisplayJob[] = jobs
+        .filter(job => job.projectId === selectedProjectId && !onChainLabels.has(job.label))
+        .map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
+  
+      return [...onChainLogs, ...localJobs];
+    };
+    // If in Demo Mode, filter and map to ensure the type is correct
+    return jobs
+      .filter(job => job.projectId === DEMO_PROJECT_ID)
+      .map(job => ({
+          id: job.id,
+          label: job.label,
+          projectId: job.projectId as string,
+          state: job.state,
+          failedReason: job.failedReason,
+          returnvalue: job.returnvalue,
+          logData: job.logData
       }));
-
-    const onChainLabels = new Set(onChainLogs.map(log => log.label));
-
-    const localJobs: DisplayJob[] = jobs
-      .filter(job => job.projectId === selectedProjectId && !onChainLabels.has(job.label))
-      .map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
-
-    return [...onChainLogs, ...localJobs];
   }, [selectedProjectId, projects, jobs]);
 
   useEffect(() => {
@@ -106,18 +121,24 @@ const LD50AnalysisPage: React.FC = () => {
   
   const runRealAnalysis = async () => {
     // This function can be simplified. No need for handleUpload() here anymore.
-    if (!selectedProjectId) return;
+    //if (!selectedProjectId) return;
     setPageError(null);
     setViewedJob(null); // Clear any job that might be currently displayed
     setIsAnalysisRunning(true); // Added this
-    const selectedProject = projects.find(p => p.id === selectedProjectId);
-    if (!selectedProject) { setIsAnalysisRunning(false); return; }
+    //const selectedProject = projects.find(p => p.id === selectedProjectId);
+    //if (!selectedProject) { setIsAnalysisRunning(false); return; }
 
     const jobLabel = validatedCsvData
       ? `LD50 analysis with custom data`
       : `LD50 analysis with sample data`;
 
-    const newJob: Job = { id: `webr_job_${Date.now()}`, kind: 'ld50', label: jobLabel, projectId: selectedProjectId, createdAt: Date.now(), state: 'processing' };
+    const newJob: Job = { 
+      id: `webr_job_${Date.now()}`,
+      kind: 'ld50', label: jobLabel,
+      projectId: selectedProjectId || DEMO_PROJECT_ID, 
+      createdAt: Date.now(),
+      state: 'processing'
+    };
     setJobs(prev => [newJob, ...prev]);
 
     try {
@@ -155,14 +176,18 @@ const LD50AnalysisPage: React.FC = () => {
     setViewedJob(job);
     setPageError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    // Case 1: Job is already logged on-chain. Just display it.
+    // Case 1: Job is a demo job. Just display results, DO NOT log.
+    if (job.projectId === DEMO_PROJECT_ID) {
+      console.log("Displaying results for a demo job. Logging is disabled.");
+      return;
+    }
+    // Case 2: Job is already logged on-chain. Just display it.
     if (job.state === 'logged') {
       console.log("Displaying already logged results.");
       return; 
     }
     
-    // Case 2: Job is local and completed. Start the logging process.
+    // Case 3: Job is local and completed. Start the logging process.
     if (job.state === 'completed' && job.projectId && user?.addr) {
       setIsLogging(true);
       setJobIdBeingLogged(job.id);
@@ -279,17 +304,7 @@ const LD50AnalysisPage: React.FC = () => {
         
         {pageError && ( <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg mb-4 flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Error</h3><p>{pageError}</p></div></div> )}
         
-        {viewedJob && cid && (
-          <AnalysisJobsList
-            jobs={displayJobs}
-            onClearJobs={() => setJobs(prev => prev.filter(j => j.projectId !== selectedProjectId))}
-            // Use the new prop name here
-            onViewAndLogResults={handleViewAndLogResults} 
-            // Pass the state down
-            jobIdBeingLogged={jobIdBeingLogged}
-        />
-        )}
-        {viewedJob && viewedJob.state === "logged" && (
+        {viewedJob && (viewedJob.state === "logged" || viewedJob.projectId === DEMO_PROJECT_ID) && (
           <AnalysisResultsDisplay
             job={viewedJob}
             isLoading={overallIsLogging && jobIdBeingLogged === viewedJob.id}
@@ -297,10 +312,11 @@ const LD50AnalysisPage: React.FC = () => {
         )}
         <AnalysisJobsList
           jobs={displayJobs}
-          onClearJobs={() => setJobs(prev => prev.filter(j => j.projectId !== selectedProjectId))}
-          // The single, powerful handler for viewing/logging
+          onClearJobs={() => {
+            const idToClear = selectedProjectId || DEMO_PROJECT_ID;
+            setJobs(prev => prev.filter(j => j.projectId !== idToClear));
+          }}
           onViewAndLogResults={handleViewAndLogResults}
-          // The state to show a spinner on the correct job item
           jobIdBeingLogged={jobIdBeingLogged}
         />
       </div>

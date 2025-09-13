@@ -6,12 +6,13 @@ import { ClockIcon, CheckCircleIcon, XCircleIcon, DocumentTextIcon, ArrowPathIco
 interface DisplayJob {
     id: string; 
     label: string; 
+    projectId: string; 
     state: 'completed' | 'failed' | 'processing' | 'logged'; 
     failedReason?: string; 
 }
 
 interface JobListItemProps {
-  job: DisplayJob;
+  job: DisplayJob & { projectId: string }; // It REQUIRES projectId
   onViewAndLogResults: (job: DisplayJob) => void;
   isBeingLogged: boolean;
 }
@@ -48,6 +49,17 @@ export const JobListItem: React.FC<JobListItemProps> = ({ job, onViewAndLogResul
                 </button>
             );
         case 'completed':
+            // --- NEW LOGIC for demo vs. real project jobs ---
+            if (job.projectId === 'demo-project') {
+                return (
+                    <button 
+                        onClick={() => onViewAndLogResults(job)}
+                        className="text-sm px-3 py-1 rounded bg-gray-600 hover:bg-gray-500 text-white flex items-center justify-center w-36"
+                    >
+                        View Results
+                    </button>
+                );
+            }
             return (
                 <button 
                     onClick={() => onViewAndLogResults(job)}

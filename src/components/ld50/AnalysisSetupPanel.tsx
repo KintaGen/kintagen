@@ -34,6 +34,8 @@ export const AnalysisSetupPanel: React.FC<AnalysisSetupPanelProps> = ({
   onDataValidated,
   onDataCleared
 }) => {
+  const isDemoMode = !selectedProjectId;
+
   return (
     <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8 space-y-6">
       {/* --- Section 1: Project Selection (No changes here) --- */}
@@ -49,11 +51,16 @@ export const AnalysisSetupPanel: React.FC<AnalysisSetupPanelProps> = ({
           className="w-full bg-gray-700 border border-gray-600 rounded-md py-2.5 px-3 text-white focus:ring-2 focus:ring-blue-500" 
           disabled={isLoadingProjects || isAnalysisRunning}
         >
-          <option value="">-- Select a Project --</option>
+          <option value="">-- Run in Demo Mode --</option> 
           {projects.map(p => <option key={p.id} value={p.id}>{p.name} (NFT #{p.nft_id})</option>)}
         </select>
         {isLoadingProjects && <p className="text-xs text-gray-400 mt-1">Loading projects...</p>}
         {projectsError && <p className="text-xs text-red-400 mt-1">Error: {projectsError.message}</p>}
+        {isDemoMode && (
+          <div className="mt-3 p-3 bg-blue-900/50 border border-blue-700 rounded-lg text-sm text-blue-200">
+            <p><strong>You are in Demo Mode.</strong> Analysis results will be temporary and cannot be logged to the blockchain.</p>
+          </div>
+        )}
       </div>
 
       {/* --- Section 2: NEW Data Input Section --- */}
@@ -76,7 +83,7 @@ export const AnalysisSetupPanel: React.FC<AnalysisSetupPanelProps> = ({
         <button 
             onClick={onRunAnalysis} 
             // Update disabled logic to include isAnalysisRunning
-            disabled={!selectedProjectId || !isWebRReady || isAnalysisRunning} 
+            disabled={!isWebRReady || isAnalysisRunning} 
             className="w-full sm:w-auto flex items-center justify-center bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
             {isAnalysisRunning ? (
