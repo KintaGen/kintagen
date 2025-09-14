@@ -82,7 +82,6 @@ export const DataInput: React.FC<DataInputProps> = ({ onDataValidated, onDataCle
       };
       reader.readAsText(file);
     }
-    event.target.value = ''; 
   };
 
   const handleTextChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
