@@ -15,6 +15,8 @@ import { AnalysisSetupPanel } from '../components/ld50/AnalysisSetupPanel';
 import { AnalysisResultsDisplay } from '../components/ld50/AnalysisResultsDisplay';
 import { AnalysisJobsList } from '../components/ld50/AnalysisJobsList';
 
+import { generateDataHash } from '../utils/hash';
+
 // Define types in a shared location (e.g., src/types.ts) if you use them elsewhere
 interface Project { 
     id: string; 
@@ -33,7 +35,7 @@ interface DisplayJob {
     returnvalue?: any; 
     logData?: any; 
 }
-const DEMO_PROJECT_ID = 'demo-project';
+export const DEMO_PROJECT_ID = 'demo-project';
 
 const LD50AnalysisPage: React.FC = () => {
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
@@ -53,7 +55,6 @@ const LD50AnalysisPage: React.FC = () => {
 
   const { uploadFile, isLoading: isUploading, error: uploadError } = useLighthouse();
   const [cid,setCID] = useState();
-
 
   const [validatedCsvData, setValidatedCsvData] = useState<string | null>(null);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
@@ -118,15 +119,21 @@ const LD50AnalysisPage: React.FC = () => {
       setPageError('Could not start the analysis engine. Please refresh the page.');
     });
   }, []);
-  
+
+
   const runRealAnalysis = async () => {
     // This function can be simplified. No need for handleUpload() here anymore.
     //if (!selectedProjectId) return;
     setPageError(null);
     setViewedJob(null); // Clear any job that might be currently displayed
-    setIsAnalysisRunning(true); // Added this
+    setIsAnalysisRunning(true); 
     //const selectedProject = projects.find(p => p.id === selectedProjectId);
     //if (!selectedProject) { setIsAnalysisRunning(false); return; }
+
+    // -- Generate hash of the input data ---
+    // Use the validated data, or a string representation of the sample data if none is provided.
+    const inputDataString = validatedCsvData || "sample_data"; // Or a more detailed sample string
+    const inputDataHash = await generateDataHash(inputDataString);
 
     const jobLabel = validatedCsvData
       ? `LD50 analysis with custom data`
@@ -134,7 +141,8 @@ const LD50AnalysisPage: React.FC = () => {
 
     const newJob: Job = { 
       id: `webr_job_${Date.now()}`,
-      kind: 'ld50', label: jobLabel,
+      kind: 'ld50',
+      label: jobLabel,
       projectId: selectedProjectId || DEMO_PROJECT_ID, 
       createdAt: Date.now(),
       state: 'processing'
@@ -150,8 +158,11 @@ const LD50AnalysisPage: React.FC = () => {
             return { 
               ...j, 
               state: result.status === 'success' ? 'completed' : 'failed', 
-              returnvalue: result, 
-              failedReason: result.error 
+              returnvalue: { 
+                ...result,
+                inputDataHash: inputDataHash
+              }, 
+              failedReason: result.error,
             };
           }
           // Not the job we're looking for, return it unchanged
@@ -199,15 +210,30 @@ const LD50AnalysisPage: React.FC = () => {
         
         const results = job.returnvalue;
         if (!results?.results) throw new Error("No results found in the job to save.");
-
-        const zip = new JSZip();
-        const baseTitle = project.name.replace(/[^a-zA-Z0-9]/g, '_');
+        // Create the full verifiable artifact for the ZIP file
         const plotBase64 = results.results.plot_b64.split(',')[1];
+        const metricsJsonString = JSON.stringify(results.results, null, 2);
+        const plotHash = await generateDataHash(plotBase64);
+        const metricsHash = await generateDataHash(metricsJsonString);
+
+        const metadata = {
+            schema_version: "1.0.0",
+            analysis_agent: "KintaGen LD50 v1",
+            timestamp_utc: new Date().toISOString(),
+            input_data_hash_sha256: results.inputDataHash,
+            outputs: [
+                { filename: "ld50_plot.png", hash_sha256: plotHash },
+                { filename: "ld50_metrics.json", hash_sha256: metricsHash }
+            ]
+        };
+        const zip = new JSZip();
+        zip.file("metadata.json", JSON.stringify(metadata, null, 2));
         zip.file("ld50_plot.png", plotBase64, { base64: true });
-        zip.file("ld50_metrics.json", JSON.stringify(results.results, null, 2));
-        const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `${baseTitle}_results.zip`);
+        zip.file("ld50_metrics.json", metricsJsonString);
         
+        const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact.zip`);
         const cid = await uploadFile(zipFile);
+
         if (!cid) throw new Error(uploadError || "Failed to get CID from IPFS upload.");
         console.log("Results ZIP uploaded to IPFS with CID:", cid);
 

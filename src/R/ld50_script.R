@@ -15,6 +15,7 @@
 # Suppress startup messages for a cleaner API output
 # This is the path INSIDE the WebR sandbox where our Node.js code
 # has already copied the library files.
+set.seed(10234)
 custom_lib_path <- "/home/web_user/r_library"
 
 # Explicitly tell R to add our custom folder to its search path.
