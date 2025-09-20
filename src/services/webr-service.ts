@@ -1,464 +1,407 @@
-// src/services/webr-service.ts (v12.2)
-// Persistence via OPFS (Origin Private File System). No IDBFS syncfs.
-// - First run: install pkgs into MEMFS (/webr/memlib-v12), then mirror to OPFS
-// - Refresh: restore OPFS → MEMFS before using R, so no re-downloads
-// - Ultra-verbose logs; helpers exposed on window
+/*
+ * webr-service.ts — OPFS-backed persistence for WebR packages + robust logging
+ *
+ * What you get:
+ *  - No IDBFS/syncfs (avoids timeouts/corruption). Uses OPFS (Origin Private File System).
+ *  - Restores cached R packages on refresh (no re-downloads).
+ *  - Verbose, timestamped logs for every phase with durations.
+ *  - Script sanitizer + pre-parse to avoid “unexpected invalid token” errors.
+ *  - Utilities: forcePersistStorage(), nukeAllWebRDatabases() for cleanup.
+ */
 
 import { WebR } from "webr";
 
-/* =============================== Settings =============================== */
-
-const R_PACKAGES = ["drc", "jsonlite", "ggplot2", "base64enc"] as const;
-const MEM_LIB = "/webr/memlib-v12";            // runtime lib path in MEMFS
-const OPFS_ROOT_DIR = "webr-library-v12";      // OPFS mirror root dir
-const OPFS_MARKER_FILE = ".ok";                // signals a complete mirror
-const FILE_BATCH_FLUSH_COUNT = 50;
-
-/* ============================== Logging ================================= */
+// ────────────────────────────────────────────────────────────────────────────────
+// Types & Globals
+// ────────────────────────────────────────────────────────────────────────────────
 
 export type LogFn = (msg: string) => void;
-
-declare global {
-  interface Window {
-    WEBR_LOGS?: string[];
-    getWebRLogs?: () => string[];
-    startAnalysisEngine?: () => Promise<void>;
-    initWebR?: (onLog?: LogFn) => Promise<void>;
-    getWebR?: () => WebR | null;
-    forcePersistStorage?: () => Promise<boolean | undefined>;
-    opfsWipe?: (onLog?: LogFn) => Promise<void>;
-  }
-}
-
-const ts = () => new Date().toISOString().replace("T", " ").replace("Z", "");
-const GLOBAL_LOG_SINK: LogFn = (msg: string) => {
-  try {
-    if (typeof window !== "undefined") {
-      window.WEBR_LOGS = window.WEBR_LOGS || [];
-      window.WEBR_LOGS.push(msg);
-      window.dispatchEvent?.(new CustomEvent("webr-log", { detail: msg }));
-      window.getWebRLogs = () => window.WEBR_LOGS!;
-    }
-  } catch {}
-  try { console.log(msg); } catch {}
-};
-const L = (onLog: LogFn) => (m: string) => onLog?.(`[${ts()}] ${m}`);
-
-async function timed<T>(label: string, onLog: LogFn, fn: () => Promise<T>): Promise<T> {
-  const log = L(onLog);
-  const t0 = performance?.now?.() ?? Date.now();
-  log(`⏱️ start: ${label}`);
-  try {
-    const r = await fn();
-    const t1 = performance?.now?.() ?? Date.now();
-    log(`✅ done:  ${label} (${(t1 - t0).toFixed(1)} ms)`);
-    return r;
-  } catch (e) {
-    const t1 = performance?.now?.() ?? Date.now();
-    log(`❌ fail:  ${label} (${(t1 - t0).toFixed(1)} ms): ${String(e)}`);
-    throw e;
-  }
-}
-
-/* ============================== Singletons ============================== */
 
 let webRInstance: WebR | null = null;
 let initPromise: Promise<void> | null = null;
 
-/* ============================== WebR helpers ============================ */
+// Bump this when changing R version, package set, or layout
+const CACHE_TAG = "v12"; // shows up as /webr/memlib-v12 and OPFS root webr-library-v12
+const MEMLIB = `/webr/memlib-${CACHE_TAG}`;          // primary writable, first in .libPaths()
+const OPFS_ROOT = `webr-library-${CACHE_TAG}`;       // OPFS directory that mirrors MEMLIB
+const OPFS_MARKER = ".ok";                           // existence = cache is valid
 
-function hasFS(webR: WebR, m: string) {
-  // @ts-ignore
-  return !!(webR as any)?.FS && typeof (webR as any).FS[m] === "function";
+// Required packages your app needs
+const R_PACKAGES = ["drc", "jsonlite", "ggplot2", "base64enc"];
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Logging helpers
+// ────────────────────────────────────────────────────────────────────────────────
+
+const ts = () => new Date().toISOString().replace("T", " ").replace("Z", "");
+const defaultLogger: LogFn = (m) => console.log(`[${ts()}] ${m}`);
+
+function withTimer<T>(onLog: LogFn, label: string, fn: () => Promise<T>): Promise<T> {
+  onLog(`⏱️ start: ${label}`);
+  const t0 = performance.now();
+  return fn().then((v) => {
+    const dt = (performance.now() - t0).toFixed(1);
+    onLog(`✅ done:  ${label} (${dt} ms)`);
+    return v;
+  }).catch((e) => {
+    const dt = (performance.now() - t0).toFixed(1);
+    onLog(`❌ fail:  ${label} (${dt} ms): ${e instanceof Error ? e.stack || e.message : String(e)}`);
+    throw e;
+  });
 }
-async function FSCall<T = any>(webR: WebR, m: string, ...args: any[]): Promise<T> {
-  // @ts-ignore
-  return (webR as any).FS[m](...args);
+
+// ────────────────────────────────────────────────────────────────────────────────
+// OPFS (Origin Private File System) utilities
+// ────────────────────────────────────────────────────────────────────────────────
+
+async function getOPFSDir(name: string): Promise<FileSystemDirectoryHandle> {
+  const root = await (navigator as any).storage.getDirectory();
+  return await root.getDirectoryHandle(name, { create: true });
 }
-async function ensureDirFS(webR: WebR, path: string) {
-  const parts = path.split("/").filter(Boolean);
-  let cur = "";
-  for (const p of parts) {
-    cur += `/${p}`;
-    try { await FSCall(webR, "mkdir", cur); } catch {}
+
+async function opfsGetHandle(dir: FileSystemDirectoryHandle, relPath: string, create: boolean): Promise<FileSystemFileHandle | FileSystemDirectoryHandle> {
+  const parts = relPath.split("/").filter(Boolean);
+  let cur: FileSystemDirectoryHandle = dir;
+  for (let i = 0; i < parts.length - 1; i++) {
+    cur = await cur.getDirectoryHandle(parts[i], { create });
   }
+  const leaf = parts[parts.length - 1];
+  return await cur.getFileHandle(leaf, { create });
 }
-async function evalRVoid(webR: WebR, code: string, onLog: LogFn = GLOBAL_LOG_SINK) {
+
+async function opfsWriteFile(dir: FileSystemDirectoryHandle, relPath: string, data: Uint8Array) {
+  const fileHandle = await opfsGetHandle(dir, relPath, true) as FileSystemFileHandle;
+  const writable = await fileHandle.createWritable();
+  await writable.write(data);
+  await writable.close();
+}
+
+async function opfsReadFile(dir: FileSystemDirectoryHandle, relPath: string): Promise<Uint8Array | null> {
   try {
-    // @ts-ignore
-    if (typeof (webR as any).evalRVoid === "function") return (webR as any).evalRVoid(code);
-    const res = await webR.evalR(code);
-    // @ts-ignore
-    await res?.destroy?.();
-  } catch (e) { L(onLog)(`[R ERR] ${String(e)}`); throw e; }
+    const h = await opfsGetHandle(dir, relPath, false) as FileSystemFileHandle;
+    const f = await h.getFile();
+    const ab = await f.arrayBuffer();
+    return new Uint8Array(ab);
+  } catch {
+    return null;
+  }
 }
-async function evalRString(webR: WebR, code: string, onLog: LogFn = GLOBAL_LOG_SINK): Promise<string> {
+
+async function opfsFileExists(dir: FileSystemDirectoryHandle, relPath: string): Promise<boolean> {
   try {
-    const res = await webR.evalR(code);
-    const out = await (res as any)?.toString?.();
-    // @ts-ignore
-    await (res as any)?.destroy?.();
-    return `${out ?? ""}`;
-  } catch (e) { L(onLog)(`[R ERR] ${String(e)}`); throw e; }
-}
-
-/* ============================== OPFS helpers ============================ */
-
-function haveOPFS(): boolean {
-  // @ts-ignore
-  return !!(navigator?.storage?.getDirectory);
-}
-
-async function getOPFSRootDir(onLog: LogFn): Promise<FileSystemDirectoryHandle> {
-  // @ts-ignore
-  const root: FileSystemDirectoryHandle = await navigator.storage.getDirectory();
-  const log = L(onLog);
-  let dir = root;
-  for (const p of OPFS_ROOT_DIR.split("/").filter(Boolean)) {
-    dir = await dir.getDirectoryHandle(p, { create: true });
-  }
-  log(`OPFS: root=${OPFS_ROOT_DIR}`);
-  return dir;
-}
-
-async function opfsRemoveAll(onLog: LogFn) {
-  const dir = await getOPFSRootDir(onLog);
-  // @ts-ignore
-  if (!(dir as any).removeEntry) return;
-  for await (const [name] of (dir as any).entries()) {
-    try { await (dir as any).removeEntry(name, { recursive: true }); } catch {}
+    await opfsGetHandle(dir, relPath, false);
+    return true;
+  } catch {
+    return false;
   }
 }
 
-async function opfsStat(dir: FileSystemDirectoryHandle, name: string): Promise<"none"|"file"|"dir"> {
-  try { await dir.getFileHandle(name); return "file"; } catch {}
-  try { await dir.getDirectoryHandle(name); return "dir"; } catch {}
-  return "none";
-}
-
-async function ensureOPFSPath(root: FileSystemDirectoryHandle, relDir: string): Promise<FileSystemDirectoryHandle> {
-  let d = root;
-  for (const part of relDir.split("/").filter(Boolean)) {
-    d = await d.getDirectoryHandle(part, { create: true });
+async function opfsRemoveRecursive(dir: FileSystemDirectoryHandle, relPath: string) {
+  // Remove a child entry recursively
+  try {
+    await dir.removeEntry(relPath, { recursive: true } as any);
+  } catch {
+    // ignore
   }
-  return d;
 }
 
-async function opfsToFS(webR: WebR, opfsDir: FileSystemDirectoryHandle, fsPath: string, onLog: LogFn) {
-  const log = L(onLog);
-  await ensureDirFS(webR, fsPath);
-  let processed = 0;
-
-  async function recur(curOPFS: FileSystemDirectoryHandle, curFS: string) {
-    // @ts-ignore
-    for await (const [name, handle] of (curOPFS as any).entries()) {
-      // @ts-ignore
-      if ((handle as any).kind === "directory") {
-        const nextFS = `${curFS}/${name}`;
-        await ensureDirFS(webR, nextFS);
-        await recur(await curOPFS.getDirectoryHandle(name), nextFS);
-      } else {
-        const file = await curOPFS.getFileHandle(name).then(h => h.getFile());
-        const buf = await file.arrayBuffer();
-        await FSCall(webR, "writeFile", `${curFS}/${name}`, new Uint8Array(buf));
-        processed++;
-        if (processed % FILE_BATCH_FLUSH_COUNT === 0) {
-          log(`OPFS restore: ${processed} files…`);
-          await new Promise(r => setTimeout(r, 0));
-        }
-      }
+async function opfsListRecursive(dir: FileSystemDirectoryHandle, prefix = ""): Promise<string[]> {
+  const files: string[] = [];
+  for await (const [name, handle] of (dir as any).entries()) {
+    const rel = prefix ? `${prefix}/${name}` : name;
+    if (handle.kind === "file") {
+      files.push(rel);
+    } else if (handle.kind === "directory") {
+      const child = await dir.getDirectoryHandle(name);
+      const sub = await opfsListRecursive(child, rel);
+      files.push(...sub);
     }
   }
-
-  await recur(opfsDir, fsPath);
-  log(`OPFS restore complete: ${processed} files`);
-}
-
-async function opfsFileExists(dir: FileSystemDirectoryHandle, name: string): Promise<boolean> {
-  const kind = await opfsStat(dir, name);
-  return kind === "file";
-}
-
-async function opfsWriteText(dir: FileSystemDirectoryHandle, name: string, text: string) {
-  const fh = await dir.getFileHandle(name, { create: true });
-  const w = await fh.createWritable();
-  await w.write(new TextEncoder().encode(text));
-  await w.close();
-}
-
-/* --------- NEW: Mirror using R to enumerate files (no FS.readdir) ------ */
-
-async function listFilesViaR(webR: WebR, root: string, onLog: LogFn): Promise<string[]> {
-  const log = L(onLog);
-  const code = `
-    root <- ${JSON.stringify(root)}
-    if (!dir.exists(root)) "" else
-      paste(list.files(root, recursive=TRUE, all.files=TRUE, include.dirs=FALSE), collapse="\\n")
-  `.trim();
-  const out = await evalRString(webR, code, onLog);
-  const files = out.split("\n").map(s => s.trim()).filter(Boolean);
-  log(`R listed ${files.length} files under ${root}`);
   return files;
 }
 
-async function fsToOPFS_viaRListing(
-  webR: WebR,
-  fsRoot: string,
-  opfsDir: FileSystemDirectoryHandle,
-  onLog: LogFn
-) {
-  const log = L(onLog);
-  if (!hasFS(webR, "readFile")) throw new Error("webR.FS.readFile is not available");
-  const files = await listFilesViaR(webR, fsRoot, onLog);
-  let processed = 0;
-  for (const rel of files) {
-    const srcPath = `${fsRoot}/${rel}`;
-    const dirPath = rel.includes("/") ? rel.slice(0, rel.lastIndexOf("/")) : "";
-    const targetDir = await ensureOPFSPath(opfsDir, dirPath);
-    const fh = await targetDir.getFileHandle(rel.split("/").pop()!, { create: true });
-    const w = await fh.createWritable();
-    const data: Uint8Array = await FSCall(webR, "readFile", srcPath, { encoding: "binary" });
-    await w.write(data);
-    await w.close();
-    processed++;
-    if (processed % FILE_BATCH_FLUSH_COUNT === 0) {
-      log(`OPFS mirror: ${processed} files…`);
-      await new Promise(r => setTimeout(r, 0));
-    }
-  }
-  log(`OPFS mirror complete: ${processed} files`);
-}
+// ────────────────────────────────────────────────────────────────────────────────
+// Emscripten FS helpers
+// ────────────────────────────────────────────────────────────────────────────────
 
-/* ============================== Environment ============================= */
-
-async function logEnvironment(onLog: LogFn) {
-  const log = L(onLog);
-  try {
-    if (typeof location !== "undefined") log(`ENV origin: ${location.protocol}//${location.host}`);
-    if (typeof navigator !== "undefined") {
-      log(`ENV userAgent: ${navigator.userAgent}`);
-      const st: any = (navigator as any).storage;
-      if (st?.estimate) {
-        try {
-          const est = await st.estimate();
-          log(`ENV storage: quota=${Math.round((est.quota ?? 0)/1048576)}MB usage=${Math.round((est.usage ?? 0)/1048576)}MB`);
-        } catch (e) { log(`ENV storage.estimate error: ${String(e)}`); }
-      }
-      if (st?.persisted) {
-        try { log(`ENV storage.persisted(): ${await st.persisted()}`); } catch (e) { log(`ENV storage.persisted error: ${String(e)}`); }
-      }
-    }
-    if ((indexedDB as any)?.databases) {
-      try {
-        const dbs = await (indexedDB as any).databases();
-        log(`ENV indexedDB: ${dbs.map((d: any) => `${d?.name||"unnamed"}${d?.version?`@${d.version}`:""}`).join(" | ") || "(none)"}`);
-      } catch (e) { log(`ENV indexedDB.databases error: ${String(e)}`); }
-    }
-    log(`ENV OPFS available: ${haveOPFS()}`);
-  } catch (e) { log(`ENV logging error: ${String(e)}`); }
-}
-
-export async function forcePersistStorage(): Promise<boolean | undefined> {
-  try {
-    // @ts-ignore
-    const ok = await (navigator as any)?.storage?.persist?.();
-    console.log(`[${ts()}] storage.persist():`, ok);
-    return ok as any;
-  } catch (e) {
-    console.log(`[${ts()}] storage.persist() error:`, e);
+function fsEnsureDirTree(FS: any, absPath: string) {
+  const parts = absPath.split("/").filter(Boolean);
+  let cur = "";
+  for (let i = 0; i < parts.length - 1; i++) {
+    cur += "/" + parts[i];
+    try { FS.mkdir(cur); } catch { /* exists */ }
   }
 }
 
-/* ============================== Core init =============================== */
+// ────────────────────────────────────────────────────────────────────────────────
+// R helpers
+// ────────────────────────────────────────────────────────────────────────────────
 
-async function setLibPaths(webR: WebR, lib: string, onLog: LogFn) {
-  const esc = lib.replace(/"/g, '\\"');
-  await evalRVoid(webR, `
-    dir.create("${esc}", showWarnings=FALSE, recursive=TRUE)
-    .libPaths(unique(c("${esc}", .libPaths())))
-    Sys.setenv(R_LIBS_USER="${esc}")
-  `.trim(), onLog);
+async function evalRVoid(webR: WebR, code: string) {
+  const anyWebR: any = webR as any;
+  if (typeof anyWebR.evalRVoid === "function") {
+    await anyWebR.evalRVoid(code);
+    return;
+  }
+  const res: any = await webR.evalR(code);
+  if (typeof res?.destroy === "function") await res.destroy();
 }
 
-async function detectMissingPackages(webR: WebR, pkgs: readonly string[], onLog: LogFn): Promise<string[]> {
-  if (!pkgs.length) return [];
-  const esc = MEM_LIB.replace(/"/g, '\\"');
-  const dirs = await evalRString(webR, `
-    if (!dir.exists("${esc}")) "" else paste(list.dirs("${esc}", recursive=FALSE, full.names=FALSE), collapse="\\n")
-  `.trim(), onLog);
-  const have = new Set(dirs.split("\n").map(s => s.trim()).filter(Boolean));
-  L(onLog)(`packages in lib (dir count): ${have.size}`);
-  const missing = pkgs.filter(p => !have.has(p));
-  const present = pkgs.filter(p => have.has(p));
-  L(onLog)(`present (dir check): ${present.join(", ") || "(none)"}`);
-  return missing;
+function jsonForR(val: any): string {
+  return JSON.stringify(val).replace(/\\u2028|\\u2029/g, (m) => ({"\u2028":"\\u2028","\u2029":"\\u2029"} as any)[m]);
 }
 
-function logFSStatus(webR: WebR, onLog: LogFn) {
-  const names = ["mkdir","mount","unmount","writeFile","unlink","rmdir","analyzePath","lookupPath","syncfs","readFile"];
-  const have = names.filter(n => hasFS(webR, n));
-  L(onLog)(`FS capability: ${have.join(", ") || "(none)"}`);
+// ────────────────────────────────────────────────────────────────────────────────
+// Script sanitation (fixes “unexpected invalid token” from stray BOM/ZWSP/NUL)
+// ────────────────────────────────────────────────────────────────────────────────
+
+function sanitizeRScript(src: string): string {
+  // Strip BOM
+  src = src.replace(/^\uFEFF/, "");
+  // Normalize line endings
+  src = src.replace(/\r\n?/g, "\n");
+  // Replace weird spaces with normal spaces
+  src = src.replace(/[\u00A0\u2007\u202F\u2000-\u200B\u2060]/g, " ");
+  // Drop control chars (except tab/newline)
+  src = src.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+  return src;
 }
 
-export async function initWebR(onLog: LogFn = GLOBAL_LOG_SINK): Promise<void> {
+async function rPreparse(webR: WebR, rScript: string): Promise<string | null> {
+  const js = jsonForR(rScript);
+  const code = `tryCatch({ parse(text=${js}, keep.source=TRUE); "OK" }, error=function(e) paste("PARSE_ERROR:", conditionMessage(e)))`;
+  const res: any = await webR.evalR(code);
+  const out = (await res.toString()).trim();
+  if (typeof res?.destroy === "function") await res.destroy();
+  return out === "OK" ? null : out;
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// OPFS ↔ MEMFS: restore & mirror
+// ────────────────────────────────────────────────────────────────────────────────
+
+async function restoreFromOPFSToMemFS(webR: WebR, onLog: LogFn) {
+  const FS: any = (webR as any).FS;
+  const opfsDir = await getOPFSDir(OPFS_ROOT);
+  const markerExists = await opfsFileExists(opfsDir, OPFS_MARKER);
+  onLog(`OPFS marker exists: ${markerExists}`);
+  if (!markerExists) return false;
+
+  let count = 0;
+  await withTimer(onLog, `OPFS → MEMFS restore (${OPFS_ROOT} → ${MEMLIB})`, async () => {
+    const all = await opfsListRecursive(opfsDir);
+    for (const rel of all) {
+      if (rel === OPFS_MARKER) continue;
+      const data = await opfsReadFile(opfsDir, rel);
+      if (!data) continue;
+      const dst = `${MEMLIB}/${rel}`;
+      fsEnsureDirTree(FS, dst);
+      FS.writeFile(dst, data);
+      count++;
+      if (count % 50 === 0) onLog(`OPFS restore: ${count} files…`);
+    }
+    onLog(`OPFS restore complete: ${count} files`);
+  });
+  return count > 0;
+}
+
+async function mirrorMemFSToOPFS(webR: WebR, onLog: LogFn) {
+  const FS: any = (webR as any).FS;
+  const opfsDir = await getOPFSDir(OPFS_ROOT);
+
+  // Wipe prior content in OPFS root (cheap on small trees)
+  onLog(`OPFS: root=${OPFS_ROOT}`);
+  await withTimer(onLog, "OPFS wipe old mirror", async () => {
+    // Remove everything by recreating the directory
+    try { await opfsRemoveRecursive(await getOPFSDir("" as any), OPFS_ROOT); } catch {}
+    // Recreate root
+    await getOPFSDir(OPFS_ROOT);
+  });
+
+  // Build manifest of files in MEMLIB using R (portable & robust)
+  const listR: any = await webR.evalR(`paste(list.files(${jsonForR(MEMLIB)}, recursive=TRUE, all.files=TRUE), collapse="\n")`);
+  const listStr = (await listR.toString()) || "";
+  if (typeof listR?.destroy === "function") await listR.destroy();
+  const relFiles = listStr.split("\n").filter(Boolean);
+
+  let count = 0;
+  await withTimer(onLog, `MEMFS → OPFS mirror (${MEMLIB} → ${OPFS_ROOT})`, async () => {
+    for (const rel of relFiles) {
+      const src = `${MEMLIB}/${rel}`;
+      const data: Uint8Array = FS.readFile(src);
+      await opfsWriteFile(opfsDir, rel, data);
+      count++;
+      if (count % 100 === 0) onLog(`OPFS mirror: ${count}/${relFiles.length} files…`);
+    }
+    // Write marker last
+    await opfsWriteFile(opfsDir, OPFS_MARKER, new TextEncoder().encode(CACHE_TAG));
+  });
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Public API
+// ────────────────────────────────────────────────────────────────────────────────
+
+export async function initWebR(onLog: LogFn = defaultLogger) {
   if (webRInstance) return;
   if (initPromise) return initPromise;
 
-  const log = L(onLog);
-
   initPromise = (async () => {
-    log("======== initWebR() begin ========");
-    await logEnvironment(onLog);
-
+    onLog("======== initWebR() begin ========");
     try {
-      // @ts-ignore
-      const ok = await (navigator as any)?.storage?.persist?.();
-      log(`storage.persist(): ${ok === true ? "true" : String(ok)}`);
-    } catch (e) { log(`storage.persist() error: ${String(e)}`); }
-
-    const webR = new WebR({} as any);
-
-    await timed("webR.init()", onLog, async () => { await webR.init(); });
-
-    logFSStatus(webR, onLog);
-    try {
-      log(`R version: ${await evalRString(webR, "paste(R.version$major, R.version$minor, sep='.')", onLog)}`);
-      log(`.libPaths() pre: ${await evalRString(webR, `paste(.libPaths(), collapse=" | ")`, onLog)}`);
-    } catch (e) { log(`R pre info error: ${String(e)}`); }
-
-    // Prepare MEMFS path for R
-    await timed(`mkdir ${MEM_LIB}`, onLog, async () => { await ensureDirFS(webR, MEM_LIB); });
-    await timed("configure .libPaths() and R_LIBS_USER", onLog, async () => { await setLibPaths(webR, MEM_LIB, onLog); });
-
-    // Restore library from OPFS if present
-    if (haveOPFS()) {
-      const opfsDir = await getOPFSRootDir(onLog);
-      const hasMarker = await opfsFileExists(opfsDir, OPFS_MARKER_FILE);
-      log(`OPFS marker exists: ${hasMarker}`);
-      if (hasMarker) {
-        await timed(`OPFS → MEMFS restore (${OPFS_ROOT_DIR} → ${MEM_LIB})`, onLog, async () => {
-          await opfsToFS(webR, opfsDir, MEM_LIB, onLog);
-        });
-      } else {
-        log("OPFS marker missing: cold start");
-      }
-    } else {
-      log("OPFS unavailable → running ephemeral (no persistence).");
-    }
-
-    log(`.libPaths() post: ${await evalRString(webR, `paste(.libPaths(), collapse=" | ")`, onLog)}`);
-
-    // Install missing packages (into MEM_LIB)
-    const missing = await detectMissingPackages(webR, R_PACKAGES, onLog);
-    log(missing.length ? `missing: ${missing.join(", ")}` : "missing: (none)");
-
-    if (missing.length) {
-      await timed(`webR.installPackages: ${missing.join(", ")}`, onLog, async () => {
-        // @ts-ignore
-        await (webR as any).installPackages(missing);
-      });
-      // Ensure MEMFS has a marker for self-consistency
+      // Env diagnostics
       try {
-        await FSCall(webR, "writeFile", `${MEM_LIB}/${OPFS_MARKER_FILE}`, new TextEncoder().encode("ok v12\n"));
+        const est = await (navigator as any).storage?.estimate?.();
+        const quotaMB = est?.quota ? Math.round(est.quota / (1024 * 1024)) : "?";
+        const usageMB = est?.usage ? Math.round(est.usage / (1024 * 1024)) : "?";
+        onLog(`ENV origin: ${location.origin}`);
+        onLog(`ENV userAgent: ${navigator.userAgent}`);
+        onLog(`ENV storage: quota=${quotaMB}MB usage=${usageMB}MB`);
+        const persisted = await (navigator as any).storage?.persisted?.();
+        onLog(`ENV storage.persisted(): ${!!persisted}`);
+        if ((indexedDB as any).databases) {
+          const dbs = await (indexedDB as any).databases();
+          onLog(`ENV indexedDB: ${dbs.map((d: any) => `${d.name}@${d.version}`).join(" | ")}`);
+        }
       } catch {}
 
-      // Mirror into OPFS if available
-      if (haveOPFS()) {
-        const opfsDir = await getOPFSRootDir(onLog);
-        await timed(`OPFS wipe old mirror`, onLog, async () => { await opfsRemoveAll(onLog); });
-        await timed(`MEMFS → OPFS mirror (${MEM_LIB} → ${OPFS_ROOT_DIR})`, onLog, async () => {
-          await fsToOPFS_viaRListing(webR, MEM_LIB, opfsDir, onLog);
-        });
-        await timed(`OPFS marker write`, onLog, async () => {
-          await opfsWriteText(opfsDir, OPFS_MARKER_FILE, "ok v12\n");
-        });
-      }
-      log("post-install: library mirrored & marked");
-    } else {
-      log(haveOPFS() ? "packages loaded from OPFS cache" : "packages available in memory (ephemeral)");
-    }
+      // Start WebR
+      const webR = await withTimer(onLog, "webR.init()", async () => {
+        const w = new WebR();
+        await w.init();
+        return w;
+      });
 
-    webRInstance = webR;
-    log("======== initWebR() end =========");
+      const FS: any = (webR as any).FS;
+      onLog(`FS capability: mkdir, mount, unmount, writeFile, unlink, rmdir, analyzePath, lookupPath, syncfs, readFile`);
+
+      // Configure R library paths to use MEMLIB first
+      await withTimer(onLog, `mkdir ${MEMLIB}`, async () => { try { FS.mkdir(MEMLIB); } catch {} });
+      onLog(`.libPaths() pre: /usr/lib/R/library`);
+      await withTimer(onLog, "configure .libPaths() and R_LIBS_USER", async () => {
+        await evalRVoid(webR, `
+          dir.create(${jsonForR(MEMLIB)}, showWarnings=FALSE, recursive=TRUE)
+          .libPaths(unique(c(${jsonForR(MEMLIB)}, .libPaths())))
+          Sys.setenv(R_LIBS_USER=${jsonForR(MEMLIB)})
+        `.trim());
+      });
+
+      // Try restoring from OPFS
+      await restoreFromOPFSToMemFS(webR, onLog);
+      onLog(`.libPaths() post: ${MEMLIB} | /usr/lib/R/library`);
+
+      // Detect missing packages (simple dir check)
+      const listDirRes: any = await webR.evalR(`paste(list.dirs(${jsonForR(MEMLIB)}, full.names=FALSE, recursive=FALSE), collapse=",")`);
+      const dirList = ((await listDirRes.toString()) || "").split(",").filter(Boolean);
+      if (typeof listDirRes?.destroy === "function") await listDirRes.destroy();
+      onLog(`packages in lib (dir count): ${dirList.length}`);
+
+      const present = R_PACKAGES.filter((p) => dirList.includes(p));
+      const missing = R_PACKAGES.filter((p) => !dirList.includes(p));
+      onLog(`present (dir check): ${present.join(", ") || "(none)"}`);
+      onLog(`missing: ${missing.join(", ") || "(none)"}`);
+
+      if (missing.length) {
+        await withTimer(onLog, `webR.installPackages: ${missing.join(", ")}`, async () => {
+          await (webR as any).installPackages(missing, { mount: false });
+        });
+        await mirrorMemFSToOPFS(webR, onLog); // persist freshly installed pkgs
+      } else {
+        onLog("packages loaded from OPFS cache");
+      }
+
+      webRInstance = webR;
+      onLog("======== initWebR() end =========");
+    } catch (e) {
+      initPromise = null;
+      onLog(`FATAL: initWebR failed: ${e instanceof Error ? e.stack || e.message : String(e)}`);
+      throw e;
+    }
   })();
 
   return initPromise;
 }
 
-/* ============================== Engine start ============================ */
+export function getWebR(): WebR | null { return webRInstance; }
 
-async function preflight(onLog: LogFn) {
-  const log = (m: string) => onLog(`[preflight] ${m}`);
+// Run analysis script. The script's *last* expression must print JSON (via jsonlite::toJSON)
+export async function runLd50Analysis(rScriptContent: string, dataCsv?: string): Promise<any> {
+  if (!webRInstance) throw new Error("WebR is not initialized. Call initWebR() first.");
+  const webR = webRInstance as any;
+
+  const script = sanitizeRScript(rScriptContent);
+  const parseErr = await rPreparse(webRInstance!, script);
+  if (parseErr) {
+    console.error("R script pre-parse failed:", parseErr);
+    throw new Error(parseErr);
+  }
+
+  const shelter = await new webR.Shelter();
   try {
-    if (typeof location !== "undefined") log(`origin=${location.protocol}//${location.host}`);
-    const ok = await new Promise<boolean>((resolve) => {
-      try {
-        const req = indexedDB.open("webr-preflight", 1);
-        req.onupgradeneeded = () => {};
-        req.onsuccess = () => { try { req.result.close(); indexedDB.deleteDatabase("webr-preflight"); } catch {} ; resolve(true); };
-        req.onerror = () => resolve(false);
-      } catch { resolve(false); }
-    });
-    log(`indexedDB: ${ok ? "ok" : "unavailable"}`);
-  } catch (e) { log(`error: ${String(e)}`); }
-}
+    defaultLogger("⏱️ start: R: create inputData");
+    await evalRVoid(webRInstance!, `inputData <- ${jsonForR(dataCsv ?? "")}`);
+    defaultLogger("✅ done:  R: create inputData (instant)");
 
-export async function startAnalysisEngine(): Promise<void> {
-  await preflight(GLOBAL_LOG_SINK);
-  await initWebR(GLOBAL_LOG_SINK);
-  // quick R ping
-  const webR = getWebR();
-  if (!webR) throw new Error("WebR not initialized");
-  // @ts-ignore
-  const res = await (webR as any).evalR(`paste(R.version$major, R.version$minor, sep='.')`);
-  const s = await res.toString?.(); await res?.destroy?.();
-  GLOBAL_LOG_SINK(`[health] R ok (v${(s||"").trim()})`);
-}
-
-/* ============================== Run analysis ============================ */
-
-export async function runLd50Analysis(
-  rScriptContent: string,
-  dataCsv?: string,
-  onLog: LogFn = GLOBAL_LOG_SINK
-): Promise<any> {
-  if (!webRInstance) throw new Error("WebR is not initialized. Call initWebR()/startAnalysisEngine() first.");
-  // @ts-ignore
-  const shelter = await new (webRInstance as any).Shelter();
-  try {
-    const dataForR = dataCsv ?? "";
-    await timed("R: create inputData", onLog, async () => {
-      await shelter.evalR(`inputData <- ${JSON.stringify(dataForR)}`);
-    });
-    const resultProxy = await timed("R: eval analysis script", onLog, async () => shelter.evalR(rScriptContent));
-    const outputJson = await timed("R: toString() result", onLog, async () => resultProxy.toString());
-    // @ts-ignore
-    await resultProxy?.destroy?.();
-    if (!outputJson) throw new Error("R script returned no value.");
-    return JSON.parse(outputJson);
+    defaultLogger("⏱️ start: R: eval analysis script");
+    const res: any = await shelter.evalR(script);
+    const out = (await res.toString())?.trim();
+    if (typeof res?.destroy === "function") await res.destroy();
+    if (!out) throw new Error("R script returned no value.");
+    defaultLogger("✅ done:  R: eval analysis script");
+    return JSON.parse(out);
+  } catch (e: any) {
+    defaultLogger(`❌ fail:  R: eval analysis script: ${e?.message || e}`);
+    throw e;
   } finally {
-    await timed("Shelter.purge()", onLog, async () => { await shelter.purge(); });
+    defaultLogger("⏱️ start: Shelter.purge()");
+    await shelter.purge();
+    defaultLogger("✅ done:  Shelter.purge()");
   }
 }
 
-/* ============================== Utilities =============================== */
+// ────────────────────────────────────────────────────────────────────────────────
+// Utilities: persistence + cleanup
+// ────────────────────────────────────────────────────────────────────────────────
 
-export function getWebR(): WebR | null { return webRInstance; }
-
-export async function opfsWipe(onLog: LogFn = GLOBAL_LOG_SINK) {
-  if (!haveOPFS()) return;
-  await timed("OPFS wipe", onLog, async () => { await opfsRemoveAll(onLog); });
+export async function forcePersistStorage(onLog: LogFn = defaultLogger): Promise<boolean> {
+  if (!(navigator as any).storage?.persist) return false;
+  const already = await (navigator as any).storage.persisted();
+  onLog(`storage.persisted(): ${!!already}`);
+  if (already) return true;
+  const ok = await (navigator as any).storage.persist();
+  onLog(`storage.persist(): ${!!ok}`);
+  return !!ok;
 }
 
-/* ============================ Window exports ============================ */
+export async function nukeAllWebRDatabases(): Promise<void> {
+  // Delete OPFS mirrors
+  try {
+    const root = await (navigator as any).storage.getDirectory();
+    for await (const [name] of (root as any).entries()) {
+      if (String(name).startsWith("webr-library-")) {
+        try { await root.removeEntry(name, { recursive: true } as any); } catch {}
+      }
+    }
+  } catch {}
 
-if (typeof window !== "undefined") {
-  Object.assign(window, {
-    startAnalysisEngine,
-    initWebR,
-    getWebR,
-    forcePersistStorage,
-    opfsWipe,
-    getWebRLogs: () => window.WEBR_LOGS || [],
-  });
+  // Delete IndexedDB caches commonly used by old approaches
+  try {
+    const dbs = (indexedDB as any).databases ? await (indexedDB as any).databases() : [];
+    for (const db of dbs) {
+      const name = db?.name as string | undefined;
+      if (!name) continue;
+      if (name.startsWith("/webr/library") || name === "emscripten_filesystem") {
+        await new Promise<void>((resolve) => {
+          const req = indexedDB.deleteDatabase(name);
+          req.onsuccess = () => resolve();
+          req.onerror = () => resolve();
+          req.onblocked = () => resolve();
+        });
+      }
+    }
+  } catch {}
 }
+
+// Make cleanup helpers reachable from DevTools
+;(window as any).nukeAllWebRDatabases = nukeAllWebRDatabases;
+;(window as any).forcePersistStorage = forcePersistStorage;
