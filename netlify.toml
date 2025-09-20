@@ -15,4 +15,7 @@
   # The directory where all your serverless function files (like upload.ts) are located.
   directory = "netlify/functions"
 
-  external_node_modules = ["bls-eth-wasm"]
+  external_node_modules = ["bls-eth-wasm","webr"]
+  included_files = [
+    "r_packages/**"
+  ]

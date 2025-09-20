@@ -13,6 +13,7 @@ import { generateDataHash } from '../../utils/hash'; // Adjust path if needed
 // Type definition for the job prop this component receives.
 // It includes all possible data sources.
 interface DisplayJob { 
+    projectId: string;
     state: 'completed' | 'failed' | 'processing' | 'logged'; 
     returnvalue?: any; // For local/demo jobs that are 'completed'
     logData?: any;     // For jobs that are 'logged' on-chain
@@ -242,7 +243,7 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
       )}
 
       {/* On-Chain Log Information Box (only shown for logged jobs) */}
-      {job.state === 'logged' && job.logData && (
+      {job.state === 'logged' && (
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
           <div>
             <h3 className="text-lg font-semibold mb-4 text-gray-200 flex items-center gap-2">

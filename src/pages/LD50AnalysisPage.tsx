@@ -1,23 +1,18 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React,{useState,useMemo,useEffect} from 'react';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import { useJobs, type Job } from '../contexts/JobContext';
-import { useFlowCurrentUser, useFlowConfig, TransactionDialog,useFlowMutate } from '@onflow/react-sdk';
-import JSZip from 'jszip'; 
+import { useFlowCurrentUser, useFlowConfig, TransactionDialog, useFlowMutate } from '@onflow/react-sdk';
+import JSZip from 'jszip';
 
 import { getAddToLogTransaction } from '../flow/cadence';
 import { useOwnedNftProjects } from '../flow/kintagen-nft';
 import { useLighthouse } from '../hooks/useLighthouse';
-import { initWebR, runLd50Analysis } from '../services/webr-service';
-import rScriptContent from '../R/ld50_script.R?raw';
-
-// Import our new, smaller child components
 import { AnalysisSetupPanel } from '../components/ld50/AnalysisSetupPanel';
 import { AnalysisResultsDisplay } from '../components/ld50/AnalysisResultsDisplay';
 import { AnalysisJobsList } from '../components/ld50/AnalysisJobsList';
-
 import { generateDataHash } from '../utils/hash';
 
-// Define types in a shared location (e.g., src/types.ts) if you use them elsewhere
+// --- Type Definitions ---
 interface Project { 
     id: string; 
     name: string; 
@@ -38,119 +33,76 @@ interface DisplayJob {
 export const DEMO_PROJECT_ID = 'demo-project';
 
 const LD50AnalysisPage: React.FC = () => {
+  // --- State Hooks ---
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
   const { jobs, setJobs } = useJobs();
-  
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [pageError, setPageError] = useState<string | null>(null);
   const [viewedJob, setViewedJob] = useState<DisplayJob | null>(null);
-  const [isWebRReady, setIsWebRReady] = useState(false);
-  const [webRInitMessage, setWebRInitMessage] = useState('Initializing Analysis Engine (WebR)...');
-  
   const [dialogTxId, setDialogTxId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
   const flowConfig = useFlowConfig();
   const { user } = useFlowCurrentUser();
-
   const { uploadFile, isLoading: isUploading, error: uploadError } = useLighthouse();
-  const [cid,setCID] = useState();
-
   const [validatedCsvData, setValidatedCsvData] = useState<string | null>(null);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
-
-  // --- NEW STATE for the logging process ---
   const [isLogging, setIsLogging] = useState(false);
   const [jobIdBeingLogged, setJobIdBeingLogged] = useState<string | null>(null);
-
-  // --- useTransaction HOOK for programmatic control ---
-  const { 
-    mutate: executeTransaction, 
-    isPending: isTxPending, 
-    isSuccess: isTxSuccess, 
-    isError: isTxError, 
-    error: txError, 
-    data: txId 
-  } = useFlowMutate();
+  const { mutate: executeTransaction, isPending: isTxPending, isSuccess: isTxSuccess, isError: isTxError, error: txError, data: txId } = useFlowMutate();
   
+  // --- Memoized Job Display Logic (unchanged) ---
   const displayJobs = useMemo(() => {
+    // This logic is correct and does not need to change.
     if(selectedProjectId && selectedProjectId !== DEMO_PROJECT_ID){
       if (!selectedProjectId) return [];
       const project = projects.find(p => p.id === selectedProjectId);
       if (!project?.story) return [];
-  
-      const onChainLogs: DisplayJob[] = project.story
-        .filter(step => step.agent === "Analysis")
-        .map((step, index) => ({
-          id: `log-${project.id}-${index}`,
-          label: step.action,
-          projectId: project.id,
-          state: 'logged',
-          logData: step,
-        }));
-  
+      const onChainLogs: DisplayJob[] = project.story.filter(step => step.agent === "Analysis").map((step, index) => ({ id: `log-${project.id}-${index}`, label: step.action, projectId: project.id, state: 'logged', logData: step }));
       const onChainLabels = new Set(onChainLogs.map(log => log.label));
-  
-      const localJobs: DisplayJob[] = jobs
-        .filter(job => job.projectId === selectedProjectId && !onChainLabels.has(job.label))
-        .map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
-  
+      const localJobs: DisplayJob[] = jobs.filter(job => job.projectId === selectedProjectId && !onChainLabels.has(job.label)).map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
       return [...onChainLogs, ...localJobs];
-    };
-    // If in Demo Mode, filter and map to ensure the type is correct
-    return jobs
-      .filter(job => job.projectId === DEMO_PROJECT_ID)
-      .map(job => ({
-          id: job.id,
-          label: job.label,
-          projectId: job.projectId as string,
-          state: job.state,
-          failedReason: job.failedReason,
-          returnvalue: job.returnvalue,
-          logData: job.logData
-      }));
+    }
+    return jobs.filter(job => job.projectId === DEMO_PROJECT_ID).map(job => ({ id: job.id, label: job.label, projectId: job.projectId as string, state: job.state, failedReason: job.failedReason, returnvalue: job.returnvalue, logData: job.logData }));
   }, [selectedProjectId, projects, jobs]);
 
-  useEffect(() => {
-    initWebR().then(() => {
-      setIsWebRReady(true);
-      setWebRInitMessage('Engine Ready');
-    }).catch(e => {
-      setPageError('Could not start the analysis engine. Please refresh the page.');
-    });
-  }, []);
-
-
-  const runRealAnalysis = async () => {
-    // This function can be simplified. No need for handleUpload() here anymore.
-    //if (!selectedProjectId) return;
+  // --- Main Analysis Handler (Corrected) ---
+  const handleRunAnalysis = async () => {
     setPageError(null);
-    setViewedJob(null); // Clear any job that might be currently displayed
-    setIsAnalysisRunning(true); 
-    //const selectedProject = projects.find(p => p.id === selectedProjectId);
-    //if (!selectedProject) { setIsAnalysisRunning(false); return; }
+    setViewedJob(null);
+    setIsAnalysisRunning(true);
 
-    // -- Generate hash of the input data ---
-    // Use the validated data, or a string representation of the sample data if none is provided.
-    const inputDataString = validatedCsvData || "sample_data"; // Or a more detailed sample string
-    const inputDataHash = await generateDataHash(inputDataString);
+    const isDemo = !selectedProjectId || selectedProjectId === DEMO_PROJECT_ID;
+    
+    const inputDataString = validatedCsvData || "";
+    const inputDataHash = await generateDataHash(isDemo ? "sample_data" : inputDataString);
 
     const jobLabel = validatedCsvData
       ? `LD50 analysis with custom data`
       : `LD50 analysis with sample data`;
 
-    const newJob: Job = { 
-      id: `webr_job_${Date.now()}`,
+    const newJob: Job = {
+      id: `${isDemo ? 'demo' : 'netlify'}_job_${Date.now()}`,
       kind: 'ld50',
       label: jobLabel,
-      projectId: selectedProjectId || DEMO_PROJECT_ID, 
+      projectId: selectedProjectId || DEMO_PROJECT_ID,
       createdAt: Date.now(),
       state: 'processing'
     };
     setJobs(prev => [newJob, ...prev]);
 
     try {
-      const result = await runLd50Analysis(rScriptContent, validatedCsvData || undefined);
+      
+      const response = await fetch('/.netlify/functions/run-ld50', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dataCsv: inputDataString }),
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ error: 'Failed to parse error response.' }));
+        throw new Error(errorBody.error || `Request failed with status ${response.status}`);
+      }
+      const result = await response.json();
+      
       setJobs(prevJobs => {
         return prevJobs.map(j => {
           if (j.id === newJob.id) {
@@ -169,21 +121,19 @@ const LD50AnalysisPage: React.FC = () => {
           return j;
         });
       });
+
     } catch (e: any) {
-      setJobs(prevJobs => prevJobs.map(j => 
-        j.id === newJob.id 
-        ? { ...j, state: 'failed', failedReason: e.message }
-        : j
-      ));
+      setJobs(prevJobs => prevJobs.map(j => (j.id === newJob.id ? { ...j, state: 'failed', failedReason: e.message } : j)));
       setPageError(`Analysis failed: ${e.message}`);
     } finally {
-      setIsAnalysisRunning(false); // Added this
+      setIsAnalysisRunning(false);
     }
   };
 
 
-  // --- THE NEW, CENTRAL LOGIC HUB ---
+  // --- Logging and Transaction Logic (unchanged) ---
   const handleViewAndLogResults = async (job: DisplayJob) => {
+    console.log(job)
     setViewedJob(job);
     setPageError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -197,81 +147,40 @@ const LD50AnalysisPage: React.FC = () => {
       console.log("Displaying already logged results.");
       return; 
     }
-    
-    // Case 3: Job is local and completed. Start the logging process.
     if (job.state === 'completed' && job.projectId && user?.addr) {
       setIsLogging(true);
       setJobIdBeingLogged(job.id);
-      
       try {
-        // Step A: Upload results to IPFS
         const project = projects.find(p => p.id === job.projectId);
         if (!project?.nft_id) throw new Error("Project NFT ID not found.");
-        
         const results = job.returnvalue;
-        if (!results?.results) throw new Error("No results found in the job to save.");
-        // Create the full verifiable artifact for the ZIP file
-        const plotBase64 = results.results.plot_b64.split(',')[1];
+        const plotBase64 = results?.results?.plot_b64?.split(',')[1];
+        if (!plotBase64) throw new Error("No plot found to save.");
         const metricsJsonString = JSON.stringify(results.results, null, 2);
         const plotHash = await generateDataHash(plotBase64);
         const metricsHash = await generateDataHash(metricsJsonString);
 
         const metadata = {
-            schema_version: "1.0.0",
-            analysis_agent: "KintaGen LD50 v1",
-            timestamp_utc: new Date().toISOString(),
-            input_data_hash_sha256: results.inputDataHash,
-            outputs: [
-                { filename: "ld50_plot.png", hash_sha256: plotHash },
-                { filename: "ld50_metrics.json", hash_sha256: metricsHash }
-            ]
+          schema_version: "1.0.0",
+          analysis_agent: "KintaGen LD50 v1 (Netlify)",
+          timestamp_utc: new Date().toISOString(),
+          input_data_hash_sha256: results.inputDataHash,
+          outputs: [{ filename: "ld50_plot.png", hash_sha256: plotHash }, { filename: "ld50_metrics.json", hash_sha256: metricsHash }]
         };
         const zip = new JSZip();
         zip.file("metadata.json", JSON.stringify(metadata, null, 2));
         zip.file("ld50_plot.png", plotBase64, { base64: true });
         zip.file("ld50_metrics.json", metricsJsonString);
-        
         const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact.zip`);
         const cid = await uploadFile(zipFile);
+        if (!cid) throw new Error(uploadError || "Failed to get CID.");
 
-        if (!cid) throw new Error(uploadError || "Failed to get CID from IPFS upload.");
-        console.log("Results ZIP uploaded to IPFS with CID:", cid);
-
-        // Step B: Prepare and execute the blockchain transaction
-        const addresses = {
-          NonFungibleToken: flowConfig.addresses["NonFungibleToken"],
-          KintaGenNFT: flowConfig.addresses["KintaGenNFT"],
-          ViewResolver: flowConfig.addresses["ViewResolver"],
-        };
-        if (!addresses.KintaGenNFT || !addresses.NonFungibleToken) {
-            setPageError("Contract addresses not configured for this network.");
-            return null;
-        }
+        const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: flowConfig.addresses["NonFungibleToken"] };
         const cadence = getAddToLogTransaction(addresses);
-        const args = (arg, t) => [
-            arg(project.nft_id, t.UInt64),
-            arg("Analysis", t.String),
-            arg(job.label, t.String),
-            arg(cid, t.String)
-        ];
-
-        // Execute the transaction by calling the `mutate` function (which we renamed to `executeTransaction`)
-        executeTransaction({
-            cadence,
-            args, // The variable name is `args`, not `txArgs`
-            limit: 9999
-        });
-        
-        return;
+        const args = (arg, t) => [arg(project.nft_id, t.UInt64), arg("Analysis", t.String), arg(job.label, t.String), arg(cid, t.String)];
+        executeTransaction({ cadence, args, limit: 9999 });
       } catch (error: any) {
-        if (error.message.includes("User rejected")) {
-            console.log("User rejected the transaction.");
-            setPageError("Transaction cancelled by user.");
-        } else {
-            console.error("Logging failed:", error);
-            setPageError(`Failed to log results: ${error.message}`);
-        }
-        // If logging fails, clear the viewed job so the results don't show
+        setPageError(`Failed to log results: ${error.message.includes("User rejected") ? "Transaction cancelled by user." : error.message}`);
         setViewedJob(null);
       } finally {
         setIsLogging(false);
@@ -279,50 +188,38 @@ const LD50AnalysisPage: React.FC = () => {
       }
     }
   };
-
-
+  console.log(viewedJob)
   useEffect(() => {
-    // When the transaction is successful
     if (isTxSuccess && txId) {
-        setDialogTxId(txId);
-        setIsDialogOpen(true);
-        setIsLogging(false); // Stop the initial logging state
-        // `jobIdBeingLogged` will be cleared in the dialog's success/close
+      setDialogTxId(txId);
+      setIsDialogOpen(true);
+      setIsLogging(false);
     }
-
-    // When the transaction fails
     if (isTxError && txError) {
-        const errorMessage = txError.message || "An unknown transaction error occurred.";
-        if (errorMessage.includes("User rejected")) {
-            console.log("User rejected the transaction.");
-            setPageError("Transaction cancelled by user.");
-        } else {
-            setPageError(`Transaction failed: ${errorMessage}`);
-        }
-        setViewedJob(null);
-        setIsLogging(false);
-        setJobIdBeingLogged(null);
+      const errorMessage = txError.message || "An unknown transaction error occurred.";
+      setPageError(`Transaction failed: ${errorMessage.includes("User rejected") ? "Transaction cancelled by user." : errorMessage}`);
+      setViewedJob(null);
+      setIsLogging(false);
+      setJobIdBeingLogged(null);
     }
   }, [isTxSuccess, isTxError, txId, txError]);
   const overallIsLogging = isLogging || isTxPending;
-
+  
   return (
     <>
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-4">LD50 Dose-Response Analysis</h1>
-        <p className="text-gray-400 mb-8">Select one of your on-chain projects to run a real, client-side analysis using WebR.</p>
+        <p className="text-gray-400 mb-8">Select the Demo Project or one of your on-chain projects to run an analysis.</p>
         
         <AnalysisSetupPanel
           projects={projects}
           selectedProjectId={selectedProjectId}
           onProjectChange={(id) => { setSelectedProjectId(id); setViewedJob(null); }}
-          onRunAnalysis={runRealAnalysis}
+          onRunAnalysis={handleRunAnalysis}
           isLoadingProjects={isLoadingProjects}
           projectsError={projectsError}
-          isWebRReady={isWebRReady}
-          webRInitMessage={webRInitMessage}
-
-          // Pass down the new state and handlers
+          isWebRReady={true}
+          webRInitMessage={'Server Ready'}
           isAnalysisRunning={isAnalysisRunning}
           onDataValidated={(csvString) => setValidatedCsvData(csvString)}
           onDataCleared={() => setValidatedCsvData(null)}
@@ -336,6 +233,7 @@ const LD50AnalysisPage: React.FC = () => {
             isLoading={overallIsLogging && jobIdBeingLogged === viewedJob.id}
             />
         )}
+        
         <AnalysisJobsList
           jobs={displayJobs}
           onClearJobs={() => {
@@ -349,22 +247,13 @@ const LD50AnalysisPage: React.FC = () => {
 
       <TransactionDialog
         open={isDialogOpen}
-        onOpenChange={(isOpen) => {
-          setIsDialogOpen(isOpen);
-          // When the dialog closes, we can clear the job ID
-          if (!isOpen) {
-              setJobIdBeingLogged(null);
-          }
-        }}
+        onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) setJobIdBeingLogged(null); }}
         txId={dialogTxId || undefined}
-        onSuccess={() => {
-            console.log("Successfully logged to the blockchain! Refetching projects to update the story.");
-            refetchProjects();
-        }}
+        onSuccess={refetchProjects}
         pendingTitle="Logging Analysis to the Chain"
-        pendingDescription="Please wait while the transaction is being processed by the Flow network. This may take a moment."
+        pendingDescription="Please wait while the transaction is being processed..."
         successTitle="Log Entry Confirmed!"
-        successDescription="Your analysis results have been permanently recorded on the blockchain."
+        successDescription="Your analysis results have been permanently recorded."
         closeOnSuccess={false}
       />
     </>
