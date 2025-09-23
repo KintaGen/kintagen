@@ -6,6 +6,7 @@ import {
   ChatBubbleLeftRightIcon,
   BeakerIcon,
   ChevronDownIcon,
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline';
 import FeedbackButton from './FeedbackButton'; 
 import { Connect } from "@onflow/react-sdk";
@@ -42,6 +43,7 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
   const navLinks: NavLinkInfo[] = [
     { name: 'Home', to: '/', icon: HomeIcon },
     { name: 'Projects', to: '/projects', icon: FolderIcon },
+
     //{ name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },
     {
       name: 'Analysis',
@@ -50,6 +52,8 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
         { name: 'LD50', to: '/analysis' },
       ],
     },
+    { name: 'Verify', to: '/verify', icon: ShieldCheckIcon },
+
   ];
 
   return (

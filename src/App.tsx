@@ -5,6 +5,8 @@ import HomePage from './pages/HomePage';
 import ResearchChatPage from './pages/ResearchChatPage';
 import MintingComponent from './pages/ProjectsPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
+import VerificationPage  from './pages/VerificationPage'; // Assuming you placed it here
+
 import Header from './components/Header';
 import { JobProvider, useJobs } from './contexts/JobContext';
 import GlobalJobStatusToast from './components/GlobalJobStatusToast';
@@ -123,6 +125,8 @@ const App: React.FC = () => {
                   <Route path="/projects" element={<MintingComponent />} />
                   {/*<Route path="/chat" element={<ResearchChatPage />} />*/}
                   <Route path="/analysis" element={<LD50AnalysisPage />} />
+                  <Route path="/verify" element={<VerificationPage />} />
+
                 </Routes>
               </main>
 
