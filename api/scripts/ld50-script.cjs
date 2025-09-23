@@ -1,7 +1,7 @@
 // This file contains the complete, trusted R script as a TypeScript string literal.
 // You can import `ld50ScriptContent` from this file and pass it to WebR for execution.
 
-export const ld50ScriptContent = `
+const ld50ScriptContent = `
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
 #        LD50/ED50 Dose-Response Analysis - API Version
@@ -219,3 +219,7 @@ tryCatch({
 output_data$status <- ifelse(is.null(output_data$error), "success", "error")
 toJSON(output_data, auto_unbox = TRUE, pretty = TRUE)
 `;
+
+module.exports = {
+  ld50ScriptContent: ld50ScriptContent
+}

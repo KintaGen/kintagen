@@ -1,7 +1,8 @@
 import { WebR } from 'webr';
-import { ld50ScriptContent } from './scripts/ld50-script.js';
 import path from "node:path";
 import fs from "node:fs";
+
+const {ld50ScriptContent} =  require('./scripts/ld50-script.cjs')
 
 // This global variable will persist between "warm" invocations.
 let webRInstance = null;
@@ -12,11 +13,17 @@ export default async function handler(request, response) {
   if (request.method !== 'POST') {
     return response.status(405).json({ error: 'Method Not Allowed' });
   }
-
+  const currentWorkingDirectory = process.cwd();
+  console.log(`[DEBUG] Current Working Directory: ${currentWorkingDirectory}`);
+  const filesInCwd = fs.readdirSync(currentWorkingDirectory);
+  console.log('[DEBUG] Files in CWD:', filesInCwd);
   try {
     if (!webRInstance) {
       console.log('🚀 Cold start: Initializing WebR with bundled packages...');
-      const webR = new WebR();
+      const webR = new WebR({
+        baseUrl: `${currentWorkingDirectory}/.vercel/output/static/webr-assets/`,
+        channelType: 3
+      });
       await webR.init();
 
       console.log("Copying bundled packages into WebR's memory...");
