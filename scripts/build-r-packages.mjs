@@ -1,10 +1,11 @@
 import { WebR } from "webr";
-import { access, mkdir, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 // --- Configuration ---
 const PACKAGES_TO_INSTALL = ["drc", "jsonlite", "ggplot2", "base64enc"];
 const OUTPUT_DIR = path.resolve(process.cwd(), "r_packages");
+const MANIFEST_PATH = path.join(OUTPUT_DIR, "manifest.json");
 const DIRECTORIES_TO_STRIP = new Set([
   "doc",
   "examples",
@@ -16,16 +17,39 @@ const DIRECTORIES_TO_STRIP = new Set([
 ]);
 // --- End Configuration ---
 
+async function readManifest() {
+  const raw = await readFile(MANIFEST_PATH, "utf8");
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+    throw new Error("Invalid manifest structure");
+  }
+  return parsed;
+}
+
 async function checkIfPackagesExist() {
   console.log("Checking for existing R packages...");
   try {
-    for (const pkg of PACKAGES_TO_INSTALL) {
+    const packages = await readManifest();
+    if (!packages.length) throw new Error("Empty manifest");
+    for (const pkg of packages) {
       await access(path.join(OUTPUT_DIR, pkg));
     }
     return true;
   } catch (error) {
     return false;
   }
+}
+
+async function listInstalledPackages(webR) {
+  const csv = await webR.evalRRaw(
+    'paste(installed.packages(lib.loc="/usr/lib/R/library")[,"Package"], collapse=",")',
+    "string"
+  );
+  if (!csv) return [];
+  return csv
+    .split(",")
+    .map((pkg) => pkg.trim())
+    .filter(Boolean);
 }
 
 async function buildAndCopyPackages() {
@@ -38,8 +62,27 @@ async function buildAndCopyPackages() {
     console.log("Initialising WebR and installing packages...");
     webR = new WebR();
     await webR.init();
+
+    const beforeInstall = new Set(await listInstalledPackages(webR));
+
     await webR.installPackages(PACKAGES_TO_INSTALL);
     console.log("Packages installed in WebR memory.");
+
+    const afterInstall = await listInstalledPackages(webR);
+    const packagesToCopy = new Set(
+      afterInstall.filter((pkg) => !beforeInstall.has(pkg))
+    );
+    for (const pkg of PACKAGES_TO_INSTALL) {
+      packagesToCopy.add(pkg);
+    }
+
+    let packagesArray = [...packagesToCopy];
+    if (!packagesArray.length) {
+      console.warn("No new packages detected; copying requested packages only.");
+      packagesArray = [...new Set(PACKAGES_TO_INSTALL)];
+    }
+
+    console.log(`Copying ${packagesArray.length} packages into ${OUTPUT_DIR}`);
 
     const virtualLibPath = "/usr/lib/R/library";
 
@@ -65,17 +108,25 @@ async function buildAndCopyPackages() {
       }
     };
 
-    for (const pkg of PACKAGES_TO_INSTALL) {
+    for (const pkg of packagesArray) {
       const sourcePath = `${virtualLibPath}/${pkg}`;
-      const node = await webR.FS.lookupPath(sourcePath);
+      let node;
+      try {
+        node = await webR.FS.lookupPath(sourcePath);
+      } catch (error) {
+        console.warn(`Skipping copy for '${pkg}': package directory not found in WebR library.`);
+        continue;
+      }
 
       if (!node || !node.isFolder) {
-        console.warn(`Package '${pkg}' not found in the WebR library.`);
+        console.warn(`Skipping copy for '${pkg}': unexpected filesystem node.`);
         continue;
       }
 
       await copyDir(sourcePath, path.join(OUTPUT_DIR, pkg), node);
     }
+
+    await writeFile(MANIFEST_PATH, JSON.stringify(packagesArray, null, 2));
   } finally {
     if (webR) {
       console.log("Shutting down WebR instance.");
@@ -87,6 +138,14 @@ async function buildAndCopyPackages() {
 async function stripUnnecessaryFiles() {
   console.log("Stripping unnecessary files to reduce size...");
   let removed = 0;
+  let packages;
+
+  try {
+    packages = await readManifest();
+  } catch (error) {
+    console.warn("No manifest found; skipping file stripping step.");
+    return;
+  }
 
   const visit = async (dir) => {
     const entries = await readdir(dir, { withFileTypes: true });
@@ -104,7 +163,7 @@ async function stripUnnecessaryFiles() {
     }
   };
 
-  for (const pkg of PACKAGES_TO_INSTALL) {
+  for (const pkg of packages) {
     const pkgDir = path.join(OUTPUT_DIR, pkg);
     try {
       await visit(pkgDir);
