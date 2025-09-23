@@ -36,7 +36,8 @@
     "recharts": "^3.0.2",
     "viem": "^2.31.1",
     "wagmi": "^2.15.6",
-    "webr": "^0.5.5"
+    "webr": "^0.5.5",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.25.0",
