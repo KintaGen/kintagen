@@ -1,0 +1,7 @@
+{
+    "functions": {
+      "api/run-ld50.ts": {
+        "includeFiles": "api/scripts/ld50-script.ts"
+      }
+    }
+  }

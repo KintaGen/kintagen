@@ -1,63 +1,122 @@
+// scripts/build-r-packages.js
+
 import { WebR } from 'webr';
 import { access, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { glob } from 'glob';
 
-// We will use the FULL package set, as this is the version that worked for you.
+// --- Configuration ---
 const PACKAGES_TO_INSTALL = ["drc", "jsonlite", "ggplot2", "base64enc"];
-// This script will create a directory named `r_packages` at the project root.
 const OUTPUT_DIR = path.resolve(process.cwd(), 'r_packages');
+// --- End Configuration ---
 
-async function main() {
-  console.log('--- R Package Directory Builder (for Netlify Function) ---');
-
-  // To ensure the leanest build, we always start from scratch.
-  if (await access(OUTPUT_DIR).then(() => true).catch(() => false)) {
-    console.log('Found existing r_packages directory. Removing for a clean build...');
-    await rm(OUTPUT_DIR, { recursive: true, force: true });
+/**
+ * Checks if the target directory exists and contains all required packages.
+ * This allows us to skip the build process if it's already complete.
+ * @returns {Promise<boolean>} True if packages exist, false otherwise.
+ */
+async function checkIfPackagesExist() {
+  console.log('🔎 Checking for existing R packages...');
+  try {
+    for (const pkg of PACKAGES_TO_INSTALL) {
+      // Check if the main directory for each package exists.
+      await access(path.join(OUTPUT_DIR, pkg));
+    }
+    // If we get here, all packages were found.
+    return true;
+  } catch (error) {
+    // If access throws an error, a directory is missing.
+    return false;
   }
+}
 
-  console.log('📦 Starting fresh package installation...');
+/**
+ * Performs the core build process: initializes WebR, installs packages,
+ * and copies them from the virtual file system to the local disk.
+ */
+async function buildAndCopyPackages() {
+  console.log(' R packages not found or incomplete. Starting fresh build...');
+
+  // Ensure we start from a clean slate if a build is necessary.
+  await rm(OUTPUT_DIR, { recursive: true, force: true });
+  await mkdir(OUTPUT_DIR, { recursive: true });
+
   let webR = null;
   try {
+    console.log('📦 Initializing WebR and installing packages...');
     webR = new WebR();
-    await mkdir(OUTPUT_DIR, { recursive: true });
     await webR.init();
     await webR.installPackages(PACKAGES_TO_INSTALL);
-    
-    console.log('Copying packages from WebR memory to local filesystem...');
+    console.log('✅ Packages installed in WebR memory.');
+
+    console.log('📁 Copying packages from WebR to local filesystem...');
     const virtualLibPath = '/usr/lib/R/library';
+
     async function copyDir(vfsSource, nodeDest) {
       await mkdir(nodeDest, { recursive: true });
-      const entries = Object.keys((await webR.FS.lookupPath(vfsSource)).contents);
+      const entries = await webR.FS.readdir(vfsSource);
       for (const entry of entries) {
+        if (entry === '.' || entry === '..') continue;
+        
         const vfsPath = `${vfsSource}/${entry}`;
         const nodePath = path.join(nodeDest, entry);
-        const vfsEntry = await webR.FS.lookupPath(vfsPath);
-        if (vfsEntry.isFolder) await copyDir(vfsPath, nodePath);
-        else await writeFile(nodePath, await webR.FS.readFile(vfsPath));
+        const stats = await webR.FS.stat(vfsPath);
+
+        if (webR.FS.isDir(stats.mode)) {
+          await copyDir(vfsPath, nodePath);
+        } else {
+          await writeFile(nodePath, await webR.FS.readFile(vfsPath));
+        }
       }
     }
-    const allPkgs = Object.keys((await webR.FS.lookupPath(virtualLibPath)).contents);
-    for (const pkg of allPkgs) {
-      if (pkg.startsWith('.')) continue;
-      await copyDir(`${virtualLibPath}/${pkg}`, path.join(OUTPUT_DIR, pkg));
-    }
-  } finally {
-    if (webR) await webR.close();
-  }
 
-  // AGGRESSIVE STRIPPING: This is the most important step to reduce size.
-  console.log('🧹 Aggressively stripping unnecessary files from packages...');
+    // Only copy packages we explicitly installed to keep it lean.
+    for (const pkg of PACKAGES_TO_INSTALL) {
+       await copyDir(`${virtualLibPath}/${pkg}`, path.join(OUTPUT_DIR, pkg));
+    }
+
+  } finally {
+    if (webR) {
+      console.log(' shutting down WebR instance.');
+      await webR.close();
+    }
+  }
+}
+
+/**
+ * Aggressively removes files and directories that are not needed at runtime
+ * to reduce the final serverless function size.
+ */
+async function stripUnnecessaryFiles() {
+  console.log('🧹 Stripping unnecessary files to reduce size...');
   const patterns = ['**/doc', '**/examples', '**/help', '**/html', '**/include', '**/tests', '**/testthat'];
+  let totalRemoved = 0;
   for (const pattern of patterns) {
-    const dirsToDelete = await glob(path.join(OUTPUT_DIR, pattern));
+    const fullPattern = path.join(OUTPUT_DIR, pattern).replace(/\\/g, '/'); // Ensure forward slashes for glob
+    const dirsToDelete = await glob(fullPattern, { nodir: false }); // `nodir: false` is default but explicit
     for (const dir of dirsToDelete) {
       await rm(dir, { recursive: true, force: true });
+      totalRemoved++;
     }
   }
+  console.log(`🗑️ Removed ${totalRemoved} unnecessary directories.`);
+}
 
-  console.log(`✅ Success! Created lean r_packages directory.`);
+/**
+ * Main execution function
+ */
+async function main() {
+  console.log('--- R Package Directory Builder ---');
+
+  if (await checkIfPackagesExist()) {
+    console.log('⏩ All required R packages already exist. Skipping build.');
+    return; // Exit successfully
+  }
+
+  await buildAndCopyPackages();
+  await stripUnnecessaryFiles();
+
+  console.log(`✅ Success! Lean 'r_packages' directory is ready.`);
 }
 
 main().catch(err => {

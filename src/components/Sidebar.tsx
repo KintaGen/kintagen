@@ -42,7 +42,7 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
   const navLinks: NavLinkInfo[] = [
     { name: 'Home', to: '/', icon: HomeIcon },
     { name: 'Projects', to: '/projects', icon: FolderIcon },
-    { name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },
+    //{ name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },
     {
       name: 'Analysis',
       icon: BeakerIcon,

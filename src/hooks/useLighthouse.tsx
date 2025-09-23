@@ -27,7 +27,7 @@ export function useLighthouse() {
       const fileData = await fileToBase64(file);
 
       // Call our secure serverless function, now with the filename included
-      const response = await fetch('/.netlify/functions/upload', {
+      const response = await fetch('/api/upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

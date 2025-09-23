@@ -92,7 +92,8 @@ const LD50AnalysisPage: React.FC = () => {
 
     try {
       
-      const response = await fetch('/.netlify/functions/run-ld50', {
+      //const response = await fetch('/.netlify/functions/run-ld50', {
+      const response = await fetch('/api/run-ld50', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dataCsv: inputDataString }),

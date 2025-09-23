@@ -121,7 +121,7 @@ const App: React.FC = () => {
                   {/* ... your routes ... */}
                   <Route path="/" element={<HomePage />} /> 
                   <Route path="/projects" element={<MintingComponent />} />
-                  <Route path="/chat" element={<ResearchChatPage />} />
+                  {/*<Route path="/chat" element={<ResearchChatPage />} />*/}
                   <Route path="/analysis" element={<LD50AnalysisPage />} />
                 </Routes>
               </main>
