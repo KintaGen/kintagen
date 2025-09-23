@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "dev:prepare": "node ./scripts/build-r-packages.mjs && node ./scripts/copy-webr-assets.mjs",
-    "build:r": "node ./scripts/build-r-packages.mjs && node ./scripts/copy-webr-assets.mjs" ,
+    "build:r": "node ./scripts/build-r-packages.mjs && node ./scripts/copy-webr-assets.mjs",
     "build": "vite build",
     "vercel-build": "vite build && node ./scripts/build-r-packages.mjs && node ./scripts/copy-webr-assets.mjs",
     "lint": "eslint .",
@@ -32,6 +32,7 @@
     "openai": "^5.19.1",
     "papaparse": "^5.5.3",
     "pdf-parse": "^1.1.1",
+    "pinata": "^2.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.2",
