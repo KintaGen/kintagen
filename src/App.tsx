@@ -2,9 +2,11 @@ import React,{useState} from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import HomePage from './pages/HomePage';
-import ResearchChatPage from './pages/ResearchChatPage';
+//import ResearchChatPage from './pages/ResearchChatPage';
 import MintingComponent from './pages/ProjectsPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
+import NMRAnalysisPage from './pages/NMRAnalysisPage';
+
 import VerificationPage  from './pages/VerificationPage'; // Assuming you placed it here
 
 import Header from './components/Header';
@@ -125,6 +127,8 @@ const App: React.FC = () => {
                   <Route path="/projects" element={<MintingComponent />} />
                   {/*<Route path="/chat" element={<ResearchChatPage />} />*/}
                   <Route path="/analysis" element={<LD50AnalysisPage />} />
+                  <Route path="/analysis-nmr" element={<NMRAnalysisPage />} />
+
                   <Route path="/verify" element={<VerificationPage />} />
 
                 </Routes>

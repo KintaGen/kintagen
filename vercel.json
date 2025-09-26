@@ -1,7 +1,0 @@
-{
-    "functions": {
-      "api/run-ld50.ts": {
-        "includeFiles": "{r_packages/**}"
-      }
-    }
-  }

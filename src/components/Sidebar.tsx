@@ -50,6 +50,8 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
       icon: BeakerIcon,
       subLinks: [
         { name: 'LD50', to: '/analysis' },
+        { name: 'NMR', to: '/analysis-nmr' },
+
       ],
     },
     { name: 'Verify', to: '/verify', icon: ShieldCheckIcon },

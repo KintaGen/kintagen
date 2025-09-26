@@ -4,10 +4,8 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "dev:prepare": "node ./scripts/build-r-packages.mjs && node ./scripts/copy-webr-assets.mjs",
-    "build:r": "node ./scripts/build-r-packages.mjs && node ./scripts/copy-webr-assets.mjs",
     "build": "vite build",
-    "vercel-build": "vite build && node ./scripts/build-r-packages.mjs && node ./scripts/copy-webr-assets.mjs",
+    "vercel-build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -22,6 +20,7 @@
     "@onflow/react-sdk": "^0.10.1",
     "@onflow/types": "^1.4.1",
     "@tanstack/react-query": "^5.81.5",
+    "@vercel/blob": "^2.0.0",
     "bls-eth-wasm": "^1.4.0",
     "clsx": "^2.1.1",
     "crypto": "^1.0.1",
@@ -39,7 +38,6 @@
     "recharts": "^3.0.2",
     "viem": "^2.31.1",
     "wagmi": "^2.15.6",
-    "webr": "^0.5.5",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
