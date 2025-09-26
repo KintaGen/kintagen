@@ -91,7 +91,7 @@ const LD50AnalysisPage: React.FC = () => {
     setJobs(prev => [newJob, ...prev]);
 
     try {
-      
+
       //const response = await fetch('/.netlify/functions/run-ld50', {
       const response = await fetch('/api/run-ld50', {
         method: 'POST',

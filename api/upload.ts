@@ -1,51 +1,63 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import lighthouse from '@lighthouse-web3/sdk';
+import { PinataSDK } from "pinata";
+import { Readable } from 'stream';
 
 // This is the Vercel function signature
 export default async function handler(
   request: VercelRequest,
   response: VercelResponse
 ) {
-  // 1. Check the method on the `request` object
+  // 1. Check if the method is POST
   if (request.method !== "POST") {
     return response.status(405).json({ error: "Method Not Allowed" });
   }
 
-  // 2. Accessing environment variables is IDENTICAL
-  const LIGHTHOUSE_API_KEY = process.env.LIGHTHOUSE_API_KEY;
+  // 2. Securely access environment variables
+  const PINATA_JWT = process.env.PINATA_JWT;
+  const PINATA_GATEWAY = process.env.PINATA_GATEWAY;
 
-  if (!LIGHTHOUSE_API_KEY) {
-    console.error("Server configuration error: LIGHTHOUSE_API_KEY not found.");
-    // 3. Send errors using the `response` object
+  if (!PINATA_JWT || !PINATA_GATEWAY) {
+    console.error("Server configuration error: Pinata environment variables not set.");
     return response.status(500).json({ error: "Server configuration error." });
   }
 
   try {
-    // 4. Access the auto-parsed JSON body from `request.body`
-    const { fileData } = request.body;
+    // 3. Initialize the Pinata SDK
+    const pinata = new PinataSDK({
+      pinataJwt: PINATA_JWT,
+      pinataGateway: PINATA_GATEWAY,
+    });
+
+    // 4. Access the auto-parsed JSON body
+    // We expect the file content as a base64 string and a filename
+    const { fileData, fileName } = request.body;
     
-    if (!fileData) {
-      return response.status(400).json({ error: "Bad Request: fileData is missing." });
+    if (!fileData || !fileName) {
+      return response.status(400).json({ error: "Bad Request: 'fileData' (base64) and 'fileName' are required." });
     }
 
-    // --- YOUR CORE LOGIC (UNCHANGED) ---
-    const fileBuffer = Buffer.from(fileData, 'base64');
-
-    const lighthouseResponse = await lighthouse.uploadBuffer(
-        fileBuffer,
-        LIGHTHOUSE_API_KEY,
-    );
+    // --- YOUR CORE PINATA LOGIC ---
+    // The documentation shows `new File(...)`, which is for browser environments.
+    // In a Node.js serverless function, we work with Buffers and Streams.
     
-    const cid = lighthouseResponse.data.Hash;
+    // Convert base64 string to a Buffer
+    const fileBuffer = Buffer.from(fileData, 'base64');
+    const fileBlob = new Blob([fileBuffer]);
+    
+
+    // The SDK's upload method can take a stream and options, including the name
+    const uploadResult = await pinata.upload.public.file(fileBlob, { name: fileName });
     // --- END OF CORE LOGIC ---
 
-    // 5. Send a successful response using the `response` object's helpers
-    return response.status(200).json({ cid });
+    // 5. Send the successful upload response back to the client
+    return response.status(200).json(uploadResult);
 
   } catch (error: any) {
-    console.error("Lighthouse upload failed:", error);
+    console.error("Pinata upload failed:", error);
+    // Send a generic error response
     return response.status(500).json({ 
-      error: "An unknown error occurred during upload." 
+      error: "An unknown error occurred during upload.",
+      details: error.message,
     });
   }
 }
