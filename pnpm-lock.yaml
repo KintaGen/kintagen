@@ -44,6 +44,12 @@ importers:
       bls-eth-wasm:
         specifier: ^1.4.0
         version: 1.4.0
+      chart.js:
+        specifier: ^4.5.0
+        version: 4.5.0
+      chartjs-plugin-zoom:
+        specifier: ^2.2.0
+        version: 2.2.0(chart.js@4.5.0)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -59,6 +65,9 @@ importers:
       glob:
         specifier: ^11.0.3
         version: 11.0.3
+      hammerjs:
+        specifier: ^2.0.8
+        version: 2.0.8
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
@@ -77,6 +86,9 @@ importers:
       react:
         specifier: ^19.1.0
         version: 19.1.0
+      react-chartjs-2:
+        specifier: ^5.3.0
+        version: 5.3.0(chart.js@4.5.0)(react@19.1.0)
       react-dom:
         specifier: ^19.1.0
         version: 19.1.0(react@19.1.0)
@@ -1303,6 +1315,9 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
+  '@kurkle/color@0.3.4':
+    resolution: {integrity: sha512-M5UknZPHRu3DEDWoipU6sE8PdkZ6Z/S+v4dD+Ke8IaNlpdSQah50lz1KtcFBa2vsdOnwbbnxJwVM4wty6udA5w==}
+
   '@lighthouse-web3/kavach@0.1.9':
     resolution: {integrity: sha512-z9cSapz4dH4Aor88dq/HsTHhi1Sv7o9r/ZaR5+aG5Mp6iy1TTlyXI8vGsNxUvToEb755Ei23S5kyv9tj7xg2CQ==}
     engines: {node: '>=18.0.0'}
@@ -2110,6 +2125,9 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
+  '@types/hammerjs@2.0.46':
+    resolution: {integrity: sha512-ynRvcq6wvqexJ9brDMS4BnBLzmr0e14d6ZJTEShTBWKymQiHwlAyGu0ZPEFI2Fh1U53F7tN9ufClWM5KvqkKOw==}
+
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
@@ -2804,6 +2822,15 @@ packages:
   chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
     engines: {node: '>=10'}
+
+  chart.js@4.5.0:
+    resolution: {integrity: sha512-aYeC/jDgSEx8SHWZvANYMioYMZ2KX02W6f6uVfyteuCGcadDLcYVHdfdygsTQkQ4TKn5lghoojAsPj5pu0SnvQ==}
+    engines: {pnpm: '>=8'}
+
+  chartjs-plugin-zoom@2.2.0:
+    resolution: {integrity: sha512-in6kcdiTlP6npIVLMd4zXZ08PDUXC52gZ4FAy5oyjk1zX3gKarXMAof7B9eFiisf9WOC3bh2saHg+J5WtLXZeA==}
+    peerDependencies:
+      chart.js: '>=3.2.0'
 
   chokidar@3.6.0:
     resolution: {integrity: sha512-7VT13fmjotKpGipCW9JEQAusEPE+Ei8nl6/g4FBAmIm0GOOLMua9NDDo/DWp0ZAxCr3cPq5ZpBqmPAQgDda2Pw==}
@@ -3820,6 +3847,10 @@ packages:
 
   h3@1.15.3:
     resolution: {integrity: sha512-z6GknHqyX0h9aQaTx22VZDf6QyZn+0Nh+Ym8O/u0SGSkyF5cuTJYKlc8MkzW3Nzf9LE1ivcpmYC3FUGpywhuUQ==}
+
+  hammerjs@2.0.8:
+    resolution: {integrity: sha512-tSQXBXS/MWQOn/RKckawJ61vvsDpCom87JgxiYdGwHdOa0ht0vzUWDlfioofFCRU0L+6NGDt6XzbgoJvZkMeRQ==}
+    engines: {node: '>=0.8.0'}
 
   hamt-sharding@2.0.1:
     resolution: {integrity: sha512-vnjrmdXG9dDs1m/H4iJ6z0JFI2NtgsW5keRkTcM85NGak69Mkf5PHUqBz+Xs0T4sg0ppvj9O5EGAJo40FTxmmA==}
@@ -5146,6 +5177,12 @@ packages:
 
   randomfill@1.0.4:
     resolution: {integrity: sha512-87lcbR8+MhcWcUiQ+9e+Rwx8MyR2P7qnt15ynUlbm3TU/fjbgz4GsvfSUDTemtCCtVCqb4ZcEFlyPNTh9bBTLw==}
+
+  react-chartjs-2@5.3.0:
+    resolution: {integrity: sha512-UfZZFnDsERI3c3CZGxzvNJd02SHjaSJ8kgW1djn65H1KK8rehwTjyrRKOG3VTMG8wtHZ5rgAO5oTHtHi9GCCmw==}
+    peerDependencies:
+      chart.js: ^4.1.1
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   react-dom@19.1.0:
     resolution: {integrity: sha512-Xs1hdnE+DyKgeHJeJznQmYMIBG3TKIHJJT95Q58nHLSrElKlGQqDTR2HQ9fx5CN/Gk6Vh/kupBTDLU11/nDk/g==}
@@ -7573,6 +7610,8 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@kurkle/color@0.3.4': {}
+
   '@lighthouse-web3/kavach@0.1.9':
     dependencies:
       bls-eth-wasm: 1.4.0
@@ -9365,6 +9404,8 @@ snapshots:
 
   '@types/estree@1.0.8': {}
 
+  '@types/hammerjs@2.0.46': {}
+
   '@types/json-schema@7.0.15': {}
 
   '@types/long@4.0.2': {}
@@ -10891,6 +10932,16 @@ snapshots:
       ansi-styles: 4.3.0
       supports-color: 7.2.0
 
+  chart.js@4.5.0:
+    dependencies:
+      '@kurkle/color': 0.3.4
+
+  chartjs-plugin-zoom@2.2.0(chart.js@4.5.0):
+    dependencies:
+      '@types/hammerjs': 2.0.46
+      chart.js: 4.5.0
+      hammerjs: 2.0.8
+
   chokidar@3.6.0:
     dependencies:
       anymatch: 3.1.3
@@ -12057,6 +12108,8 @@ snapshots:
       radix3: 1.1.2
       ufo: 1.6.1
       uncrypto: 0.1.3
+
+  hammerjs@2.0.8: {}
 
   hamt-sharding@2.0.1:
     dependencies:
@@ -13394,6 +13447,11 @@ snapshots:
     dependencies:
       randombytes: 2.1.0
       safe-buffer: 5.2.1
+
+  react-chartjs-2@5.3.0(chart.js@4.5.0)(react@19.1.0):
+    dependencies:
+      chart.js: 4.5.0
+      react: 19.1.0
 
   react-dom@19.1.0(react@19.1.0):
     dependencies:
