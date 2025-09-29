@@ -7,8 +7,11 @@ import {
   ArrowDownTrayIcon
 } from '@heroicons/react/24/solid';
 import JSZip from 'jszip';
-import { DEMO_PROJECT_ID } from '../../pages/LD50AnalysisPage'; // Adjust the import path as needed
-import { generateDataHash } from '../../utils/hash'; // Adjust path if needed
+
+import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
+
+
+import { generateDataHash } from '../../../utils/hash'; // Adjust path if needed
 
 // Type definition for the job prop this component receives.
 // It includes all possible data sources.
@@ -222,58 +225,11 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
         </div>
       </div>
 
-      {/* Verifiability & Provenance Section */}
-      {metadata && (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-          <h3 className="text-lg font-semibold mb-4 text-gray-200 flex items-center gap-2">
-            <FingerPrintIcon className="h-6 w-6 text-cyan-400" />
-            Verifiability & Provenance
-          </h3>
-          <div className="text-left bg-gray-900/50 p-4 rounded-lg text-sm space-y-2">
-            <p><strong className="text-gray-400">Analysis Agent:</strong> <span className="font-mono">{metadata.analysis_agent}</span></p>
-            <div className="flex items-start">
-              <strong className="text-gray-400 flex-shrink-0">Input Dataset Hash (SHA-256):</strong>
-              <span className="font-mono text-xs text-cyan-300 break-all ml-2">{metadata.input_data_hash_sha256}</span>
-            </div>
-          </div>
-          <p className="text-xs text-gray-500 mt-3">
-            To verify this result, a third party can re-calculate the SHA-256 hash of the original private dataset and confirm it matches the value above.
-          </p>
-        </div>
-      )}
-
-      {/* On-Chain Log Information Box (only shown for logged jobs) */}
-      {job.state === 'logged' && (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-          <div>
-            <h3 className="text-lg font-semibold mb-4 text-gray-200 flex items-center gap-2">
-              <CheckCircleIcon className="h-6 w-6" />
-              Analysis Logged On-Chain
-            </h3>
-            <div className="text-left bg-gray-900/50 p-4 rounded-lg text-sm space-y-2">
-              <p><strong className="text-gray-400">Agent Type:</strong> <span className="font-mono">{job.logData.agent}</span></p>
-              <p><strong className="text-gray-400">Result CID:</strong> <span className="text-cyan-300 font-mono text-xs break-all"><a href={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${job.logData.resultCID}`} target="_blank" rel="noopener noreferrer">{job.logData.resultCID}</a></span></p>
-              <p className="flex items-center gap-1"><strong className="text-gray-400">Timestamp:</strong> <span className="font-mono text-xs">{new Date(parseFloat(job.logData.timestamp) * 1000).toLocaleString()}</span></p>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* --- Conditional Download Button for Demo Mode --- */}
-      {job.projectId === DEMO_PROJECT_ID && (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-          <h3 className="text-lg font-semibold mb-4">Download Demo Results</h3>
-          <p className="text-gray-400 mb-4 text-sm">
-            Download a verifiable artifact of this demo analysis, including the data hash, metrics, and plot.
-          </p>
-          <button
-            onClick={handleDownload}
-            className="flex items-center justify-center mx-auto bg-cyan-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-cyan-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-          >
-            <ArrowDownTrayIcon className="h-5 w-5 mr-2"/>
-            <span>Download Artifact (.zip)</span>
-          </button>
-        </div>
-      )}
+      <ProvenanceAndDownload 
+        job={job}
+        metadata={metadata}
+        onDownload={handleDownload}
+      />
     </div>
   );
 };

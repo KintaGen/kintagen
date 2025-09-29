@@ -1,7 +1,7 @@
 // components/nmr/NmrAnalysisSetupPanel.tsx
 import React from 'react';
 import { VarianDataInput } from './VarianDataInput';
-import { DEMO_PROJECT_ID } from '../../pages/NMRAnalysisPage'; // We will create this page next
+import { DEMO_PROJECT_ID } from '../../../pages/NMRAnalysisPage'; // We will create this page next
 
 interface Project { id: string; name: string; }
 

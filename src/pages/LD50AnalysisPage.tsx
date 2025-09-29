@@ -7,10 +7,15 @@ import JSZip from 'jszip';
 import { getAddToLogTransaction } from '../flow/cadence';
 import { useOwnedNftProjects } from '../flow/kintagen-nft';
 import { useLighthouse } from '../hooks/useLighthouse';
-import { AnalysisSetupPanel } from '../components/ld50/AnalysisSetupPanel';
-import { AnalysisResultsDisplay } from '../components/ld50/AnalysisResultsDisplay';
-import { AnalysisJobsList } from '../components/ld50/AnalysisJobsList';
+import { AnalysisSetupPanel } from '../components/analysis/ld50/AnalysisSetupPanel';
+import { AnalysisResultsDisplay } from '../components/analysis/ld50/AnalysisResultsDisplay';
+import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList';
 import { generateDataHash } from '../utils/hash';
+
+// Firebase
+
+import { logEvent } from "firebase/analytics";
+import { analytics } from '../services/firebase'; 
 
 // --- Type Definitions ---
 interface Project { 
@@ -21,7 +26,7 @@ interface Project {
     story?: any[];
 }
 
-interface DisplayJob { 
+export interface DisplayJob { 
     id: string; 
     label: string; 
     projectId: string; 
@@ -30,6 +35,7 @@ interface DisplayJob {
     returnvalue?: any; 
     logData?: any; 
 }
+
 export const DEMO_PROJECT_ID = 'demo-project';
 const R_API = import.meta.env.VITE_API_BASE_URL;
 const LD50AnalysisPage: React.FC = () => {
@@ -80,6 +86,13 @@ const LD50AnalysisPage: React.FC = () => {
       ? `LD50 analysis with custom data`
       : `LD50 analysis with sample data`;
 
+    // --- FIREBASE ANALYTICS: Log the start of an analysis ---
+    logEvent(analytics, 'run_analysis', {
+      analysis_type: 'ld50', // Good for future-proofing if you add more analysis types
+      data_source_hash: inputDataHash,
+      is_demo: isDemo,
+    });
+
     const newJob: Job = {
       id: `${isDemo ? 'demo' : 'netlify'}_job_${Date.now()}`,
       kind: 'ld50',
@@ -104,7 +117,13 @@ const LD50AnalysisPage: React.FC = () => {
         throw new Error(errorBody.error || `Request failed with status ${response.status}`);
       }
       const result = await response.json();
-      
+      // --- FIREBASE ANALYTICS: Log the successful result of the analysis ---
+      logEvent(analytics, 'analysis_result', {
+        status: 'success',
+        analysis_type: 'ld50',
+        data_source_hash: inputDataHash,
+        is_demo: isDemo,
+      });
       setJobs(prevJobs => {
         return prevJobs.map(j => {
           if (j.id === newJob.id) {
@@ -127,6 +146,14 @@ const LD50AnalysisPage: React.FC = () => {
     } catch (e: any) {
       setJobs(prevJobs => prevJobs.map(j => (j.id === newJob.id ? { ...j, state: 'failed', failedReason: e.message } : j)));
       setPageError(`Analysis failed: ${e.message}`);
+      // --- FIREBASE ANALYTICS: Log the failed result of the analysis ---
+      logEvent(analytics, 'analysis_result', {
+        status: 'failed',
+        analysis_type: 'ld50',
+        is_demo: isDemo,
+        data_source_hash: inputDataHash,
+        error_message: e.message, // Capture the error for debugging
+      });
     } finally {
       setIsAnalysisRunning(false);
     }

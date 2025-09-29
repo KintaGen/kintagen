@@ -16,24 +16,8 @@ import { FlowProvider } from '@onflow/react-sdk';
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyAazP1E1_gKmTz2QLy2p-Yf2csWgTpR66o",
-  authDomain: "kgdemo-ea8b2.firebaseapp.com",
-  projectId: "kgdemo-ea8b2",
-  storageBucket: "kgdemo-ea8b2.firebasestorage.app",
-  messagingSenderId: "581458558038",
-  appId: "1:581458558038:web:ca048ab4b66db9b12f8ff7",
-  measurementId: "G-ED3WENYD1L"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+import './services/firebase';
 
 const ToastManager = () => {
   const { jobs } = useJobs(); // Get the global jobs state

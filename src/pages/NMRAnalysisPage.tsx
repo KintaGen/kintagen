@@ -11,10 +11,13 @@ import { generateDataHash } from '../utils/hash';
 import { getAddToLogTransaction } from '../flow/cadence';
 
 // New NMR specific components
-import { NmrAnalysisSetupPanel } from '../components/nmr/NmrAnalysisSetupPanel';
-import { NmrAnalysisResultsDisplay } from '../components/nmr/NmrAnalysisResultsDisplay';
-import { AnalysisJobsList } from '../components/ld50/AnalysisJobsList'; // Can be reused if generic
+import { NmrAnalysisSetupPanel } from '../components/analysis/nmr/NmrAnalysisSetupPanel';
+import { NmrAnalysisResultsDisplay } from '../components/analysis/nmr/NmrAnalysisResultsDisplay';
+import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList'; // Can be reused if generic
 
+// Firebase
+import { logEvent } from "firebase/analytics";
+import { analytics } from '../services/firebase'; 
 // --- Type Definitions ---
 interface Project { id: string; name: string; description: string; nft_id: string; story?: any[]; }
 interface DisplayJob { id: string; label: string; projectId: string; state: 'completed' | 'failed' | 'processing' | 'logged'; failedReason?: string; returnvalue?: any; logData?: any; }
@@ -72,7 +75,7 @@ const NMRAnalysisPage: React.FC = () => {
         .map((step, index) => ({ id: `log-${project.id}-${index}`, label: step.action, projectId: project.id, state: 'logged', logData: step }));
       
       const onChainLabels = new Set(onChainLogs.map(log => log.label));
-      const localJobs = displayJobs.filter(j => j.projectId === selectedProjectId && !onChainLabels.has(j.label));
+      const localJobs: DisplayJobs[] = jobs.filter(j => j.projectId === selectedProjectId && !onChainLabels.has(j.label));
       
       return [...onChainLogs, ...localJobs];
     }
@@ -113,7 +116,12 @@ const NMRAnalysisPage: React.FC = () => {
     
     // Use the actual file name for a better label
     const jobLabel = `NMR analysis of ${varianFile.name}`;
-
+    // --- FIREBASE ANALYTICS: Log the start of an analysis ---
+    logEvent(analytics, 'run_analysis', {
+      analysis_type: 'nmr1DH', // Good for future-proofing if you add more analysis types
+      data_source_hash: inputDataHash,
+      is_demo: isDemo,
+    });
     const newJob: Job = {
       id: `${isDemo ? 'demo' : 'netlify'}_job_${Date.now()}`,
       kind: 'nmr',
@@ -141,7 +149,13 @@ const NMRAnalysisPage: React.FC = () => {
         throw new Error(errorBody.error || `Request failed with status ${response.status}`);
       }
       const result = await response.json();
-      
+      // --- FIREBASE ANALYTICS: Log the successful result of the analysis ---
+      logEvent(analytics, 'analysis_result', {
+        status: 'success',
+        analysis_type: 'nmr1DH',
+        data_source_hash: inputDataHash,
+        is_demo: isDemo,
+      });
       setJobs(prevJobs => prevJobs.map(j => 
         j.id === newJob.id 
           ? { 
@@ -155,6 +169,14 @@ const NMRAnalysisPage: React.FC = () => {
     } catch (e: any) {
       setJobs(prevJobs => prevJobs.map(j => (j.id === newJob.id ? { ...j, state: 'failed', failedReason: e.message } : j)));
       setPageError(`Analysis failed: ${e.message}`);
+      // --- FIREBASE ANALYTICS: Log the failed result of the analysis ---
+      logEvent(analytics, 'analysis_result', {
+        status: 'failed',
+        analysis_type: 'nmr1DH',
+        is_demo: isDemo,
+        data_source_hash: inputDataHash,
+        error_message: e.message, // Capture the error for debugging
+      });
     } finally {
       setIsAnalysisRunning(false);
     }
@@ -188,13 +210,9 @@ const NMRAnalysisPage: React.FC = () => {
           schema_version: "1.0.0",
           analysis_agent: "KintaGen NMR v1 (Vercel)",
           timestamp_utc: new Date().toISOString(),
-          input_data_hash_sha256: results.inputDataHash,
-          outputs: [
-            { filename: "nmr_plot.png", hash_sha256: plotHash }, 
-            { filename: "nmr_spectrum.json", hash_sha256: spectrumHash }
-          ]
+          returnvalue: results
         };
-
+        console.log(metadata)
         const zip = new JSZip();
         zip.file("metadata.json", JSON.stringify(metadata, null, 2));
         zip.file("nmr_plot.png", plotBase64, { base64: true });
