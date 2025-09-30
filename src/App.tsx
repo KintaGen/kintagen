@@ -6,6 +6,7 @@ import HomePage from './pages/HomePage';
 import MintingComponent from './pages/ProjectsPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
 import NMRAnalysisPage from './pages/NMRAnalysisPage';
+import GCMSAnalysisPage from './pages/GgmsAnalysisPage';
 
 import VerificationPage  from './pages/VerificationPage'; // Assuming you placed it here
 
@@ -112,6 +113,7 @@ const App: React.FC = () => {
                   {/*<Route path="/chat" element={<ResearchChatPage />} />*/}
                   <Route path="/analysis" element={<LD50AnalysisPage />} />
                   <Route path="/analysis-nmr" element={<NMRAnalysisPage />} />
+                  <Route path="/analysis-xcms" element={<GCMSAnalysisPage />} />
 
                   <Route path="/verify" element={<VerificationPage />} />
 

@@ -51,6 +51,7 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
       subLinks: [
         { name: 'LD50', to: '/analysis' },
         { name: 'NMR', to: '/analysis-nmr' },
+        { name: 'XCMS', to: '/analysis-xcms' },
 
       ],
     },

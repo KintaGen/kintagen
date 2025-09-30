@@ -2,10 +2,10 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import Plot from 'react-plotly.js';
 import { Layout } from 'plotly.js';
+import JSZip from 'jszip';
 
 import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
-
-
+import { generateDataHash } from '../../../utils/hash'; // Adjust this path to your project structure
 
 // --- Updated main interfaces ---
 interface SpectrumPoint {
@@ -28,7 +28,8 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
   const { returnvalue, logData } = job;
   const [metadata, setMetadata] = useState<any | null>(null);
   
-  const results = returnvalue?.results;
+  // Use a stable reference for results to avoid re-running memoized hooks unnecessarily
+  const results = useMemo(() => returnvalue?.results, [returnvalue]);
 
   useEffect(() => {
     // Reset all state whenever a new job is passed in.
@@ -39,19 +40,83 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
       // Create the metadata object for display from the job's return value.
       setMetadata({
         input_data_hash_sha256: job.returnvalue.inputDataHash,
-        analysis_agent: "KintaGen LD50 Agent v1",
+        analysis_agent: "KintaGen NMR Agent v1 (Local Run)",
       });
+    } else if (job.state === 'logged') {
+        // For logged jobs, the full metadata is in the IPFS artifact.
+        // We'll show what we know from the smart contract log.
+        setMetadata({
+            input_data_hash_sha256: job.logData.inputDataHash,
+            analysis_agent: "KintaGen NMR Agent v1", // Assuming this from context
+        });
     }
     
   }, [job]); // This effect re-runs whenever the `job` prop changes.
 
-  const handleDownload = () => {
-    console.log("Download artifact for job:", job);
-    if (logData?.resultCID) {
+  const handleDownload = async () => {
+    // --- Case 1: Job is logged on-chain. Download the artifact directly from IPFS. ---
+    if (job.state === 'logged' && logData?.resultCID) {
+      console.log("Downloading existing artifact for job:", job.projectId);
       window.open(`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${logData.resultCID}?download=true`, '_blank');
-    } else {
-      alert("Download artifact is not available for this job.");
+      return;
     }
+
+    // --- Case 2: Job was a local run. Dynamically create and download the artifact. ---
+    if (job.state === 'completed' && results && metadata) {
+      console.log("Creating and downloading artifact for local job:", job.projectId);
+      try {
+        const zip = new JSZip();
+
+        // 1. Prepare raw data files
+        const plotBase64 = results.plot_b64.split(',')[1]; // Remove data:image/png;base64, prefix
+        const resultsJsonString = JSON.stringify(results, null, 2);
+
+        // 2. Generate SHA256 hashes of the output files
+        const plotHash = await generateDataHash(plotBase64);
+        const resultsHash = await generateDataHash(resultsJsonString);
+        
+        // 3. Construct the complete metadata object for provenance
+        const fullMetadata = {
+            schema_version: "1.0.0",
+            analysis_agent: "KintaGen NMR Agent v1 (Local Run)",
+            timestamp_utc: new Date().toISOString(),
+            input_data_hash_sha256: metadata.input_data_hash_sha256,
+            outputs: [
+                {
+                    filename: "nmr_plot.png",
+                    hash_sha256: plotHash
+                },
+                {
+                    filename: "analysis_results.json",
+                    hash_sha256: resultsHash
+                }
+            ]
+        };
+
+        // 4. Add all files to the ZIP archive
+        zip.file("metadata.json", JSON.stringify(fullMetadata, null, 2));
+        zip.file("analysis_results.json", resultsJsonString);
+        zip.file("nmr_plot.png", plotBase64, { base64: true });
+
+        // 5. Generate the ZIP blob and trigger the download
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(zipBlob);
+        link.download = `KintaGen_NMR_Artifact_${new Date().toISOString().split('T')[0]}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+
+      } catch (error) {
+        console.error("Failed to create or download ZIP file:", error);
+        alert("An error occurred while creating the download file.");
+      }
+      return;
+    }
+
+    // --- Fallback Case ---
+    alert("Download artifact is not available for this job.");
   };
 
   // --- Plotly Chart Data and Layout ---

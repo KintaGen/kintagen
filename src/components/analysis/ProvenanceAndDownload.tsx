@@ -22,7 +22,6 @@ interface ProvenanceAndDownloadProps {
 
 export const ProvenanceAndDownload: React.FC<ProvenanceAndDownloadProps> = ({ job, metadata, onDownload }) => {
     const logs = job.returnvalue?.log || [];
-
     return (
     // This container manages the spacing between the sections.
     <div className="space-y-8">
@@ -75,15 +74,17 @@ export const ProvenanceAndDownload: React.FC<ProvenanceAndDownloadProps> = ({ jo
           </button>
         </div>
       )}
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
+        {/*
+                <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
             <h3 className="text-lg font-semibold mb-2 text-gray-300">Processing Log</h3>
             <div className="bg-gray-900/70 p-3 rounded-md max-h-96 overflow-y-auto font-mono text-xs text-gray-300">
-            {logs.map((line, index) => (
+            {logs?.map((line, index) => (
                 <p key={index} className="whitespace-pre-wrap">{line}</p>
             ))}
-            {logs.length === 0 && <p>No log messages.</p>}
+            {logs?.length === 0 && <p>No log messages.</p>}
             </div>
         </div>
+        */}
     </div>
   );
 };
