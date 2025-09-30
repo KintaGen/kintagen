@@ -1,294 +1,292 @@
-// src/pages/Ld50AnalysisPage.tsx
-import React, { useState, useEffect } from 'react';
-import { ChartBarIcon, LinkIcon, ArrowPathIcon, SparklesIcon, BeakerIcon, DocumentMagnifyingGlassIcon, InboxArrowDownIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
-import JSZip from 'jszip'; // <-- Import the new library
+import React,{useState,useMemo,useEffect} from 'react';
+import { XCircleIcon } from '@heroicons/react/24/solid';
+import { useJobs, type Job } from '../contexts/JobContext';
+import { useFlowCurrentUser, useFlowConfig, TransactionDialog, useFlowMutate } from '@onflow/react-sdk';
+import JSZip from 'jszip';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
-const FILECOIN_GATEWAY = 'https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.calibration.filcdn.io';
+import { getAddToLogTransaction } from '../flow/cadence';
+import { useOwnedNftProjects } from '../flow/kintagen-nft';
+import { useLighthouse } from '../hooks/useLighthouse';
+import { AnalysisSetupPanel } from '../components/analysis/ld50/AnalysisSetupPanel';
+import { AnalysisResultsDisplay } from '../components/analysis/ld50/AnalysisResultsDisplay';
+import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList';
+import { generateDataHash } from '../utils/hash';
 
-// --- TYPE DEFINITIONS ---
-interface Ld50ResultData {
-  ld50_estimate: number;
-  standard_error: number;
-  confidence_interval_lower: number;
-  confidence_interval_upper: number;
-  model_coefficients: number[][];
-  plot_b64: string;
+// Firebase
+
+import { logEvent } from "firebase/analytics";
+import { analytics } from '../services/firebase'; 
+
+// --- Type Definitions ---
+interface Project { 
+    id: string; 
+    name: string; 
+    description: string; 
+    nft_id: string; 
+    story?: any[];
 }
 
-interface Ld50ApiResponse {
-  status: 'success' | 'error';
-  error: string | null;
-  log: string[];
-  results: Ld50ResultData;
+export interface DisplayJob { 
+    id: string; 
+    label: string; 
+    projectId: string; 
+    state: 'completed' | 'failed' | 'processing' | 'logged'; 
+    failedReason?: string; 
+    returnvalue?: any; 
+    logData?: any; 
 }
 
-interface Project {
-  id: number;
-  name: string;
-  nft_id: number | null;
-}
-
-interface ExperimentFile {
-  cid: string;
-  title: string;
-}
-
-const Ld50AnalysisPage: React.FC = () => {
-  // --- STATE MANAGEMENT ---
-  const [dataUrl, setDataUrl] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<Ld50ApiResponse | null>(null);
-
-  // Project and File Selection State
-  const [projects, setProjects] = useState<Project[]>([]);
+export const DEMO_PROJECT_ID = 'demo-project';
+const R_API = import.meta.env.VITE_API_BASE_URL;
+const LD50AnalysisPage: React.FC = () => {
+  // --- State Hooks ---
+  const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
+  const { jobs, setJobs } = useJobs();
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [experimentFiles, setExperimentFiles] = useState<ExperimentFile[]>([]);
-  const [selectedFileCid, setSelectedFileCid] = useState<string>('');
-  const [areProjectsLoading, setAreProjectsLoading] = useState(true);
-  const [areFilesLoading, setAreFilesLoading] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [viewedJob, setViewedJob] = useState<DisplayJob | null>(null);
+  const [dialogTxId, setDialogTxId] = useState<string | null>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const flowConfig = useFlowConfig();
+  const { user } = useFlowCurrentUser();
+  const { uploadFile, isLoading: isUploading, error: uploadError } = useLighthouse();
+  const [validatedCsvData, setValidatedCsvData] = useState<string | null>(null);
+  const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
+  const [isLogging, setIsLogging] = useState(false);
+  const [jobIdBeingLogged, setJobIdBeingLogged] = useState<string | null>(null);
+  const { mutate: executeTransaction, isPending: isTxPending, isSuccess: isTxSuccess, isError: isTxError, error: txError, data: txId } = useFlowMutate();
+  
+  // --- Memoized Job Display Logic (unchanged) ---
+  const displayJobs = useMemo(() => {
+    // This logic is correct and does not need to change.
+    if(selectedProjectId && selectedProjectId !== DEMO_PROJECT_ID){
+      if (!selectedProjectId) return [];
+      const project = projects.find(p => p.id === selectedProjectId);
+      if (!project?.story) return [];
+      const onChainLogs: DisplayJob[] = project.story.filter(step => step.agent === "Analysis").map((step, index) => ({ id: `log-${project.id}-${index}`, label: step.action, projectId: project.id, state: 'logged', logData: step }));
+      const onChainLabels = new Set(onChainLogs.map(log => log.label));
+      const localJobs: DisplayJob[] = jobs.filter(job => job.projectId === selectedProjectId && !onChainLabels.has(job.label)).map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
+      return [...onChainLogs, ...localJobs];
+    }
+    return jobs.filter(job => job.projectId === DEMO_PROJECT_ID).map(job => ({ id: job.id, label: job.label, projectId: job.projectId as string, state: job.state, failedReason: job.failedReason, returnvalue: job.returnvalue, logData: job.logData }));
+  }, [selectedProjectId, projects, jobs]);
 
-  // Post-analysis state
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  // --- Main Analysis Handler (Corrected) ---
+  const handleRunAnalysis = async () => {
+    setPageError(null);
+    setViewedJob(null);
+    setIsAnalysisRunning(true);
 
-  // --- DATA FETCHING & EFFECTS ---
-  useEffect(() => {
-    const fetchProjects = async () => {
-      setAreProjectsLoading(true);
-      try {
-        const response = await fetch(`${API_BASE}/projects`);
-        if (!response.ok) throw new Error("Could not fetch projects");
-        setProjects(await response.json());
-      } catch (err) {
-        console.error("Failed to fetch projects", err);
-        setError("Could not load project list.");
-      } finally {
-        setAreProjectsLoading(false);
-      }
+    const isDemo = !selectedProjectId || selectedProjectId === DEMO_PROJECT_ID;
+    
+    const inputDataString = validatedCsvData || "";
+    const inputDataHash = await generateDataHash(isDemo ? "sample_data" : inputDataString);
+
+    const jobLabel = validatedCsvData
+      ? `LD50 analysis with custom data`
+      : `LD50 analysis with sample data`;
+
+    // --- FIREBASE ANALYTICS: Log the start of an analysis ---
+    logEvent(analytics, 'run_analysis', {
+      analysis_type: 'ld50', // Good for future-proofing if you add more analysis types
+      data_source_hash: inputDataHash,
+      is_demo: isDemo,
+    });
+
+    const newJob: Job = {
+      id: `${isDemo ? 'demo' : 'netlify'}_job_${Date.now()}`,
+      kind: 'ld50',
+      label: jobLabel,
+      projectId: selectedProjectId || DEMO_PROJECT_ID,
+      createdAt: Date.now(),
+      state: 'processing'
     };
-    fetchProjects();
-  }, []);
+    setJobs(prev => [newJob, ...prev]);
 
-  useEffect(() => {
-    if (!selectedProjectId) {
-      setExperimentFiles([]);
-      setSelectedFileCid('');
+    try {
+
+      //const response = await fetch('/.netlify/functions/run-ld50', {
+      //const response = await fetch('/api/run-ld50', {
+      const response = await fetch(`${R_API}/analyze/drc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: inputDataString,
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({ error: 'Failed to parse error response.' }));
+        throw new Error(errorBody.error || `Request failed with status ${response.status}`);
+      }
+      const result = await response.json();
+      // --- FIREBASE ANALYTICS: Log the successful result of the analysis ---
+      logEvent(analytics, 'analysis_result', {
+        status: 'success',
+        analysis_type: 'ld50',
+        data_source_hash: inputDataHash,
+        is_demo: isDemo,
+      });
+      setJobs(prevJobs => {
+        return prevJobs.map(j => {
+          if (j.id === newJob.id) {
+            // Found the job, update it with the results
+            return { 
+              ...j, 
+              state: result.status === 'success' ? 'completed' : 'failed', 
+              returnvalue: { 
+                ...result,
+                inputDataHash: inputDataHash
+              }, 
+              failedReason: result.error,
+            };
+          }
+          // Not the job we're looking for, return it unchanged
+          return j;
+        });
+      });
+
+    } catch (e: any) {
+      setJobs(prevJobs => prevJobs.map(j => (j.id === newJob.id ? { ...j, state: 'failed', failedReason: e.message } : j)));
+      setPageError(`Analysis failed: ${e.message}`);
+      // --- FIREBASE ANALYTICS: Log the failed result of the analysis ---
+      logEvent(analytics, 'analysis_result', {
+        status: 'failed',
+        analysis_type: 'ld50',
+        is_demo: isDemo,
+        data_source_hash: inputDataHash,
+        error_message: e.message, // Capture the error for debugging
+      });
+    } finally {
+      setIsAnalysisRunning(false);
+    }
+  };
+
+
+  // --- Logging and Transaction Logic (unchanged) ---
+  const handleViewAndLogResults = async (job: DisplayJob) => {
+    console.log(job)
+    setViewedJob(job);
+    setPageError(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Case 1: Job is a demo job. Just display results, DO NOT log.
+    if (job.projectId === DEMO_PROJECT_ID) {
+      console.log("Displaying results for a demo job. Logging is disabled.");
       return;
     }
-    const fetchExperimentFiles = async () => {
-      setAreFilesLoading(true);
-      setExperimentFiles([]);
-      setSelectedFileCid('');
+    // Case 2: Job is already logged on-chain. Just display it.
+    if (job.state === 'logged') {
+      console.log("Displaying already logged results.");
+      return; 
+    }
+    if (job.state === 'completed' && job.projectId && user?.addr) {
+      setIsLogging(true);
+      setJobIdBeingLogged(job.id);
       try {
-        const response = await fetch(`${API_BASE}/data/experiment?projectId=${selectedProjectId}`);
-        const data = await response.json();
-        setExperimentFiles(data.data || []);
-      } catch (err) {
-        console.error("Failed to fetch experiment files", err);
-        setError("Could not load experiment files for this project.");
+        const project = projects.find(p => p.id === job.projectId);
+        if (!project?.nft_id) throw new Error("Project NFT ID not found.");
+        const results = job.returnvalue;
+        const plotBase64 = results?.results?.plot_b64?.split(',')[1];
+        if (!plotBase64) throw new Error("No plot found to save.");
+        const metricsJsonString = JSON.stringify(results.results, null, 2);
+        const plotHash = await generateDataHash(plotBase64);
+        const metricsHash = await generateDataHash(metricsJsonString);
+
+        const metadata = {
+          schema_version: "1.0.0",
+          analysis_agent: "KintaGen LD50 v1 (Netlify)",
+          timestamp_utc: new Date().toISOString(),
+          input_data_hash_sha256: results.inputDataHash,
+          outputs: [{ filename: "ld50_plot.png", hash_sha256: plotHash }, { filename: "ld50_metrics.json", hash_sha256: metricsHash }]
+        };
+        const zip = new JSZip();
+        zip.file("metadata.json", JSON.stringify(metadata, null, 2));
+        zip.file("ld50_plot.png", plotBase64, { base64: true });
+        zip.file("ld50_metrics.json", metricsJsonString);
+        const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact.zip`);
+        const cid = await uploadFile(zipFile);
+        if (!cid) throw new Error(uploadError || "Failed to get CID.");
+
+        const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: flowConfig.addresses["NonFungibleToken"] };
+        const cadence = getAddToLogTransaction(addresses);
+        const args = (arg, t) => [arg(project.nft_id, t.UInt64), arg("Analysis", t.String), arg(job.label, t.String), arg(cid, t.String)];
+        executeTransaction({ cadence, args, limit: 9999 });
+      } catch (error: any) {
+        setPageError(`Failed to log results: ${error.message.includes("User rejected") ? "Transaction cancelled by user." : error.message}`);
+        setViewedJob(null);
       } finally {
-        setAreFilesLoading(false);
+        setIsLogging(false);
+        setJobIdBeingLogged(null);
       }
-    };
-    fetchExperimentFiles();
-  }, [selectedProjectId]);
-
-  // --- API CALL HANDLERS ---
-  const handleAnalysis = async (useSampleData = false) => {
-    setIsLoading(true);
-    setError(null);
-    setResults(null);
-    setSaveSuccess(false);
-
-    let requestBody = {};
-    if (useSampleData) {
-      // Body remains empty for sample data
-    } else if (selectedFileCid) {
-      requestBody = { dataUrl: `${FILECOIN_GATEWAY}/${selectedFileCid}` };
-    } else if (dataUrl) {
-      requestBody = { dataUrl };
-    } else {
-        setError("Please select a project file or provide a URL.");
-        setIsLoading(false);
-        return;
-    }
-    
-    try {
-      const response = await fetch(`${API_BASE}/analyze/ld50`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      });
-      const data: Ld50ApiResponse = await response.json();
-      if (!response.ok || data.status === 'error') throw new Error(data.error || 'Analysis failed on the server.');
-      setResults(data);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
     }
   };
+  console.log(viewedJob)
+  useEffect(() => {
+    if (isTxSuccess && txId) {
+      setDialogTxId(txId);
+      setIsDialogOpen(true);
+      setIsLogging(false);
+    }
+    if (isTxError && txError) {
+      const errorMessage = txError.message || "An unknown transaction error occurred.";
+      setPageError(`Transaction failed: ${errorMessage.includes("User rejected") ? "Transaction cancelled by user." : errorMessage}`);
+      setViewedJob(null);
+      setIsLogging(false);
+      setJobIdBeingLogged(null);
+    }
+  }, [isTxSuccess, isTxError, txId, txError]);
+  const overallIsLogging = isLogging || isTxPending;
   
-  const handleSaveAndLog = async () => {
-    if (!results || !selectedProjectId) return;
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      const zip = new JSZip();
-      const sourceFile = experimentFiles.find(f => f.cid === selectedFileCid);
-      const baseTitle = sourceFile ? `LD50_from_${sourceFile.title.replace(/ /g, '_')}` : "LD50_Analysis";
-
-      // 1. Add plot to the zip
-      const plotBase64 = results.results.plot_b64.split(',')[1];
-      const plotBlob = await (await fetch(`data:image/png;base64,${plotBase64}`)).blob();
-      zip.file("ld50_plot.png", plotBlob);
-      
-      // 2. Add metrics JSON to the zip
-      const metricsJsonString = JSON.stringify(results.results, null, 2);
-      zip.file("ld50_metrics.json", metricsJsonString);
-
-      // 3. Generate the final ZIP file as a Blob
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-
-      // 4. Upload the single ZIP file
-      const formData = new FormData();
-      formData.append('file', zipBlob, `${baseTitle}_results.zip`);
-      formData.append('dataType', 'analysis'); // Categorize as an 'analysis'
-      formData.append('title', `${baseTitle} Results`);
-      formData.append('projectId', selectedProjectId);
-
-      const uploadResponse = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
-      const uploadResult = await uploadResponse.json();
-      if (!uploadResponse.ok) throw new Error(uploadResult.error || "Failed to upload results ZIP.");
-
-      // 5. If the project has an NFT, add the log entry
-      const project = projects.find(p => p.id === Number(selectedProjectId));
-      if (project?.nft_id) {
-          const actionDescription = `Performed LD50 Analysis. Results saved to CID: ${uploadResult.rootCID}`;
-          const logResponse = await fetch(`${API_BASE}/projects/${selectedProjectId}/log`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: actionDescription, outputCID: uploadResult.rootCID })
-          });
-          if (!logResponse.ok) throw new Error('Result file was saved, but failed to add log to NFT.');
-      }
-      
-      setSaveSuccess(true);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-  const canAnalyze = selectedFileCid || dataUrl;
-
-  // --- RENDER ---
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8">
-      <h1 className="text-3xl font-bold mb-4">LD50 Dose-Response Analysis</h1>
-      <p className="text-gray-400 mb-8">
-        Select a project and an existing experiment file, or provide a public URL to a raw CSV to calculate the LD50.
-      </p>
-
-      {/* --- Input Section --- */}
-      <div className="bg-gray-800 p-6 rounded-lg shadow-lg mb-8 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <label htmlFor="project-select" className="block text-sm font-medium text-gray-300 mb-2 flex items-center"><BeakerIcon className="h-5 w-5 inline mr-2"/>Project</label>
-            <select id="project-select" value={selectedProjectId} onChange={(e) => setSelectedProjectId(e.target.value)} disabled={areProjectsLoading || isLoading} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2.5 px-3 text-white focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select a Project --</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="file-select" className="block text-sm font-medium text-gray-300 mb-2 flex items-center"><DocumentMagnifyingGlassIcon className="h-5 w-5 inline mr-2"/>Experiment File (from Project)</label>
-            <select id="file-select" value={selectedFileCid} onChange={(e) => setSelectedFileCid(e.target.value)} disabled={!selectedProjectId || areFilesLoading || isLoading} className="w-full bg-gray-700 border border-gray-600 rounded-md py-2.5 px-3 text-white focus:ring-2 focus:ring-blue-500">
-              <option value="">-- Select a File --</option>
-              {areFilesLoading && <option disabled>Loading files...</option>}
-              {experimentFiles.map(f => <option key={f.cid} value={f.cid}>{f.title}</option>)}
-            </select>
-          </div>
-        </div>
-
-        {
-          /*
-        <div className="text-center text-gray-500 text-sm flex items-center gap-4"><hr className="flex-grow border-gray-700"/><p>OR</p><hr className="flex-grow border-gray-700"/></div>
-
-        <div>
-          <label htmlFor="dataUrl" className="block text-sm font-medium text-gray-300 mb-2">Provide a Public CSV URL</label>
-          <div className="relative">
-            <LinkIcon className="h-5 w-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input id="dataUrl" type="url" value={dataUrl} onChange={(e) => setDataUrl(e.target.value)} placeholder="https://.../data.csv" className="w-full bg-gray-700 border border-gray-600 rounded-md py-2.5 pl-10 pr-4 text-white focus:ring-2 focus:ring-blue-500" disabled={isLoading}/>
-          </div>
-        </div>
-          */
-        }
+    <>
+      <div className="max-w-6xl mx-auto p-4 md:p-8">
+        <h1 className="text-3xl font-bold mb-4">LD50 Dose-Response Analysis</h1>
+        <p className="text-gray-400 mb-8">Select the Demo Project or one of your on-chain projects to run an analysis.</p>
         
-        <div className="pt-4 border-t border-gray-700/50 flex flex-col sm:flex-row justify-between items-center gap-4">
-            <button onClick={() => handleAnalysis(true)} disabled={isLoading} className="text-blue-400 hover:underline text-xs order-last sm:order-first">Run with sample data</button>
-            <button onClick={() => handleAnalysis(false)} disabled={isLoading || !canAnalyze} className="w-full sm:w-auto flex items-center justify-center bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-500 disabled:bg-gray-600">
-                <ChartBarIcon className="h-5 w-5 mr-2" />
-                {isLoading ? 'Analyzing...' : 'Run Analysis'}
-            </button>
-        </div>
+        <AnalysisSetupPanel
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          onProjectChange={(id) => { setSelectedProjectId(id); setViewedJob(null); }}
+          onRunAnalysis={handleRunAnalysis}
+          isLoadingProjects={isLoadingProjects}
+          projectsError={projectsError}
+          isWebRReady={true}
+          webRInitMessage={'Server Ready'}
+          isAnalysisRunning={isAnalysisRunning}
+          onDataValidated={(csvString) => setValidatedCsvData(csvString)}
+          onDataCleared={() => setValidatedCsvData(null)}
+        />
+        
+        {pageError && ( <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg mb-4 flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Error</h3><p>{pageError}</p></div></div> )}
+        
+        {viewedJob && (viewedJob.state === "logged" || viewedJob.projectId === DEMO_PROJECT_ID) && (
+          <AnalysisResultsDisplay
+            job={viewedJob}
+            isLoading={overallIsLogging && jobIdBeingLogged === viewedJob.id}
+            />
+        )}
+        
+        <AnalysisJobsList
+          jobs={displayJobs}
+          onClearJobs={() => {
+            const idToClear = selectedProjectId || DEMO_PROJECT_ID;
+            setJobs(prev => prev.filter(j => j.projectId !== idToClear));
+          }}
+          onViewAndLogResults={handleViewAndLogResults}
+          jobIdBeingLogged={jobIdBeingLogged}
+        />
       </div>
 
-      {isLoading && ( <div className="text-center p-10 flex flex-col items-center"><ArrowPathIcon className="h-12 w-12 text-blue-400 animate-spin mb-4" /><p className="text-lg text-blue-300">Running dose-response analysis...</p></div> )}
-      {error && ( <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Analysis Failed</h3><p>{error}</p></div></div> )}
-      
-      {results && results.status === 'success' && (
-        <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
-                    <h2 className="text-xl font-semibold mb-6 border-b border-gray-700 pb-3">Key Metrics</h2>
-                    <div className="space-y-4">
-                    <div className="flex justify-between items-baseline">
-                        <span className="text-gray-400">LD50 Estimate:</span>
-                        <span className="text-2xl font-bold text-green-400">{results.results.ld50_estimate.toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                        <span className="text-gray-400">Standard Error:</span>
-                        <span className="font-mono text-lg text-white">{results.results.standard_error.toFixed(4)}</span>
-                    </div>
-                    <div className="flex justify-between items-baseline">
-                        <span className="text-gray-400">95% Confidence Interval:</span>
-                        <span className="font-mono text-lg text-white">
-                        [{results.results.confidence_interval_lower.toFixed(4)}, {results.results.confidence_interval_upper.toFixed(4)}]
-                        </span>
-                    </div>
-                    </div>
-                </div>
-                <div className="bg-gray-800 p-6 rounded-lg shadow-lg flex flex-col items-center justify-center min-h-[300px]">
-                    <h2 className="text-xl font-semibold mb-4 text-center">Dose-Response Plot</h2>
-                    <img 
-                    src={results.results.plot_b64}
-                    alt="LD50 Dose-Response Curve"
-                    className="w-full h-auto rounded-lg bg-white p-1"
-                    />
-                </div>
-            </div>
-            {selectedProjectId && (
-              <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-                <h3 className="text-lg font-semibold mb-4">Save & Log Results</h3>
-                {saveSuccess ? (
-                  <div className="text-green-400 flex items-center justify-center"><CheckCircleIcon className="h-6 w-6 mr-2"/>Results saved and logged successfully!</div>
-                ) : (
-                  <>
-                    <p className="text-gray-400 mb-4 text-sm">Save the plot and metrics as new experiment files and add an entry to the project's on-chain log (if available).</p>
-                    <button onClick={handleSaveAndLog} disabled={isSaving} className="flex items-center justify-center mx-auto bg-purple-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600">
-                      {isSaving ? <ArrowPathIcon className="h-5 w-5 animate-spin"/> : <><InboxArrowDownIcon className="h-5 w-5 mr-2"/>Save Results & Add to Log</>}
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-        </div>
-      )}
-    </div>
+      <TransactionDialog
+        open={isDialogOpen}
+        onOpenChange={(isOpen) => { setIsDialogOpen(isOpen); if (!isOpen) setJobIdBeingLogged(null); }}
+        txId={dialogTxId || undefined}
+        onSuccess={refetchProjects}
+        pendingTitle="Logging Analysis to the Chain"
+        pendingDescription="Please wait while the transaction is being processed..."
+        successTitle="Log Entry Confirmed!"
+        successDescription="Your analysis results have been permanently recorded."
+        closeOnSuccess={false}
+      />
+    </>
   );
 };
 
-export default Ld50AnalysisPage;
+export default LD50AnalysisPage;

@@ -1,87 +1,103 @@
 import React, { useState } from 'react';
-// Import NavLink and useLocation for checking the active route
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   HomeIcon,
   FolderIcon,
   ChatBubbleLeftRightIcon,
-  ArrowUpTrayIcon,
   BeakerIcon,
-  UsersIcon,
-  ChevronDownIcon, // Icon for the dropdown arrow
+  ChevronDownIcon,
+  ShieldCheckIcon
 } from '@heroicons/react/24/outline';
+import FeedbackButton from './FeedbackButton'; 
+import { Connect } from "@onflow/react-sdk";
+import clsx from 'clsx'; // A tiny utility for constructing `className` strings conditionally
 
-// Define the structure for sub-links
+// --- No changes to interfaces ---
 interface SubNavLinkInfo {
   name: string;
   to: string;
 }
-
-// Update the main NavLinkInfo to optionally include sub-links
 interface NavLinkInfo {
   name: string;
-  to?: string; // Becomes optional for parent items that don't link anywhere
+  to?: string;
   icon: React.ElementType;
-  subLinks?: SubNavLinkInfo[]; // Array of sub-links
+  subLinks?: SubNavLinkInfo[];
 }
 
-const Sidebar: React.FC = () => {
-  // State to manage which dropdown menus are open
+// The Sidebar now accepts an `isOpen` prop to control its visibility on mobile
+const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
   const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({
-    Analysis: true, // Let's have it open by default
+    Analysis: true,
   });
 
-  const location = useLocation(); // Hook to get the current path
+  const location = useLocation();
+  const feedbackFormUrl = 'https://forms.gle/link_here';
 
-  // Toggle function for the dropdown menus
   const toggleMenu = (name: string) => {
     setOpenMenus((prevOpenMenus) => ({
-      ...prevOpenMenus, // Keep the state of other menus
-      [name]: !prevOpenMenus[name], // Toggle the clicked one
+      ...prevOpenMenus,
+      [name]: !prevOpenMenus[name],
     }));
   };
   
-  // Updated navigation structure
   const navLinks: NavLinkInfo[] = [
-    { name: 'Dashboard', to: '/', icon: HomeIcon },
+    { name: 'Home', to: '/', icon: HomeIcon },
     { name: 'Projects', to: '/projects', icon: FolderIcon },
-    { name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },
-    { name: 'Ingest Data', to: '/ingest', icon: ArrowUpTrayIcon },
-    // This is now a parent menu item
+
+    //{ name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },
     {
       name: 'Analysis',
       icon: BeakerIcon,
       subLinks: [
         { name: 'LD50', to: '/analysis' },
-        { name: 'GCMS', to: '/analyze-gcms' },
+        { name: 'NMR', to: '/analysis-nmr' },
+        { name: 'XCMS', to: '/analysis-xcms' },
+
       ],
     },
-    { name: 'Lab Network', to: '/network', icon: UsersIcon },
+    { name: 'Verify', to: '/verify', icon: ShieldCheckIcon },
+
   ];
 
   return (
-    <div className="w-64 bg-gray-800 text-gray-200 flex flex-col fixed h-full">
+    <div
+      className={clsx(
+        // Base styles for all screen sizes
+        "w-64 bg-gray-800 text-gray-200 flex flex-col fixed h-full z-30",
+        "transition-transform duration-300 ease-in-out",
+
+        // Mobile state: Controlled by the `isOpen` prop
+        isOpen ? 'transform translate-x-0' : 'transform -translate-x-full',
+        
+        // Desktop override: Always visible, regardless of `isOpen` state
+        "md:translate-x-0"
+      )}
+    >
       <div className="bg-gray-900 p-4 flex items-center justify-center border-b border-gray-700">
-        <h1 className="text-xl font-bold">KintaGen</h1>
+        <h1 className="text-xl font-bold">KintaGen - Demo</h1>
       </div>
-      <nav className="flex-1 p-4">
+      <nav className="flex-1 p-4 overflow-y-auto">
         <ul>
+          <li className={`flex items-center justify-between w-full p-3 my-1 rounded-lg transition-colors duration-200`}>
+          <Connect
+            onConnect={() => console.log("Connected!")}
+            onDisconnect={() => console.log("Logged out")}
+          />
+          </li>
+          
           {navLinks.map((link) => {
-            // Check if the current link is a parent with sub-links
             if (link.subLinks) {
               const isMenuOpen = !!openMenus[link.name];
-              // A parent is active if one of its children is the current page
               const isParentActive = link.subLinks.some(
                 (sub) => location.pathname === sub.to
               );
-
               return (
                 <li key={link.name}>
                   <button
                     onClick={() => toggleMenu(link.name)}
                     className={`flex items-center justify-between w-full p-3 my-1 rounded-lg transition-colors duration-200 ${
                       isParentActive
-                        ? 'bg-blue-600 text-white' // Style for active parent
+                        ? 'bg-blue-600 text-white'
                         : 'text-gray-300 hover:bg-gray-700'
                     }`}
                   >
@@ -95,7 +111,6 @@ const Sidebar: React.FC = () => {
                       }`}
                     />
                   </button>
-                  {/* Conditionally render the sub-menu with a sliding animation */}
                   {isMenuOpen && (
                     <ul className="pl-6 mt-1">
                       {link.subLinks.map((subLink) => (
@@ -119,12 +134,10 @@ const Sidebar: React.FC = () => {
                 </li>
               );
             }
-
-            // Render a regular NavLink if there are no sub-links
             return (
               <li key={link.name}>
                 <NavLink
-                  to={link.to!} // 'to' will exist for these links
+                  to={link.to!}
                   className={({ isActive }) =>
                     `flex items-center p-3 my-1 rounded-lg transition-colors duration-200 ${
                       isActive
@@ -141,6 +154,8 @@ const Sidebar: React.FC = () => {
           })}
         </ul>
       </nav>
+
+      <FeedbackButton feedbackFormUrl={feedbackFormUrl} />
     </div>
   );
 };
