@@ -1,38 +1,11 @@
 // components/nmr/NmrAnalysisResultsDisplay.tsx
-import React, { useMemo,useState,useEffect } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import zoomPlugin from 'chartjs-plugin-zoom';
-import 'hammerjs'; // Import hammerjs for touch gesture support
+import React, { useMemo, useState, useEffect } from 'react';
+import Plot from 'react-plotly.js';
+import { Layout } from 'plotly.js';
 
 import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
 
 
-// Register Chart.js components and the zoom plugin
-ChartJS.register(
-  CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, zoomPlugin
-);
-
-// --- Define the new interfaces for the additional data ---
-interface Metadata {
-  analysis_agent: string;
-  input_data_hash_sha256: string;
-}
-
-interface LogData {
-  agent: string;
-  resultCID: string;
-  timestamp: string; // Assuming it's a string representing a Unix timestamp
-}
 
 // --- Updated main interfaces ---
 interface SpectrumPoint {
@@ -52,24 +25,17 @@ interface NmrAnalysisResultsDisplayProps {
 }
 
 export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps> = ({ job }) => {
-  const { returnvalue, logData, state, projectId } = job;
+  const { returnvalue, logData } = job;
   const [metadata, setMetadata] = useState<any | null>(null);
   
   const results = returnvalue?.results;
 
-
   useEffect(() => {
     // Reset all state whenever a new job is passed in.
-    // This prevents showing stale data from a previous job.
-
     setMetadata(null);
 
     // --- Data Loading Logic ---
-
-    // Case 1: The job is 'completed' (a local or demo job).
-    // The results are directly available in the `returnvalue` prop.
     if (job.state === 'completed' && job.returnvalue?.status === 'success') {
-
       // Create the metadata object for display from the job's return value.
       setMetadata({
         input_data_hash_sha256: job.returnvalue.inputDataHash,
@@ -79,10 +45,7 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
     
   }, [job]); // This effect re-runs whenever the `job` prop changes.
 
-  // --- Handler function for the download button ---
   const handleDownload = () => {
-    // In a real app, you would trigger a download of a verifiable artifact.
-    // This could be a link to an IPFS CID or a call to another API endpoint.
     console.log("Download artifact for job:", job);
     if (logData?.resultCID) {
       window.open(`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${logData.resultCID}?download=true`, '_blank');
@@ -91,66 +54,112 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
     }
   };
 
-  const chartData = useMemo(() => {
-    // ... (your existing chartData logic is unchanged)
-    if (!results?.spectrum_data) return null;
-    const labels = results.spectrum_data.map(p => p.PPM);
-    const dataPoints = results.spectrum_data.map(p => p.Intensity);
-    return {
-      labels,
-      datasets: [{
-        label: 'Intensity', data: dataPoints, borderColor: 'rgb(59, 130, 246)',
-        backgroundColor: 'rgba(59, 130, 246, 0.5)', borderWidth: 1, pointRadius: 0, tension: 0.1,
-      }],
-    };
+  // --- Plotly Chart Data and Layout ---
+
+  // Prepare the data for the Plotly chart
+  const plotData = useMemo(() => {
+    if (!results?.spectrum_data) return [];
+    
+    const x = results.spectrum_data.map((p: SpectrumPoint) => p.PPM);
+    const y = results.spectrum_data.map((p: SpectrumPoint) => p.Intensity);
+
+    return [{
+      x,
+      y,
+      type: 'scatter' as const,
+      mode: 'lines' as const,
+      line: {
+        color: 'rgb(59, 130, 246)',
+        width: 1.5,
+      },
+      hoverinfo: 'x+y' as const,
+    }];
   }, [results?.spectrum_data]);
 
-  const chartOptions = {
-    // ... (your existing chartOptions logic is unchanged)
-    responsive: true, maintainAspectRatio: false,
-    scales: { x: { reverse: true, title: { display: true, text: 'Chemical Shift (ppm)', color: '#cbd5e1' }, ticks: { color: '#9ca3af' }, grid: { color: '#4b5563' } }, y: { title: { display: true, text: 'Intensity', color: '#cbd5e1' }, ticks: { color: '#9ca3af' }, grid: { color: '#4b5563' } } },
-    plugins: { legend: { display: false }, title: { display: true, text: 'Interactive NMR Spectrum', color: '#f3f4f6', font: { size: 16 } }, zoom: { pan: { enabled: true, mode: 'x' as const }, zoom: { wheel: { enabled: true }, pinch: { enabled: true }, mode: 'x' as const } } },
-    animation: false as const,
+  // Configure the layout and styling for the Plotly chart to match the dark theme
+  const plotLayout = useMemo((): Partial<Layout> => ({
+    title: {
+      text: 'Interactive NMR Spectrum',
+      font: { size: 16, color: '#f3f4f6' },
+    },
+    xaxis: {
+      title: { text: 'Chemical Shift (ppm)', font: { color: '#cbd5e1' } },
+      autorange: 'reversed',
+      color: '#9ca3af',
+      gridcolor: '#4b5563',
+      zeroline: false,
+    },
+    yaxis: {
+      title: { text: 'Intensity', font: { color: '#cbd5e1' } },
+      color: '#9ca3af',
+      gridcolor: '#4b5563',
+      zeroline: false,
+      fixedrange: false, 
+      showspikes: true,
+      spikemode: 'across',
+      spikesnap: 'cursor',
+      spikethickness: 1,
+      spikecolor: '#9ca3af',
+    },
+    paper_bgcolor: 'rgb(0, 0, 0)', 
+    plot_bgcolor: 'rgb(255, 255, 255)',  
+    showlegend: false,
+    margin: { l: 60, r: 30, t: 50, b: 50 },
+    dragmode: 'zoom', // Default to zoom for interactivity
+  }), []);
+
+  // Configure Plotly behavior
+  const plotConfig = {
+    responsive: true,
+    displaylogo: false,
+    // Customize the mode bar buttons
+    modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'toggleSpikelines', 'zoomIn2d', 'zoomOut2d'],
   };
 
   return (
     <>
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-8">
-      <h2 className="text-2xl font-bold mb-4 text-white">Analysis Results</h2>
-      
-      {/* Interactive Chart Section (Unchanged) */}
-      {chartData ? (
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold mb-2 text-gray-300">Interactive Spectrum</h3>
-          <div className="relative h-96 w-full bg-gray-900/70 p-4 rounded-lg">
-            <Line options={chartOptions} data={chartData} />
+      <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-8">
+        <h2 className="text-2xl font-bold mb-4 text-white">Analysis Results</h2>
+        
+        {/* Interactive Chart Section (Now using Plotly) */}
+        {plotData.length > 0 ? (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold mb-2 text-gray-300">Interactive Spectrum</h3>
+            <div className="relative h-96 w-full bg-gray-900/70 p-4 rounded-lg">
+              <Plot
+                data={plotData}
+                layout={plotLayout}
+                config={plotConfig}
+                style={{ width: '100%', height: '100%' }}
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              Hover for controls. Use mouse wheel or pinch to zoom. Click and drag to pan.
+            </p>
           </div>
-           <p className="text-xs text-gray-500 mt-2 text-center">Use mouse wheel or pinch to zoom. Click and drag to pan.</p>
-        </div>
-      ) : (
-         <div className="aspect-video bg-gray-700 rounded-md flex items-center justify-center mb-8">
-            <p className="text-gray-400">Interactive plot not available.</p>
-         </div>
-      )}
-      
-      {/* Static Image and Logs Grid (Unchanged) */}
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold mb-2 text-gray-300">Static Image (from R)</h3>
-        {results?.plot_b64 ? (
-          <img src={results.plot_b64} alt="NMR Spectrum Plot" className="rounded-md bg-white p-1" />
         ) : (
-          <div className="aspect-video bg-gray-700 rounded-md flex items-center justify-center">
-            <p className="text-gray-400">Static plot not available.</p>
+          <div className="aspect-video bg-gray-700 rounded-md flex items-center justify-center mb-8">
+            <p className="text-gray-400">Interactive plot not available.</p>
           </div>
         )}
+        
+        {/* Static Image and Logs Grid (Unchanged) */}
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold mb-2 text-gray-300">Static Image (from R)</h3>
+          {results?.plot_b64 ? (
+            <img src={results.plot_b64} alt="NMR Spectrum Plot" className="rounded-md bg-white p-1" />
+          ) : (
+            <div className="aspect-video bg-gray-700 rounded-md flex items-center justify-center">
+              <p className="text-gray-400">Static plot not available.</p>
+            </div>
+          )}
+        </div>
       </div>
-
-    </div>
-    <ProvenanceAndDownload 
-      job={job}
-      metadata={metadata}
-      onDownload={handleDownload}
-    />
+      <ProvenanceAndDownload 
+        job={job}
+        metadata={metadata}
+        onDownload={handleDownload}
+      />
     </>
   );
 };
