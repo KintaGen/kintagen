@@ -1,4 +1,4 @@
-import React,{useState} from 'react';
+import React,{useEffect, useState} from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import HomePage from './pages/HomePage';
@@ -71,10 +71,13 @@ const emulatorJSON = {
 
 // 1. Read the network name from our environment variable.
 const flowNetwork = import.meta.env.VITE_FLOW_NETWORK;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 // 2. Choose the correct configuration object based on the variable.
 const configToUse = flowNetwork === 'emulator' ? emulatorConfig : testnetConfig;
 const jsonToUse = flowNetwork === 'emulator' ? emulatorJSON : testnetJson;
+
+
 
 const App: React.FC = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -82,6 +85,36 @@ const App: React.FC = () => {
   const toggleSidebar = () => {
     setSidebarOpen(!isSidebarOpen);
   };
+  useEffect(() => {
+    // Define an async function inside the effect
+    const warmUpApiServer = async () => {
+      // Ensure the URL is defined before trying to fetch
+      if (!API_BASE_URL) {
+        console.warn("VITE_API_BASE_URL is not defined. Skipping server warm-up.");
+        return;
+      }
+
+      console.log("Sending warm-up request to API server...");
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/healthcheck`);
+        
+        if (response.ok) {
+          console.log("API server is awake and responded successfully.");
+        } else {
+          // This case handles HTTP errors like 500, 404 etc.
+          console.warn(`API server responded to warm-up with a non-OK status: ${response.status}`);
+        }
+      } catch (error) {
+        // This case handles network errors (e.g., server is down, CORS issue)
+        console.error("Failed to send warm-up request to API server:", error);
+      }
+    };
+
+    // Call the async function
+    warmUpApiServer();
+
+  }, []);
   return (
       // @ts-ignore
 
