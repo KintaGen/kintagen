@@ -58,17 +58,24 @@ const LD50AnalysisPage: React.FC = () => {
   
   // --- Memoized Job Display Logic (unchanged) ---
   const displayJobs = useMemo(() => {
-    // This logic is correct and does not need to change.
+
     if(selectedProjectId && selectedProjectId !== DEMO_PROJECT_ID){
       if (!selectedProjectId) return [];
       const project = projects.find(p => p.id === selectedProjectId);
       if (!project?.story) return [];
       const onChainLogs: DisplayJob[] = project.story.filter(step => step.agent === "Analysis").map((step, index) => ({ id: `log-${project.id}-${index}`, label: step.action, projectId: project.id, state: 'logged', logData: step }));
       const onChainLabels = new Set(onChainLogs.map(log => log.label));
-      const localJobs: DisplayJob[] = jobs.filter(job => job.projectId === selectedProjectId && !onChainLabels.has(job.label)).map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
-      return [...onChainLogs, ...localJobs];
+      const localJobs: DisplayJob[] = jobs
+        .filter(job => 
+          job.kind === 'ld50' && 
+          job.projectId === selectedProjectId && 
+          !onChainLabels.has(job.label)
+        )
+        .map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
+              return [...onChainLogs, ...localJobs];
     }
-    return jobs.filter(job => job.projectId === DEMO_PROJECT_ID).map(job => ({ id: job.id, label: job.label, projectId: job.projectId as string, state: job.state, failedReason: job.failedReason, returnvalue: job.returnvalue, logData: job.logData }));
+    return jobs.filter(job => job.kind === 'ld50' && job.projectId === DEMO_PROJECT_ID)
+    .map(job => ({ id: job.id, label: job.label, projectId: job.projectId as string, state: job.state, failedReason: job.failedReason, returnvalue: job.returnvalue, logData: job.logData }));
   }, [selectedProjectId, projects, jobs]);
 
   // --- Main Analysis Handler (Corrected) ---

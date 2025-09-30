@@ -210,6 +210,8 @@ const NMRAnalysisPage: React.FC = () => {
           schema_version: "1.0.0",
           analysis_agent: "KintaGen NMR v1 (Vercel)",
           timestamp_utc: new Date().toISOString(),
+          datahash: spectrumHash,
+          plothash: plotHash,
           returnvalue: results
         };
         console.log(metadata)
@@ -246,7 +248,6 @@ const NMRAnalysisPage: React.FC = () => {
       setPageError(`Transaction failed: ${txError.message}`);
     }
   }, [isTxSuccess, isTxError, txId, txError]);
-  const overallIsLogging = isLogging || isTxPending;
   
   return (
     <>
