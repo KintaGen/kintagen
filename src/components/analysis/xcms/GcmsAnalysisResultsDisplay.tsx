@@ -45,32 +45,50 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
     if (job.state === 'completed' && results && metadata) {
       console.log("Creating and downloading artifact for local job:", job.projectId);
       try {
-        const plotBase64WithPrefix = results.top_5_spectra_plot_b64;
-        if (!plotBase64WithPrefix) {
-          throw new Error("Plot data is missing from the results.");
-        }
-        
         const zip = new JSZip();
-        const plotBase64 = plotBase64WithPrefix.split(',')[1];
-        const ticDataJsonString = JSON.stringify(results.tic_data, null, 2);
-        const plotHash = await generateDataHash(plotBase64);
-        const ticDataHash = await generateDataHash(ticDataJsonString);
-        
+        // This array will hold the manifest of all files added to the zip
+        const outputs = [];
+
+        // 1. Handle BPC Data (JSON)
+        if (results.tic_data) {
+          const bpcDataJsonString = JSON.stringify(results.tic_data, null, 2);
+          const bpcDataHash = await generateDataHash(bpcDataJsonString);
+          outputs.push({ filename: "bpc_data.json", hash_sha256: bpcDataHash });
+          zip.file("bpc_data.json", bpcDataJsonString);
+        }
+
+        // 2. Handle Top 5 Spectra Plot (PNG)
+        if (results.top_5_spectra_plot_b64) {
+          const top5PlotBase64 = results.top_5_spectra_plot_b64.split(',')[1];
+          const top5PlotHash = await generateDataHash(top5PlotBase64);
+          outputs.push({ filename: "top_5_spectra_plot.png", hash_sha256: top5PlotHash });
+          zip.file("top_5_spectra_plot.png", top5PlotBase64, { base64: true });
+        }
+
+        // 3. <<< NEW >>> Handle Base Peak Chromatogram Plot (PNG)
+        if (results.bpc_plot_b64) {
+          const bpcPlotBase64 = results.bpc_plot_b64.split(',')[1];
+          const bpcPlotHash = await generateDataHash(bpcPlotBase64);
+          outputs.push({ filename: "bpc_plot.png", hash_sha256: bpcPlotHash });
+          zip.file("bpc_plot.png", bpcPlotBase64, { base64: true });
+        }
+
+        if (outputs.length === 0) {
+            throw new Error("No output data available to download.");
+        }
+
+        // Create the final metadata object with the dynamic outputs list
         const fullMetadata = {
-            schema_version: "1.0.0",
-            analysis_agent: "KintaGen GCMS Agent v1 (Local Run)",
+            schema_version: "1.1.0", // Version bump for new content
+            analysis_agent: "KintaGen GCMS Agent v1.1 (Local Run)", // Version bump
             timestamp_utc: new Date().toISOString(),
             input_data_hash_sha256: metadata.input_data_hash_sha256,
-            outputs: [
-                { filename: "gcms_bpc_plot.png", hash_sha256: plotHash },
-                { filename: "gcms_bpc_data.json", hash_sha256: ticDataHash }
-            ]
+            outputs: outputs // Use the dynamically created list of files
         };
 
         zip.file("metadata.json", JSON.stringify(fullMetadata, null, 2));
-        zip.file("gcms_bpc_data.json", ticDataJsonString);
-        zip.file("gcms_bpc_plot.png", plotBase64, { base64: true });
 
+        // Generate and trigger the download
         const zipBlob = await zip.generateAsync({ type: 'blob' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(zipBlob);
@@ -88,7 +106,6 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
     }
     alert("Download artifact is not available for this job.");
   };
-
   return (
     <>
       <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-8">
