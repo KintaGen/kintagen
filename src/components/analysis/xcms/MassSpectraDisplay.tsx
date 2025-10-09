@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useImperativeHandle, useRef, forwardRef } from 'react';
 import BasePlot from 'react-plotly.js';
 import Plotly from 'plotly.js';
-import { Data, Layout } from 'plotly.js';
+import { Data, Layout, Annotations } from 'plotly.js';
 
 // --- Interfaces ---
 interface SpectrumPoint { 
@@ -43,6 +43,35 @@ const normalizeSpectrum = (spectrum: SpectrumPoint[]): {mz: number; intensity: n
   }));
 };
 
+/**
+ * Generates Plotly annotations to label m/z values above spectrum peaks.
+ * @param spectrum The normalized spectrum data.
+ * @param intensityThreshold Only label peaks with intensity >= this value (0-100).
+ * @returns An array of Plotly annotation objects.
+ */
+const createMzAnnotations = (
+  spectrum: { mz: number; intensity: number }[],
+  intensityThreshold: number = 5
+): Partial<Annotations>[] => {
+  return spectrum
+    .filter(p => p.intensity >= intensityThreshold)
+    .map(p => ({
+      x: p.mz,
+      y: p.intensity,
+      text: p.mz.toFixed(4), // Display m/z with 4 decimal places
+      showarrow: false,
+      font: {
+        family: 'Arial, sans-serif',
+        size: 9,
+        color: '#333',
+      },
+      xanchor: 'center',
+      yanchor: 'bottom',
+      yshift: 5, // Shift the text 5 pixels up from the top of the bar
+    }));
+};
+
+
 // --- Component ---
 export const MassSpectraDisplay = forwardRef<MassSpectraPlotRef, MassSpectraDisplayProps>(
   ({ spectraData, libraryMatches }, ref) => {
@@ -63,44 +92,54 @@ export const MassSpectraDisplay = forwardRef<MassSpectraPlotRef, MassSpectraDisp
     
     // --- Query Plot (Always shows) ---
     const normalizedQuery = normalizeSpectrum(selectedPeak.spectrum_data);
-      // --- START: X-AXIS ALIGNMENT LOGIC ---
-      let sharedXAxisRange: [number, number] | undefined = undefined;
-      let normalizedLibrary: {mz: number; intensity: number}[] = [];
-  
-      if (currentMatch && currentMatch.similarity_score > 0.7 && currentMatch.library_spectrum) {
-        normalizedLibrary = normalizeSpectrum(currentMatch.library_spectrum);
-        
-        // Calculate the min and max m/z across BOTH spectra
-        const allMzs = [...normalizedQuery.map(p => p.mz), ...normalizedLibrary.map(p => p.mz)];
-        if (allMzs.length > 0) {
-          const minMz = Math.min(...allMzs);
-          const maxMz = Math.max(...allMzs);
-          const padding = (maxMz - minMz) * 0.05; // 5% padding
-          sharedXAxisRange = [minMz - padding, maxMz + padding];
-        }
+    
+    // --- START: X-AXIS ALIGNMENT LOGIC ---
+    let sharedXAxisRange: [number, number] | undefined = undefined;
+    let normalizedLibrary: {mz: number; intensity: number}[] = [];
+
+    if (currentMatch && currentMatch.similarity_score > 0.7 && currentMatch.library_spectrum) {
+      normalizedLibrary = normalizeSpectrum(currentMatch.library_spectrum);
+      
+      // Calculate the min and max m/z across BOTH spectra
+      const allMzs = [...normalizedQuery.map(p => p.mz), ...normalizedLibrary.map(p => p.mz)];
+      if (allMzs.length > 0) {
+        const minMz = Math.min(...allMzs);
+        const maxMz = Math.max(...allMzs);
+        const padding = (maxMz - minMz) * 0.05; // 5% padding
+        sharedXAxisRange = [minMz - padding, maxMz + padding];
       }
-      // --- END: X-AXIS ALIGNMENT LOGIC ---
-      const queryData: Data[] = [{ x: normalizedQuery.map(p => p.mz), y: normalizedQuery.map(p => p.intensity), type: 'bar', width: 0.1, name: 'Query', marker: { color: 'steelblue' }, hovertemplate: 'm/z: %{x:.4f}<br>Intensity: %{y:.2f}%<extra></extra>' }];
-      const queryLayout: Partial<Layout> = {
-        title: `Experimental Spectrum (Peak #${selectedPeak.peak_number})`,
+    }
+    // --- END: X-AXIS ALIGNMENT LOGIC ---
+
+    // --- NEW: Generate annotations for the query plot ---
+    const queryAnnotations = createMzAnnotations(normalizedQuery, 5); // Label peaks > 5% intensity
+
+    const queryData: Data[] = [{ x: normalizedQuery.map(p => p.mz), y: normalizedQuery.map(p => p.intensity), type: 'bar', width: 1, name: 'Query', marker: { color: 'steelblue' }, hovertemplate: 'm/z: %{x:.4f}<br>Intensity: %{y:.2f}%<extra></extra>' }];
+    const queryLayout: Partial<Layout> = {
+      title: `Experimental Spectrum (Peak #${selectedPeak.peak_number})`,
+      xaxis: { title: 'm/z', range: sharedXAxisRange }, 
+      yaxis: { title: 'Rel. Intensity (%)', range: [0, 110] },
+      font: { family: 'Arial, sans-serif' }, paper_bgcolor: 'white', plot_bgcolor: 'white', showlegend: false,
+      margin: { l: 50, r: 20, t: 60, b: 40 }, // Increased top margin for labels
+      annotations: queryAnnotations // --- NEW: Add annotations to the layout ---
+    };
+
+    let libraryPlotData: {data: Data[], layout: Partial<Layout>} | null = null;
+    if (currentMatch && currentMatch.similarity_score > 0.7 && currentMatch.library_spectrum) {
+      // --- NEW: Generate annotations for the library plot ---
+      const libraryAnnotations = createMzAnnotations(normalizedLibrary, 5); // Label peaks > 5% intensity
+      
+      const libraryData: Data[] = [{ x: normalizedLibrary.map(p => p.mz), y: normalizedLibrary.map(p => p.intensity), type: 'bar', width: 1, name: 'Library', marker: { color: 'darkred' }, hovertemplate: 'm/z: %{x:.4f}<br>Intensity: %{y:.2f}%<extra></extra>' }];
+      const libraryLayout: Partial<Layout> = {
+        title: { text: `<b>Library Match:</b> ${currentMatch.match_name}<br><i>Score: ${currentMatch.similarity_score.toFixed(3)}</i>`, font: {size: 14} },
         xaxis: { title: 'm/z', range: sharedXAxisRange }, 
         yaxis: { title: 'Rel. Intensity (%)', range: [0, 110] },
         font: { family: 'Arial, sans-serif' }, paper_bgcolor: 'white', plot_bgcolor: 'white', showlegend: false,
-        margin: { l: 50, r: 20, t: 40, b: 40 }
+        margin: { l: 50, r: 20, t: 70, b: 40 }, // Increased top margin for labels
+        annotations: libraryAnnotations // --- NEW: Add annotations to the layout ---
       };
-  
-      let libraryPlotData: {data: Data[], layout: Partial<Layout>} | null = null;
-      if (currentMatch && currentMatch.similarity_score > 0.7 && currentMatch.library_spectrum) {
-        const libraryData: Data[] = [{ x: normalizedLibrary.map(p => p.mz), y: normalizedLibrary.map(p => p.intensity), type: 'bar', width: 0.1, name: 'Library', marker: { color: 'darkred' }, hovertemplate: 'm/z: %{x:.4f}<br>Intensity: %{y:.2f}%<extra></extra>' }];
-        const libraryLayout: Partial<Layout> = {
-          title: { text: `<b>Library Match:</b> ${currentMatch.match_name}<br><i>Score: ${currentMatch.similarity_score.toFixed(3)}</i>`, font: {size: 14} },
-          xaxis: { title: 'm/z', range: sharedXAxisRange }, 
-          yaxis: { title: 'Rel. Intensity (%)', range: [0, 110] },
-          font: { family: 'Arial, sans-serif' }, paper_bgcolor: 'white', plot_bgcolor: 'white', showlegend: false,
-          margin: { l: 50, r: 20, t: 60, b: 40 }
-        };
-        libraryPlotData = { data: libraryData, layout: libraryLayout };
-      }
+      libraryPlotData = { data: libraryData, layout: libraryLayout };
+    }
 
     return { queryPlot: { data: queryData, layout: queryLayout }, libraryPlot: libraryPlotData };
   }, [selectedPeak, matchesMap]);
@@ -117,8 +156,15 @@ export const MassSpectraDisplay = forwardRef<MassSpectraPlotRef, MassSpectraDisp
         try {
           for (const spec of spectraData) {
             const normalizedSpec = normalizeSpectrum(spec.spectrum_data);
+            const annotations = createMzAnnotations(normalizedSpec, 5); // Also add annotations to exported images
             const data: Data[] = [{ x: normalizedSpec.map(p => p.mz), y: normalizedSpec.map(p => p.intensity), type: 'bar', width: 0.1, marker: { color: 'steelblue' } }];
-            const layout: Partial<Layout> = { title: `Mass Spectrum for Peak #${spec.peak_number}`, xaxis: { title: 'm/z' }, yaxis: { title: 'Relative Intensity (%)', range: [0, 110] } };
+            const layout: Partial<Layout> = { 
+                title: `Mass Spectrum for Peak #${spec.peak_number}`, 
+                xaxis: { title: 'm/z' }, 
+                yaxis: { title: 'Relative Intensity (%)', range: [0, 110] },
+                margin: {t: 60}, // Add margin to exported images too
+                annotations: annotations 
+            };
             await Plotly.newPlot(hiddenDiv, data, layout);
             const dataUrl = await Plotly.toImage(hiddenDiv, { format: 'png', width: 900, height: 500, scale: 1 });
             imageList.push({ filename: `mass_spectrum_peak_${spec.peak_number}.png`, base64: dataUrl.split(',')[1] });
