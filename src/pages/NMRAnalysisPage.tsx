@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import JSZip from 'jszip';
 
-// Contexts and Hooks (assuming they are generic enough)
+// Contexts and Hooks
 import { useJobs, type Job } from '../contexts/JobContext';
 import { useFlowCurrentUser, useFlowConfig, TransactionDialog, useFlowMutate } from '@onflow/react-sdk';
 import { useOwnedNftProjects } from '../flow/kintagen-nft';
@@ -10,81 +10,120 @@ import { useLighthouse } from '../hooks/useLighthouse';
 import { generateDataHash } from '../utils/hash';
 import { getAddToLogTransaction } from '../flow/cadence';
 
-// New NMR specific components
+// NMR specific components
 import { NmrAnalysisSetupPanel } from '../components/analysis/nmr/NmrAnalysisSetupPanel';
 import { NmrAnalysisResultsDisplay } from '../components/analysis/nmr/NmrAnalysisResultsDisplay';
-import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList'; // Can be reused if generic
+import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList';
 
 // Firebase
 import { logEvent } from "firebase/analytics";
-import { analytics } from '../services/firebase'; 
+import { analytics } from '../services/firebase';
+
 // --- Type Definitions ---
 interface Project { id: string; name: string; description: string; nft_id: string; story?: any[]; }
-interface DisplayJob { id: string; label: string; projectId: string; state: 'completed' | 'failed' | 'processing' | 'logged'; failedReason?: string; returnvalue?: any; logData?: any; }
-const R_API = import.meta.env.VITE_API_BASE_URL;
+
+// Add `inputDataHash` to DisplayJob to make it available for logging
+export interface DisplayJob {
+  id: string;
+  label: string;
+  projectId: string;
+  state: 'completed' | 'failed' | 'processing' | 'logged';
+  failedReason?: string;
+  returnvalue?: any;
+  logData?: any;
+  inputDataHash?: string;
+}
 
 export const DEMO_PROJECT_ID = 'demo-project';
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    // This reads the file and encodes it as a Data URL (e.g., "data:application/zip;base64,UEsDB...")
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      // We only want the base64 content, so we split on the comma and take the second part.
-      const base64String = (reader.result as string).split(',')[1];
-      resolve(base64String);
-    };
-    reader.onerror = (error) => reject(error);
-  });
-};
+
 const NMRAnalysisPage: React.FC = () => {
-  // --- State Hooks ---
+  // --- State Hooks (unchanged) ---
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
   const { jobs, setJobs } = useJobs();
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [pageError, setPageError] = useState<string | null>(null);
   const [viewedJob, setViewedJob] = useState<DisplayJob | null>(null);
-  
-  // New state for handling Varian files
   const [varianFile, setVarianFile] = useState<File | null>(null);
-  
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
   const [jobIdBeingLogged, setJobIdBeingLogged] = useState<string | null>(null);
-  
-  // Flow/Transaction state (mostly unchanged)
   const [dialogTxId, setDialogTxId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const flowConfig = useFlowConfig();
   const { user } = useFlowCurrentUser();
-  const { uploadFile, isLoading: isUploading, error: uploadError } = useLighthouse();
+  const { uploadFile, error: uploadError } = useLighthouse();
   const { mutate: executeTransaction, isPending: isTxPending, isSuccess: isTxSuccess, isError: isTxError, error: txError, data: txId } = useFlowMutate();
+
+  // ====================================================================
+  // NEW: Monitor Active Jobs with a Polling `useEffect` Hook
+  // This is the exact same logic from the LD50 page.
+  // ====================================================================
+  useEffect(() => {
+    const activeJobs = jobs.filter(job => job.state === 'waiting' || job.state === 'processing');
+    if (activeJobs.length === 0) return;
+
+    const intervalId = setInterval(async () => {
+      let jobsWereUpdated = false;
+      const updatedJobs = await Promise.all(jobs.map(async (job) => {
+        if (job.state !== 'waiting' && job.state !== 'processing') return job;
+
+        try {
+          const response = await fetch(`/api/jobs/status/${job.id}`);
+          if (!response.ok) {
+            if (response.status === 404 && job.state !== 'waiting') {
+              jobsWereUpdated = true;
+              return { ...job, state: 'failed', failedReason: 'Job not found on server.' };
+            }
+            return job;
+          }
+          const serverJob = await response.json();
+          const serverStatus = serverJob.status;
+          const newClientState = serverStatus === 'completed' || serverStatus === 'failed' ? serverStatus : 'processing';
+
+          if (newClientState !== job.state) {
+            jobsWereUpdated = true;
+            return {
+              ...job,
+              state: newClientState,
+              returnvalue: serverJob.result || job.returnvalue,
+              failedReason: serverJob.error || job.failedReason,
+              inputDataHash: serverJob.inputDataHash || job.inputDataHash, // Keep the hash
+            };
+          }
+        } catch (e) {
+          console.error("Polling error for job", job.id, e);
+        }
+        return job;
+      }));
+
+      if (jobsWereUpdated) {
+        setJobs(updatedJobs);
+      }
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [jobs, setJobs]);
 
   // --- Memoized Job Display Logic (adapted for NMR kind) ---
   const displayJobs = useMemo(() => {
-    const filterAndMapJobs = (jobFilter: (job: Job) => boolean): DisplayJob[] => {
-      return jobs.filter(jobFilter).map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
-    };
+    const jobFilter = (job: Job) => job.kind === 'nmr';
 
     if (selectedProjectId && selectedProjectId !== DEMO_PROJECT_ID) {
       const project = projects.find(p => p.id === selectedProjectId);
       if (!project?.story) return [];
-
-      const onChainLogs: DisplayJob[] = project.story
-        .filter(step => step.agent === "Analysis") // This might need to be more specific if you have multiple analysis types
-        .map((step, index) => ({ id: `log-${project.id}-${index}`, label: step.action, projectId: project.id, state: 'logged', logData: step }));
-      
+      const onChainLogs: DisplayJob[] = project.story.filter(step => step.agent === "Analysis").map((step, index) => ({ id: `log-${project.id}-${index}`, label: step.action, projectId: project.id, state: 'logged', logData: step }));
       const onChainLabels = new Set(onChainLogs.map(log => log.label));
-      const localJobs: DisplayJobs[] = jobs.filter(j => j.projectId === selectedProjectId && !onChainLabels.has(j.label));
-      
+      const localJobs: DisplayJob[] = jobs.filter(j => jobFilter(j) && j.projectId === selectedProjectId && !onChainLabels.has(j.label)).map(job => ({ ...job, projectId: job.projectId as string }));
       return [...onChainLogs, ...localJobs];
     }
-    return filterAndMapJobs(job => job.kind === 'nmr' && job.projectId === DEMO_PROJECT_ID);
+    return jobs.filter(job => jobFilter(job) && job.projectId === DEMO_PROJECT_ID).map(job => ({ ...job, projectId: job.projectId as string }));
   }, [selectedProjectId, projects, jobs]);
 
-  // --- Main NMR Analysis Handler ---
+
+  // ====================================================================
+  // MODIFIED: Trigger the Job Asynchronously
+  // ====================================================================
   const handleRunAnalysis = async () => {
-    // This check is now correct because it uses 'varianFile'
     if (!varianFile) {
       setPageError("Please select a Varian ZIP file to analyze.");
       return;
@@ -96,94 +135,60 @@ const NMRAnalysisPage: React.FC = () => {
 
     const isDemo = !selectedProjectId || selectedProjectId === DEMO_PROJECT_ID;
     
-    // --- START: CORRECTED LOGIC ---
-    let zipDataB64: string;
-    try {
-      // We no longer need JSZip. We just read the file the user gave us.
-      zipDataB64 = await fileToBase64(varianFile);
-      if (!zipDataB64) {
-        throw new Error("Could not read the content of the selected file.");
-      }
-    } catch (e: any) {
-      setPageError(`Failed to prepare data file: ${e.message}`);
-      setIsAnalysisRunning(false);
-      return;
-    }
-    // --- END: CORRECTED LOGIC ---
+    // We need the file content to generate the hash
+    const fileBuffer = await varianFile.arrayBuffer();
+    const inputDataHash = await generateDataHash(fileBuffer);
 
-    // The rest of the function remains largely the same
-    const inputDataHash = await generateDataHash(zipDataB64);
-    
-    // Use the actual file name for a better label
     const jobLabel = `NMR analysis of ${varianFile.name}`;
-    // --- FIREBASE ANALYTICS: Log the start of an analysis ---
+    const tempId = `temp_job_${Date.now()}`;
+    
     logEvent(analytics, 'run_analysis', {
-      analysis_type: 'nmr1DH', // Good for future-proofing if you add more analysis types
+      analysis_type: 'nmr1DH',
       data_source_hash: inputDataHash,
       is_demo: isDemo,
     });
+
     const newJob: Job = {
-      id: `${isDemo ? 'demo' : 'netlify'}_job_${Date.now()}`,
+      id: tempId,
       kind: 'nmr',
       label: jobLabel,
       projectId: selectedProjectId || DEMO_PROJECT_ID,
       createdAt: Date.now(),
-      state: 'processing'
+      state: 'waiting',
+      inputDataHash: inputDataHash,
     };
     setJobs(prev => [newJob, ...prev]);
 
     try {
-      // This is the standard way to prepare a file for an HTTP request.
       const formData = new FormData();
-
-      // --- 3. Append the file to the FormData object ---
-      // The key 'file' MUST match the name in your curl command (-F "file=@...")
-      // and what the Plumber endpoint expects.
       formData.append('file', varianFile);
-      const response = await fetch(`${R_API}/analyze/nmr`, {
-        method: 'POST',
-        body: formData
-      });
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to parse error response.' }));
-        throw new Error(errorBody.error || `Request failed with status ${response.status}`);
-      }
+      formData.append('type', 'nmr'); // Corresponds to worker's analysisType
+      formData.append('inputDataHash', inputDataHash);
+
+      const response = await fetch('/api/jobs/create', { method: 'POST', body: formData });
       const result = await response.json();
-      // --- FIREBASE ANALYTICS: Log the successful result of the analysis ---
-      logEvent(analytics, 'analysis_result', {
-        status: 'success',
-        analysis_type: 'nmr1DH',
-        data_source_hash: inputDataHash,
-        is_demo: isDemo,
-      });
-      setJobs(prevJobs => prevJobs.map(j => 
-        j.id === newJob.id 
-          ? { 
-              ...j, 
-              state: result.status === 'success' ? 'completed' : 'failed', 
-              returnvalue: { ...result, inputDataHash }, 
-              failedReason: result.error,
-            } 
-          : j
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to create job on the server.');
+      }
+
+      setJobs(prevJobs => prevJobs.map(j =>
+        j.id === tempId ? { ...j, id: result.jobId, state: 'processing' } : j
       ));
+
     } catch (e: any) {
-      setJobs(prevJobs => prevJobs.map(j => (j.id === newJob.id ? { ...j, state: 'failed', failedReason: e.message } : j)));
+      setJobs(prevJobs => prevJobs.map(j =>
+        j.id === tempId ? { ...j, state: 'failed', failedReason: e.message } : j
+      ));
       setPageError(`Analysis failed: ${e.message}`);
-      // --- FIREBASE ANALYTICS: Log the failed result of the analysis ---
-      logEvent(analytics, 'analysis_result', {
-        status: 'failed',
-        analysis_type: 'nmr1DH',
-        is_demo: isDemo,
-        data_source_hash: inputDataHash,
-        error_message: e.message, // Capture the error for debugging
-      });
+      logEvent(analytics, 'analysis_result', { status: 'failed', analysis_type: 'nmr1DH', error_message: e.message });
     } finally {
       setIsAnalysisRunning(false);
     }
   };
 
-
-  // --- Logging and Transaction Logic (adapted for NMR) ---
+  // ====================================================================
+  // MODIFIED: Logging and Transaction Logic (adapted for NMR and async hash)
+  // ====================================================================
   const handleViewAndLogResults = async (job: DisplayJob) => {
     setViewedJob(job);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -198,23 +203,25 @@ const NMRAnalysisPage: React.FC = () => {
         if (!project?.nft_id) throw new Error("Project NFT ID not found.");
 
         const results = job.returnvalue;
-        const plotBase64 = results?.results?.plot_b64?.split(',')[1];
+        const rScriptResults = results?.r_script_results; // Use the nested results
+        const inputDataHash = results?.inputDataHash; // Use the reliable hash
+        if(!inputDataHash) throw new Error("Input data hash not found in job results.");
+
+        const plotBase64 = rScriptResults?.results?.plot_b64?.split(',')[1];
         if (!plotBase64) throw new Error("No plot found to save.");
 
-        // Prepare NMR specific files for the artifact zip
-        const spectrumJsonString = JSON.stringify(results.results.spectrum_data, null, 2);
+        const spectrumJsonString = JSON.stringify(rScriptResults.results.spectrum_data, null, 2);
         const plotHash = await generateDataHash(plotBase64);
         const spectrumHash = await generateDataHash(spectrumJsonString);
 
         const metadata = {
           schema_version: "1.0.0",
-          analysis_agent: "KintaGen NMR v1 (Vercel)",
+          analysis_agent: "KintaGen NMR v1 (Server)",
           timestamp_utc: new Date().toISOString(),
-          datahash: spectrumHash,
-          plothash: plotHash,
-          returnvalue: results
+          input_data_hash_sha256: inputDataHash, // Use the reliable hash
+          outputs: [{ filename: "nmr_plot.png", hash_sha256: plotHash }, { filename: "nmr_spectrum.json", hash_sha256: spectrumHash }]
         };
-        console.log(metadata)
+
         const zip = new JSZip();
         zip.file("metadata.json", JSON.stringify(metadata, null, 2));
         zip.file("nmr_plot.png", plotBase64, { base64: true });
@@ -244,10 +251,10 @@ const NMRAnalysisPage: React.FC = () => {
       setDialogTxId(txId);
       setIsDialogOpen(true);
     }
-    if (isTxError && txError) {
+    if (txError) {
       setPageError(`Transaction failed: ${txError.message}`);
     }
-  }, [isTxSuccess, isTxError, txId, txError]);
+  }, [isTxSuccess, txId, txError]);
   
   return (
     <>

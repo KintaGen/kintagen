@@ -14,21 +14,28 @@ import { getAddToLogTransaction } from '../flow/cadence';
 import { GcmsAnalysisSetupPanel } from '../components/analysis/xcms/GcmsAnalysisSetupPanel';
 import { GcmsAnalysisResultsDisplay } from '../components/analysis/xcms/GcmsAnalysisResultsDisplay';
 import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList';
-import type { TopSpectrum } from '../components/analysis/xcms/MassSpectraDisplay';
 
 // Firebase
 import { logEvent } from "firebase/analytics";
-import { analytics } from '../services/firebase'; 
+import { analytics } from '../services/firebase';
 
 // Type Definitions
 interface Project { id: string; name: string; description: string; nft_id: string; story?: any[]; }
-interface DisplayJob { id: string; label: string; projectId: string; state: 'completed' | 'failed' | 'processing' | 'logged'; failedReason?: string; returnvalue?: any; logData?: any; }
+export interface DisplayJob {
+  id: string;
+  label: string;
+  projectId: string;
+  state: 'completed' | 'failed' | 'processing' | 'logged';
+  failedReason?: string;
+  returnvalue?: any;
+  logData?: any;
+  inputDataHash?: string;
+}
 
-const R_API = import.meta.env.VITE_API_BASE_URL;
 export const DEMO_PROJECT_ID = 'demo-project';
 
 const GCMSAnalysisPage: React.FC = () => {
-  // --- State Hooks ---
+  // --- State Hooks (unchanged) ---
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
   const { jobs, setJobs } = useJobs();
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -40,7 +47,6 @@ const GCMSAnalysisPage: React.FC = () => {
   const [jobIdBeingLogged, setJobIdBeingLogged] = useState<string | null>(null);
   const [dialogTxId, setDialogTxId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [noiseThreshold, setNoiseThreshold] = useState(2.5); 
   
   // Flow/Transaction state
   const flowConfig = useFlowConfig();
@@ -48,60 +54,69 @@ const GCMSAnalysisPage: React.FC = () => {
   const { uploadFile } = useLighthouse();
   const { mutate: executeTransaction, isSuccess: isTxSuccess, isError: isTxError, error: txError, data: txId } = useFlowMutate();
 
-  // --- Memoized Job Display Logic ---
+  // ====================================================================
+  // NEW: Polling `useEffect` Hook (Identical to other pages)
+  // ====================================================================
+  useEffect(() => {
+    const activeJobs = jobs.filter(job => (job.state === 'waiting' || job.state === 'processing') && job.kind === 'gcms');
+    if (activeJobs.length === 0) return;
+
+    const intervalId = setInterval(async () => {
+      let jobsWereUpdated = false;
+      const updatedJobs = await Promise.all(jobs.map(async (job) => {
+        if (job.kind !== 'gcms' || (job.state !== 'waiting' && job.state !== 'processing')) return job;
+        
+        try {
+          const response = await fetch(`/api/jobs/status/${job.id}`);
+          if (!response.ok) {
+            if (response.status === 404 && job.state !== 'waiting') {
+              jobsWereUpdated = true;
+              return { ...job, state: 'failed', failedReason: 'Job not found on server.' };
+            }
+            return job;
+          }
+          const serverJob = await response.json();
+          const newClientState = serverJob.status === 'completed' || serverJob.status === 'failed' ? serverJob.status : 'processing';
+
+          if (newClientState !== job.state) {
+            jobsWereUpdated = true;
+            return {
+              ...job,
+              state: newClientState,
+              returnvalue: serverJob.result || job.returnvalue,
+              failedReason: serverJob.error || job.failedReason,
+              inputDataHash: serverJob.inputDataHash || job.inputDataHash,
+            };
+          }
+        } catch (e) { console.error("Polling error for job", job.id, e); }
+        return job;
+      }));
+
+      if (jobsWereUpdated) {
+        setJobs(updatedJobs);
+      }
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [jobs, setJobs]);
+
+  // --- Memoized Job Display Logic (adapted for GCMS kind) ---
   const displayJobs = useMemo(() => {
+    const jobFilter = (job: Job) => job.kind === 'gcms';
     if (selectedProjectId && selectedProjectId !== DEMO_PROJECT_ID) {
       const project = projects.find(p => p.id === selectedProjectId);
       if (!project?.story) return [];
-      const onChainLogs: DisplayJob[] = project.story
-        .filter(step => step.agent === "Analysis")
-        .map((step, index) => ({ id: `log-${project.id}-${index}`, label: step.action, projectId: project.id, state: 'logged', logData: step }));
+      const onChainLogs: DisplayJob[] = project.story.filter(step => step.agent === "Analysis").map((step, index) => ({ id: `log-${project.id}-${index}`, label: step.action, projectId: project.id, state: 'logged', logData: step }));
       const onChainLabels = new Set(onChainLogs.map(log => log.label));
-      const localJobs: DisplayJob[] = jobs.filter(j => j.projectId === selectedProjectId && !onChainLabels.has(j.label) && j.kind === 'gcms');
+      const localJobs: DisplayJob[] = jobs.filter(j => jobFilter(j) && j.projectId === selectedProjectId && !onChainLabels.has(j.label)).map(job => ({ ...job, projectId: job.projectId as string }));
       return [...onChainLogs, ...localJobs];
     }
-    return jobs.filter(job => job.kind === 'gcms' && job.projectId === DEMO_PROJECT_ID).map(job => ({ ...job, id: job.id, projectId: job.projectId as string }));
+    return jobs.filter(job => jobFilter(job) && job.projectId === DEMO_PROJECT_ID).map(job => ({ ...job, projectId: job.projectId as string }));
   }, [selectedProjectId, projects, jobs]);
 
-  // --- Helper function for MoNA API call ---
-  const identifySinglePeak = async (peakData: TopSpectrum) => {
-    try {
-      const spectrumString = peakData.spectrum_data.map(p => `${p.mz.toFixed(4)}:${(p.relative_intensity || 0).toFixed(0)}`).join(" ");
-      const payload = { spectrum: spectrumString, minSimilarity: 500, algorithm: "default" };
-      
-      const response = await fetch("https://mona.fiehnlab.ucdavis.edu/rest/similarity/search", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) return null;
-      const apiResults = await response.json();
-      
-      if (apiResults && apiResults.length > 0) {
-        const bestHit = apiResults[0];
-        const compoundName = bestHit.hit?.compound?.[0]?.names?.[0]?.name || "Unknown";
-        // Parse the library spectrum string into the format our UI expects
-        const librarySpectrum = bestHit.hit?.spectrum ? bestHit.hit.spectrum.split(' ').map((p:string) => {
-            const parts = p.split(':');
-            return { mz: parseFloat(parts[0]), intensity: parseFloat(parts[1]) };
-        }) : [];
-
-        return { 
-          peak_number: peakData.peak_number, 
-          match_name: compoundName, 
-          similarity_score: bestHit.score,
-          library_spectrum: librarySpectrum
-        };
-      }
-    } catch (error) {
-      console.error(`Failed to identify peak #${peakData.peak_number}:`, error);
-    }
-    // Return a "no match" object on failure or if no hits are found
-    return { peak_number: peakData.peak_number, match_name: "No Match Found", similarity_score: 0, library_spectrum: [] };
-  };
-
-  // --- Main GCMS Analysis Handler (Two-Stage Workflow) ---
+  // ====================================================================
+  // MODIFIED: Trigger the Job Asynchronously
+  // ====================================================================
   const handleRunAnalysis = async () => {
     if (!mzmlFile) {
       setPageError("Please select an mzML file to analyze.");
@@ -115,63 +130,41 @@ const GCMSAnalysisPage: React.FC = () => {
     const isDemo = !selectedProjectId || selectedProjectId === DEMO_PROJECT_ID;
     const inputDataHash = await generateDataHash(await mzmlFile.arrayBuffer());
     const jobLabel = `GC-MS analysis of ${mzmlFile.name}`;
+    const tempId = `temp_job_${Date.now()}`;
     
     logEvent(analytics, 'run_analysis', { analysis_type: 'gcms_full_workflow', data_source_hash: inputDataHash, is_demo: isDemo });
     
     const newJob: Job = {
-      id: `${isDemo ? 'demo' : 'local'}_job_${Date.now()}`,
+      id: tempId,
       kind: 'gcms',
       label: jobLabel,
       projectId: selectedProjectId || DEMO_PROJECT_ID,
       createdAt: Date.now(),
-      state: 'processing'
+      state: 'waiting',
+      inputDataHash: inputDataHash,
     };
     setJobs(prev => [newJob, ...prev]);
 
     try {
-      // --- STAGE 1: Run Feature Finder ---
-      console.log('Stage 1: Running feature finder...');
       const formData = new FormData();
       formData.append('file', mzmlFile);
-      formData.append('noiseThreshold', noiseThreshold.toString());
+      formData.append('type', 'xcms'); // Corresponds to worker's R script
+      formData.append('inputDataHash', inputDataHash);
+      // You could add noiseThreshold here too if needed:
+      // formData.append('noiseThreshold', noiseThreshold.toString());
 
-      const response = await fetch(`${R_API}/analyze/xcms`, { method: 'POST', body: formData });
-
+      const response = await fetch('/api/jobs/create', { method: 'POST', body: formData });
+      const result = await response.json();
       if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to parse error.' }));
-        throw new Error(errorBody.error || `Request failed with status ${response.status}`);
-      }
-      const initialResult = await response.json();
-      if (initialResult.status !== 'success') {
-        throw new Error(initialResult.error || 'Feature finder script failed.');
-      }
-      
-      // --- STAGE 2: Run Automatic Identification ---
-      console.log('Stage 2: Running automatic online identification...');
-      const topSpectra = initialResult.results?.top_spectra_data || [];
-      
-      if (topSpectra.length > 0) {
-        const allMatches = await Promise.all(
-          topSpectra.map((spec: TopSpectrum) => identifySinglePeak(spec))
-        );
-        initialResult.results.library_matches = allMatches.filter(Boolean);
-      } else {
-        initialResult.results.library_matches = [];
+        throw new Error(result.error || 'Failed to create job on the server.');
       }
 
-      console.log('Analysis and identification complete.');
-
-      // --- FINALIZE: Update job state with combined results ---
-      setJobs(prevJobs => prevJobs.map(j => 
-        j.id === newJob.id 
-          ? { ...j, state: 'completed', returnvalue: { ...initialResult, inputDataHash } } 
-          : j
+      setJobs(prevJobs => prevJobs.map(j =>
+        j.id === tempId ? { ...j, id: result.jobId, state: 'processing' } : j
       ));
       
-      logEvent(analytics, 'analysis_result', { status: 'success', analysis_type: 'gcms_full_workflow' });
-
     } catch (e: any) {
-      setJobs(prevJobs => prevJobs.map(j => (j.id === newJob.id ? { ...j, state: 'failed', failedReason: e.message } : j)));
+      setJobs(prevJobs => prevJobs.map(j => (j.id === tempId ? { ...j, state: 'failed', failedReason: e.message } : j)));
       setPageError(`Analysis failed: ${e.message}`);
       logEvent(analytics, 'analysis_result', { status: 'failed', analysis_type: 'gcms_full_workflow', error_message: e.message });
     } finally {
@@ -179,7 +172,9 @@ const GCMSAnalysisPage: React.FC = () => {
     }
   };
 
-  // --- Logging and Transaction Logic ---
+  // ====================================================================
+  // MODIFIED: Logging and Transaction Logic (adapted for async hash)
+  // ====================================================================
   const handleViewAndLogResults = async (job: DisplayJob) => {
     setViewedJob(job);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -194,33 +189,34 @@ const GCMSAnalysisPage: React.FC = () => {
         if (!project?.nft_id) throw new Error("Project NFT ID not found.");
 
         const results = job.returnvalue;
-        const plotBase64 = results?.results?.plot_b64?.split(',')[1];
+        const rScriptResults = results?.r_script_results; // Use the nested results
+        const inputDataHash = results?.inputDataHash; // Use the reliable hash
+        if (!inputDataHash) throw new Error("Input data hash not found in job results.");
+
+        const plotBase64 = rScriptResults?.results?.plot_b64?.split(',')[1];
         if (!plotBase64) throw new Error("No plot found to save.");
 
-        // Prepare GCMS specific files for the artifact zip
-        const ticDataJsonString = JSON.stringify(results.results.tic_data, null, 2);
+        const ticDataJsonString = JSON.stringify(rScriptResults.results.tic_data, null, 2);
         const plotHash = await generateDataHash(plotBase64);
         const ticDataHash = await generateDataHash(ticDataJsonString);
 
         const metadata = {
           schema_version: "1.0.0",
-          analysis_agent: "KintaGen GCMS v1 (Vercel)", // [CHANGED]
+          analysis_agent: "KintaGen GCMS v1 (Server)",
           timestamp_utc: new Date().toISOString(),
-          datahash: ticDataHash,
-          plothash: plotHash,
-          returnvalue: results
+          input_data_hash_sha256: inputDataHash,
+          outputs: [{ filename: "gcms_tic_plot.png", hash_sha256: plotHash }, { filename: "gcms_tic_data.json", hash_sha256: ticDataHash }]
         };
         
         const zip = new JSZip();
         zip.file("metadata.json", JSON.stringify(metadata, null, 2));
-        zip.file("gcms_tic_plot.png", plotBase64, { base64: true }); // [CHANGED]
-        zip.file("gcms_tic_data.json", ticDataJsonString); // [CHANGED]
+        zip.file("gcms_tic_plot.png", plotBase64, { base64: true });
+        zip.file("gcms_tic_data.json", ticDataJsonString);
         
         const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact.zip`);
         const cid = await uploadFile(zipFile);
-        if (!cid) throw new Error(uploadError || "Failed to get CID.");
+        if (!cid) throw new Error("Failed to upload artifact to Lighthouse.");
 
-        // Cadence transaction logic is unchanged
         const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: flowConfig.addresses["NonFungibleToken"] };
         const cadence = getAddToLogTransaction(addresses);
         const args = (arg, t) => [arg(project.nft_id, t.UInt64), arg("Analysis", t.String), arg(job.label, t.String), arg(cid, t.String)];
@@ -236,6 +232,7 @@ const GCMSAnalysisPage: React.FC = () => {
     }
   };
   
+  // This useEffect is unchanged
   useEffect(() => {
     if (isTxSuccess && txId) {
       setDialogTxId(txId);

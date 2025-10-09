@@ -1,4 +1,4 @@
-import React,{useState,useMemo,useEffect} from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import { useJobs, type Job } from '../contexts/JobContext';
 import { useFlowCurrentUser, useFlowConfig, TransactionDialog, useFlowMutate } from '@onflow/react-sdk';
@@ -13,31 +13,32 @@ import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList';
 import { generateDataHash } from '../utils/hash';
 
 // Firebase
-
 import { logEvent } from "firebase/analytics";
-import { analytics } from '../services/firebase'; 
+import { analytics } from '../services/firebase';
 
 // --- Type Definitions ---
-interface Project { 
-    id: string; 
-    name: string; 
-    description: string; 
-    nft_id: string; 
-    story?: any[];
+interface Project {
+  id: string;
+  name: string;
+  description: string;
+  nft_id: string;
+  story?: any[];
 }
 
-export interface DisplayJob { 
-    id: string; 
-    label: string; 
-    projectId: string; 
-    state: 'completed' | 'failed' | 'processing' | 'logged'; 
-    failedReason?: string; 
-    returnvalue?: any; 
-    logData?: any; 
+export interface DisplayJob {
+  id: string;
+  label: string;
+  projectId: string;
+  state: 'completed' | 'failed' | 'processing' | 'logged';
+  failedReason?: string;
+  returnvalue?: any;
+  logData?: any;
+  inputDataHash: string
 }
 
 export const DEMO_PROJECT_ID = 'demo-project';
-const R_API = import.meta.env.VITE_API_BASE_URL;
+// const R_API = import.meta.env.VITE_API_BASE_URL; // This is no longer used for the primary analysis call
+
 const LD50AnalysisPage: React.FC = () => {
   // --- State Hooks ---
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
@@ -55,10 +56,67 @@ const LD50AnalysisPage: React.FC = () => {
   const [isLogging, setIsLogging] = useState(false);
   const [jobIdBeingLogged, setJobIdBeingLogged] = useState<string | null>(null);
   const { mutate: executeTransaction, isPending: isTxPending, isSuccess: isTxSuccess, isError: isTxError, error: txError, data: txId } = useFlowMutate();
-  
-  // --- Memoized Job Display Logic (unchanged) ---
-  const displayJobs = useMemo(() => {
 
+  // ====================================================================
+  // NEW: Monitor Active Jobs with a Polling `useEffect` Hook
+  // This hook is the heart of the new asynchronous flow.
+  // ====================================================================
+  useEffect(() => {
+    // Find all jobs that are currently in a pending state.
+    const activeJobs = jobs.filter(job => job.state === 'waiting' || job.state === 'processing');
+    if (activeJobs.length === 0) return; // No need to poll if no jobs are active
+
+    const intervalId = setInterval(async () => {
+      let jobsWereUpdated = false;
+      const updatedJobs = await Promise.all(jobs.map(async (job) => {
+        // If the job is not active, return it as is.
+        if (job.state !== 'waiting' && job.state !== 'processing') {
+          return job;
+        }
+        try {
+          // Poll the status endpoint for this specific job.
+          const response = await fetch(`/api/jobs/status/${job.id}`);
+          if (!response.ok) {
+            if (response.status === 404 && job.state !== 'waiting') { // Don't fail 'waiting' jobs that haven't hit the server yet
+              jobsWereUpdated = true;
+              return { ...job, state: 'failed', failedReason: 'Job not found on server.' };
+            }
+            return job; // For other errors, we'll just wait and retry on the next interval.
+          }
+
+          const serverJob = await response.json();
+          const serverStatus = serverJob.status; // e.g., 'queued', 'completed', 'failed'
+
+          // Map server status to our frontend state and check if it has changed
+          const newClientState = serverStatus === 'completed' || serverStatus === 'failed' ? serverStatus : 'processing';
+          if (newClientState !== job.state) {
+            jobsWereUpdated = true;
+            return {
+              ...job,
+              state: newClientState,
+              returnvalue: serverJob.result || job.returnvalue,
+              failedReason: serverJob.error || job.failedReason,
+            };
+          }
+        } catch (e) {
+          console.error("Polling error for job", job.id, e);
+        }
+        return job; // If no changes, return the original job object.
+      }));
+
+      // Only update the context state if any of the jobs have actually changed.
+      if (jobsWereUpdated) {
+        setJobs(updatedJobs);
+      }
+    }, 4000); // Poll every 4 seconds.
+
+    // Cleanup: Stop the interval when the component unmounts or the jobs array changes.
+    return () => clearInterval(intervalId);
+  }, [jobs, setJobs]);
+
+
+  // --- Memoized Job Display Logic (This remains unchanged and will work automatically) ---
+  const displayJobs = useMemo(() => {
     if(selectedProjectId && selectedProjectId !== DEMO_PROJECT_ID){
       if (!selectedProjectId) return [];
       const project = projects.find(p => p.id === selectedProjectId);
@@ -75,114 +133,102 @@ const LD50AnalysisPage: React.FC = () => {
               return [...onChainLogs, ...localJobs];
     }
     return jobs.filter(job => job.kind === 'ld50' && job.projectId === DEMO_PROJECT_ID)
-    .map(job => ({ id: job.id, label: job.label, projectId: job.projectId as string, state: job.state, failedReason: job.failedReason, returnvalue: job.returnvalue, logData: job.logData }));
+    .map(job => ({ 
+      id: job.id,
+      label: job.label,
+      projectId: job.projectId as string,
+      state: job.state,
+      failedReason: job.failedReason,
+      returnvalue: job.returnvalue,
+      logData: job.logData,
+      inputDataHash: job.inputDataHash
+     }));
   }, [selectedProjectId, projects, jobs]);
 
-  // --- Main Analysis Handler (Corrected) ---
+
+  // ====================================================================
+  // MODIFIED: Trigger the Job Asynchronously
+  // ====================================================================
   const handleRunAnalysis = async () => {
     setPageError(null);
     setViewedJob(null);
     setIsAnalysisRunning(true);
 
     const isDemo = !selectedProjectId || selectedProjectId === DEMO_PROJECT_ID;
-    
     const inputDataString = validatedCsvData || "";
     const inputDataHash = await generateDataHash(isDemo ? "sample_data" : inputDataString);
+    const jobLabel = validatedCsvData ? `LD50 analysis with custom data` : `LD50 analysis with sample data`;
+    const tempId = `temp_job_${Date.now()}`;
 
-    const jobLabel = validatedCsvData
-      ? `LD50 analysis with custom data`
-      : `LD50 analysis with sample data`;
-
-    // --- FIREBASE ANALYTICS: Log the start of an analysis ---
+    // FIREBASE ANALYTICS: Log the start of an analysis
     logEvent(analytics, 'run_analysis', {
-      analysis_type: 'ld50', // Good for future-proofing if you add more analysis types
+      analysis_type: 'ld50',
       data_source_hash: inputDataHash,
       is_demo: isDemo,
     });
 
+    // Create the job in the UI immediately with a 'waiting' state
     const newJob: Job = {
-      id: `${isDemo ? 'demo' : 'netlify'}_job_${Date.now()}`,
+      id: tempId,
       kind: 'ld50',
       label: jobLabel,
       projectId: selectedProjectId || DEMO_PROJECT_ID,
       createdAt: Date.now(),
-      state: 'processing'
+      state: 'waiting',
+      inputDataHash: inputDataHash
     };
     setJobs(prev => [newJob, ...prev]);
 
     try {
+      // Prepare FormData for the file upload to our Vercel API
+      const formData = new FormData();
+      const dataBlob = new Blob([inputDataString], { type: 'text/csv' });
+      formData.append('file', dataBlob, 'analysis_data.csv');
+      formData.append('type', 'drc'); // Corresponds to worker's analysisType
+      formData.append('inputDataHash', inputDataHash);
 
-      //const response = await fetch('/.netlify/functions/run-ld50', {
-      //const response = await fetch('/api/run-ld50', {
-      const response = await fetch(`${R_API}/analyze/drc`, {
+      // Call our NEW Vercel endpoint to create the job. This is a fast operation.
+      const response = await fetch('/api/jobs/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: inputDataString,
+        body: formData,
       });
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to parse error response.' }));
-        throw new Error(errorBody.error || `Request failed with status ${response.status}`);
-      }
+
       const result = await response.json();
-      // --- FIREBASE ANALYTICS: Log the successful result of the analysis ---
-      logEvent(analytics, 'analysis_result', {
-        status: 'success',
-        analysis_type: 'ld50',
-        data_source_hash: inputDataHash,
-        is_demo: isDemo,
-      });
-      setJobs(prevJobs => {
-        return prevJobs.map(j => {
-          if (j.id === newJob.id) {
-            // Found the job, update it with the results
-            return { 
-              ...j, 
-              state: result.status === 'success' ? 'completed' : 'failed', 
-              returnvalue: { 
-                ...result,
-                inputDataHash: inputDataHash
-              }, 
-              failedReason: result.error,
-            };
-          }
-          // Not the job we're looking for, return it unchanged
-          return j;
-        });
-      });
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to create job on the server.');
+      }
+
+      // The job was successfully created! We get the REAL jobId back.
+      // Update our temporary job with the real ID and set its state to 'processing'.
+      // The polling `useEffect` will take over from here.
+      setJobs(prevJobs => prevJobs.map(j =>
+        j.id === tempId ? { ...j, id: result.jobId, state: 'processing' } : j
+      ));
 
     } catch (e: any) {
-      setJobs(prevJobs => prevJobs.map(j => (j.id === newJob.id ? { ...j, state: 'failed', failedReason: e.message } : j)));
-      setPageError(`Analysis failed: ${e.message}`);
-      // --- FIREBASE ANALYTICS: Log the failed result of the analysis ---
+      // If the *creation* of the job fails, update its state to 'failed'.
+      setJobs(prevJobs => prevJobs.map(j =>
+        j.id === tempId ? { ...j, state: 'failed', failedReason: e.message } : j
+      ));
+      setPageError(`Failed to start analysis: ${e.message}`);
       logEvent(analytics, 'analysis_result', {
         status: 'failed',
         analysis_type: 'ld50',
-        is_demo: isDemo,
-        data_source_hash: inputDataHash,
-        error_message: e.message, // Capture the error for debugging
+        error_message: e.message,
       });
     } finally {
       setIsAnalysisRunning(false);
     }
   };
 
-
-  // --- Logging and Transaction Logic (unchanged) ---
+  // --- Logging and Transaction Logic (This remains unchanged and will work automatically) ---
   const handleViewAndLogResults = async (job: DisplayJob) => {
-    console.log(job)
+    console.log(job);
     setViewedJob(job);
     setPageError(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    // Case 1: Job is a demo job. Just display results, DO NOT log.
-    if (job.projectId === DEMO_PROJECT_ID) {
-      console.log("Displaying results for a demo job. Logging is disabled.");
-      return;
-    }
-    // Case 2: Job is already logged on-chain. Just display it.
-    if (job.state === 'logged') {
-      console.log("Displaying already logged results.");
-      return; 
-    }
+    if (job.projectId === DEMO_PROJECT_ID) return;
+    if (job.state === 'logged') return;
     if (job.state === 'completed' && job.projectId && user?.addr) {
       setIsLogging(true);
       setJobIdBeingLogged(job.id);
@@ -190,6 +236,7 @@ const LD50AnalysisPage: React.FC = () => {
         const project = projects.find(p => p.id === job.projectId);
         if (!project?.nft_id) throw new Error("Project NFT ID not found.");
         const results = job.returnvalue;
+        const inputDataHash = await generateDataHash(validatedCsvData || ""); // Recalculate or store it
         const plotBase64 = results?.results?.plot_b64?.split(',')[1];
         if (!plotBase64) throw new Error("No plot found to save.");
         const metricsJsonString = JSON.stringify(results.results, null, 2);
@@ -198,9 +245,9 @@ const LD50AnalysisPage: React.FC = () => {
 
         const metadata = {
           schema_version: "1.0.0",
-          analysis_agent: "KintaGen LD50 v1 (Netlify)",
+          analysis_agent: "KintaGen LD50 v1 (Server)",
           timestamp_utc: new Date().toISOString(),
-          input_data_hash_sha256: results.inputDataHash,
+          input_data_hash_sha256: inputDataHash,
           outputs: [{ filename: "ld50_plot.png", hash_sha256: plotHash }, { filename: "ld50_metrics.json", hash_sha256: metricsHash }]
         };
         const zip = new JSZip();
@@ -224,7 +271,7 @@ const LD50AnalysisPage: React.FC = () => {
       }
     }
   };
-  console.log(viewedJob)
+  
   useEffect(() => {
     if (isTxSuccess && txId) {
       setDialogTxId(txId);
@@ -240,7 +287,7 @@ const LD50AnalysisPage: React.FC = () => {
     }
   }, [isTxSuccess, isTxError, txId, txError]);
   const overallIsLogging = isLogging || isTxPending;
-  
+
   return (
     <>
       <div className="max-w-6xl mx-auto p-4 md:p-8">

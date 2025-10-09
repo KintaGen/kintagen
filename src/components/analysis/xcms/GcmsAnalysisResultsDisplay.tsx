@@ -20,7 +20,7 @@ interface GcmsAnalysisResultsDisplayProps {
 
 // --- Component ---
 export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProps> = ({ job }) => {
-  const { returnvalue, logData } = job;
+  const { returnvalue, logData,inputDataHash } = job;
   const initialResults = returnvalue?.results;
   
   const chromatogramPlotRef = useRef<ChromatogramPlotRef>(null);
@@ -50,8 +50,8 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
   const topPeakNumbers = topSpectraData.map((spec: any) => spec.peak_number);
   const libraryMatchesData = initialResults?.library_matches || [];
 
-  const metadata = returnvalue ? {
-    input_data_hash_sha256: returnvalue.inputDataHash,
+  const metadata = inputDataHash ? {
+    input_data_hash_sha256: inputDataHash,
     analysis_agent: "KintaGen GC-MS Feature Finder v1.3",
   } : null;
 

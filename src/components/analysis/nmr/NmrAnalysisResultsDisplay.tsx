@@ -52,8 +52,8 @@ interface DisplayJob {
   returnvalue?: {
     results: NmrResults;
     status: 'success' | 'error';
-    inputDataHash: string;
   };
+  inputDataHash: string;
   logData?: any;
 }
 
@@ -217,7 +217,7 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
     setMetadata(null);
     if (job.state === 'completed' && job.returnvalue?.status === 'success') {
       setMetadata({
-        input_data_hash_sha256: job.returnvalue.inputDataHash,
+        input_data_hash_sha256: job.inputDataHash,
         analysis_agent: "KintaGen NMR Agent v1.2 (Local Run)", // Version bump
       });
     } else if (job.state === 'logged') {

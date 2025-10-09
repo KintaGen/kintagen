@@ -3,28 +3,32 @@
 import React from 'react';
 import { ClockIcon, CheckCircleIcon, XCircleIcon, DocumentTextIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
 
+// --- CHANGE #1: Add 'waiting' to the possible states ---
 interface DisplayJob {
     id: string; 
     label: string; 
     projectId: string; 
-    state: 'completed' | 'failed' | 'processing' | 'logged'; 
+    state: 'completed' | 'failed' | 'processing' | 'logged' | 'waiting'; // Added 'waiting'
     failedReason?: string; 
 }
 
 interface JobListItemProps {
-  job: DisplayJob & { projectId: string }; // It REQUIRES projectId
+  job: DisplayJob & { projectId: string };
   onViewAndLogResults: (job: DisplayJob) => void;
   isBeingLogged: boolean;
 }
 
+// --- CHANGE #2: Add a configuration for the 'waiting' state ---
 const stateConfig = {
     logged: { icon: CheckCircleIcon, color: 'text-green-400', label: 'Logged On-Chain' },
     completed: { icon: CheckCircleIcon, color: 'text-blue-400', label: 'Completed' },
-    processing: { icon: ArrowPathIcon, color: 'text-yellow-400 animate-spin', label: '' },
+    processing: { icon: ArrowPathIcon, color: 'text-yellow-400 animate-spin', label: 'Processing' }, // Added a label for consistency
     failed: { icon: XCircleIcon, color: 'text-red-400', label: 'Failed' },
+    waiting: { icon: ClockIcon, color: 'text-gray-400', label: 'Queued' }, // The new state config
 };
 
 export const JobListItem: React.FC<JobListItemProps> = ({ job, onViewAndLogResults, isBeingLogged }) => {
+  // This line will now work for all possible job states, including 'waiting'.
   const { icon: Icon, color, label } = stateConfig[job.state];
 
   const renderActionButton = () => {
@@ -49,7 +53,6 @@ export const JobListItem: React.FC<JobListItemProps> = ({ job, onViewAndLogResul
                 </button>
             );
         case 'completed':
-            // --- NEW LOGIC for demo vs. real project jobs ---
             if (job.projectId === 'demo-project') {
                 return (
                     <button 
@@ -75,7 +78,8 @@ export const JobListItem: React.FC<JobListItemProps> = ({ job, onViewAndLogResul
                 </div>
             );
         default:
-            return <div className="w-36"></div>; // Placeholder for processing
+            // This now correctly handles 'waiting' and 'processing' states
+            return <div className="w-36"></div>; // Placeholder
     }
   };
 
@@ -85,7 +89,7 @@ export const JobListItem: React.FC<JobListItemProps> = ({ job, onViewAndLogResul
         <Icon className={`h-6 w-6 flex-shrink-0 ${color}`} />
         <div className="min-w-0">
           <p className="text-white font-medium truncate">{job.label}</p>
-          <p className={`text-xs ${color.replace('text-', 'text-opacity-80')}`}>{label}</p>
+          <p className={`text-xs text-opacity-80}`}>{label}</p>
         </div>
       </div>
       <div className="flex-shrink-0">

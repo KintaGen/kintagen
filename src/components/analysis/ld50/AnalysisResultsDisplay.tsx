@@ -20,6 +20,7 @@ interface DisplayJob {
     state: 'completed' | 'failed' | 'processing' | 'logged'; 
     returnvalue?: any; // For local/demo jobs that are 'completed'
     logData?: any;     // For jobs that are 'logged' on-chain
+    inputDataHash: string;
 }
 
 // Props interface for the component.
@@ -56,7 +57,7 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
       setMetrics(job.returnvalue.results);
       // Create the metadata object for display from the job's return value.
       setMetadata({
-        input_data_hash_sha256: job.returnvalue.inputDataHash,
+        input_data_hash_sha256: job.inputDataHash,
         analysis_agent: "KintaGen LD50 Agent v1 (Local Run)",
       });
     }
