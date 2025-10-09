@@ -14,10 +14,9 @@ export interface TopSpectrum {
   spectrum_data: SpectrumPoint[]; 
 }
 
-// Props now include the callback for on-demand identification
+// Props are now simpler, as the component is for display only
 interface MassSpectraDisplayProps {
   spectraData: TopSpectrum[];
-  onIdentifyPeak: (peakData: TopSpectrum) => Promise<any>;
 }
 
 // The ref handle for batch exporting
@@ -27,17 +26,16 @@ export interface MassSpectraPlotRef {
 
 // --- Component ---
 export const MassSpectraDisplay = forwardRef<MassSpectraPlotRef, MassSpectraDisplayProps>(
-  ({ spectraData, onIdentifyPeak }, ref) => {
+  ({ spectraData }, ref) => {
     
+  // State to track which peak's spectrum is currently being viewed
   const [selectedPeak, setSelectedPeak] = useState<TopSpectrum | null>(
     spectraData.length > 0 ? spectraData[0] : null
   );
 
-  const [identifyStatus, setIdentifyStatus] = useState<'idle' | 'loading' | 'failed'>('idle');
-  const [identifyError, setIdentifyError] = useState<string | null>(null);
-
   const plotComponentRef = useRef<BasePlot>(null);
 
+  // Memoized logic for rendering the visible plot
   const { plotData, plotLayout } = useMemo(() => {
     if (!selectedPeak) return { plotData: [], plotLayout: {} };
     const data: Data[] = [{ x: selectedPeak.spectrum_data.map(p => p.mz), y: selectedPeak.spectrum_data.map(p => p.relative_intensity), type: 'bar', width: 0.1, marker: { color: 'steelblue' }, hovertemplate: 'm/z: %{x:.4f}<br>Intensity: %{y:.2f}%<extra></extra>' }];
@@ -45,25 +43,7 @@ export const MassSpectraDisplay = forwardRef<MassSpectraPlotRef, MassSpectraDisp
     return { plotData: data, plotLayout: layout };
   }, [selectedPeak]);
 
-  const handleIdentifyClick = async () => {
-    if (!selectedPeak) return;
-    setIdentifyStatus('loading');
-    setIdentifyError(null);
-    try {
-      await onIdentifyPeak(selectedPeak);
-      setIdentifyStatus('idle');
-    } catch (error: any) {
-      setIdentifyStatus('failed');
-      setIdentifyError(error.message || 'Identification failed.');
-    }
-  };
-  
-  React.useEffect(() => {
-    setIdentifyStatus('idle');
-    setIdentifyError(null);
-  }, [selectedPeak]);
-
-  // --- BATCH EXPORT FUNCTIONALITY (FULLY INCLUDED) ---
+  // Batch export functionality for the download artifact
   useImperativeHandle(ref, () => ({
     exportAllSpectraAsImages: async () => {
       console.log('Starting batch export of all mass spectra...');
@@ -98,7 +78,6 @@ export const MassSpectraDisplay = forwardRef<MassSpectraPlotRef, MassSpectraDisp
       return imageList;
     }
   }), [spectraData]);
-  // --- END OF BATCH EXPORT FUNCTIONALITY ---
 
   if (!spectraData || spectraData.length === 0) {
     return <div className="bg-gray-700 rounded-md p-4 text-center text-gray-400">No mass spectra data available.</div>;
@@ -126,28 +105,10 @@ export const MassSpectraDisplay = forwardRef<MassSpectraPlotRef, MassSpectraDisp
         </div>
       </div>
 
-      {/* Main plot area with new identification button */}
+      {/* Main plot area - no more identification button */}
       <div className="w-full md:w-3/4 bg-white rounded-lg shadow-md p-4">
         {selectedPeak ? (
-          <>
-            <BasePlot ref={plotComponentRef} data={plotData} layout={plotLayout} config={{ responsive: true, displaylogo: false }} className="w-full h-80" />
-            <div className="mt-4 border-t pt-4 flex items-center gap-4">
-              <button
-                onClick={handleIdentifyClick}
-                disabled={identifyStatus === 'loading'}
-                className="px-4 py-2 bg-green-600 text-white font-semibold rounded-md hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {identifyStatus === 'loading' && (
-                  <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                )}
-                {identifyStatus === 'loading' ? 'Identifying...' : 'Identify this Peak (Online)'}
-              </button>
-              {identifyStatus === 'failed' && <p className="text-sm text-red-500 font-semibold">✖ {identifyError}</p>}
-            </div>
-          </>
+          <BasePlot ref={plotComponentRef} data={plotData} layout={plotLayout} config={{ responsive: true, displaylogo: false }} className="w-full h-96" />
         ) : (
           <div className="flex items-center justify-center h-96">
             <p className="text-gray-500">Select a peak to view its spectrum.</p>

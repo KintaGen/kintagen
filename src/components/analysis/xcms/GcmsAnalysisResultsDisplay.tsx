@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo,useEffect } from 'react';
 import JSZip from 'jszip';
 import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
 import { FidChromatogramPlot, type PlotRef as ChromatogramPlotRef } from './FidChromatogramPlot'; 
@@ -29,41 +29,61 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
   // State to hold the results from on-demand identification, initialized as an empty array.
   const [libraryMatches, setLibraryMatches] = useState<any[]>([]);
 
-  // Callback function that calls the single-peak identification backend.
-  // This is passed down to the MassSpectraDisplay component.
-  const handleIdentifyPeak = async (peakData: TopSpectrum) => {
-    try {
-      const response = await fetch(`${R_API}/analyze/xcms/identify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ initialAnalysisData: peakData }),
-      });
+  // --- NEW: State to track the automatic identification process ---
+  const [autoIdentifyStatus, setAutoIdentifyStatus] = useState<'idle' | 'loading' | 'completed' | 'failed'>('idle');
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: "Identification failed on server." }));
-        throw new Error(errorData.error);
-      }
+  // --- NEW: useEffect to trigger automatic identification ---
+  useEffect(() => {
+    // Only run if we have initial results and haven't started yet
+    if (initialResults?.top_spectra_data?.length > 0 && autoIdentifyStatus === 'idle') {
+      
+      const identifySinglePeak = async (peakData: TopSpectrum) => {
+        try {
+          const spectrumString = peakData.spectrum_data.map(p => `${p.mz.toFixed(4)}:${p.relative_intensity.toFixed(0)}`).join(" ");
+          const payload = { spectrum: spectrumString, minSimilarity: 500, algorithm: "default" };
+          
+          const response = await fetch("https://mona.fiehnlab.ucdavis.edu/rest/similarity/search", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
 
-      const result = await response.json();
-      if (result.status === 'error' || !result.results || !result.results.library_matches) {
-        throw new Error(result.error || "Received invalid data from server.");
-      }
-      const newMatch = result.results.library_matches;
+          if (!response.ok) return null; // Don't fail the whole batch, just this one
+          
+          const apiResults = await response.json();
+          
+          if (apiResults && apiResults.length > 0) {
+            const bestHit = apiResults[0];
+            const compoundName = bestHit.hit?.compound?.[0]?.names?.[0]?.name || "Unknown";
+            return { peak_number: peakData.peak_number, match_name: compoundName, similarity_score: bestHit.score };
+          }
+        } catch (error) {
+          console.error(`Failed to identify peak #${peakData.peak_number}:`, error);
+        }
+        // Return a "no match" object on failure or if no hits are found
+        return { peak_number: peakData.peak_number, match_name: "No Match Found", similarity_score: 0 };
+      };
+      
+      const runBatchIdentification = async () => {
+        setAutoIdentifyStatus('loading');
+        console.log('Starting automatic batch identification for all top peaks...');
 
-      // Update the state with the new match, replacing any old match for this peak number.
-      setLibraryMatches(prevMatches => {
-        const otherMatches = prevMatches.filter(m => m.peak_number !== newMatch.peak_number);
-        return [...otherMatches, newMatch];
-      });
+        // Use Promise.all to run all API calls in parallel for max speed
+        const allMatches = await Promise.all(
+          initialResults.top_spectra_data.map((spec: TopSpectrum) => identifySinglePeak(spec))
+        );
+        
+        // Filter out any null results from failed fetches
+        const validMatches = allMatches.filter(Boolean);
 
-    } catch (error) {
-      console.error("Single peak identification failed:", error);
-      throw error; // Re-throw to be caught by the child component for UI feedback.
+        console.log('Batch identification complete. Found matches:', validMatches);
+        setLibraryMatches(validMatches as any[]);
+        setAutoIdentifyStatus('completed');
+      };
+
+      runBatchIdentification();
     }
-  };
-
+  }, [initialResults, autoIdentifyStatus]);
   // Memoized hook to create the final data for the quantitative table.
   // This re-runs only when initialResults or libraryMatches changes, making it efficient.
   const quantReportData = useMemo(() => {
@@ -180,6 +200,12 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
         {/* Quantitative Report Table - This now dynamically updates */}
         <div className="mb-8">
             <h3 className="text-lg font-semibold mb-2 text-gray-300">Quantitative Report & Identification</h3>
+            {autoIdentifyStatus === 'loading' && (
+                <div className="flex items-center gap-2 text-sm text-cyan-400">
+                  <svg className="animate-spin h-4 w-4" /* ... spinner svg ... */ />
+                  <span>Identifying peaks online...</span>
+                </div>
+            )}
             {quantReportData.length > 0 ? (
                 <div className="overflow-x-auto bg-gray-900 rounded-lg border border-gray-700 max-h-96">
                     <table className="min-w-full text-sm text-left text-gray-300">
@@ -226,7 +252,6 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
           <MassSpectraDisplay 
             ref={msPlotRef}
             spectraData={topSpectraData}
-            onIdentifyPeak={handleIdentifyPeak}
           />
         </div>
       </div>
