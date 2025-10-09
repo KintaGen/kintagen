@@ -50,6 +50,7 @@ const GCMSAnalysisPage: React.FC = () => {
   const { user } = useFlowCurrentUser();
   const { uploadFile, isLoading: isUploading, error: uploadError } = useLighthouse();
   const { mutate: executeTransaction, isPending: isTxPending, isSuccess: isTxSuccess, isError: isTxError, error: txError, data: txId } = useFlowMutate();
+  const [noiseThreshold, setNoiseThreshold] = useState(2.5); 
 
   // --- [CHANGED] Memoized Job Display Logic (adapted for 'gcms' kind) ---
   const displayJobs = useMemo(() => {
@@ -107,7 +108,8 @@ const GCMSAnalysisPage: React.FC = () => {
     try {
       const formData = new FormData();
       formData.append('file', mzmlFile); // This sends the file directly
-      
+      formData.append('noiseThreshold', noiseThreshold.toString());
+
       // --- [CHANGED] API endpoint ---
       const response = await fetch(`${R_API}/analyze/xcms`, {
         method: 'POST',
