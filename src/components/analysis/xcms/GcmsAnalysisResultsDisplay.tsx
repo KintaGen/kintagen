@@ -26,71 +26,13 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
   const chromatogramPlotRef = useRef<ChromatogramPlotRef>(null);
   const msPlotRef = useRef<MassSpectraPlotRef>(null);
 
-  // State to hold the results from on-demand identification, initialized as an empty array.
-  const [libraryMatches, setLibraryMatches] = useState<any[]>([]);
-
-  // --- NEW: State to track the automatic identification process ---
-  const [autoIdentifyStatus, setAutoIdentifyStatus] = useState<'idle' | 'loading' | 'completed' | 'failed'>('idle');
-
-  // --- NEW: useEffect to trigger automatic identification ---
-  useEffect(() => {
-    // Only run if we have initial results and haven't started yet
-    if (initialResults?.top_spectra_data?.length > 0 && autoIdentifyStatus === 'idle') {
-      
-      const identifySinglePeak = async (peakData: TopSpectrum) => {
-        try {
-          const spectrumString = peakData.spectrum_data.map(p => `${p.mz.toFixed(4)}:${p.relative_intensity.toFixed(0)}`).join(" ");
-          const payload = { spectrum: spectrumString, minSimilarity: 500, algorithm: "default" };
-          
-          const response = await fetch("https://mona.fiehnlab.ucdavis.edu/rest/similarity/search", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-
-          if (!response.ok) return null; // Don't fail the whole batch, just this one
-          
-          const apiResults = await response.json();
-          
-          if (apiResults && apiResults.length > 0) {
-            const bestHit = apiResults[0];
-            const compoundName = bestHit.hit?.compound?.[0]?.names?.[0]?.name || "Unknown";
-            return { peak_number: peakData.peak_number, match_name: compoundName, similarity_score: bestHit.score };
-          }
-        } catch (error) {
-          console.error(`Failed to identify peak #${peakData.peak_number}:`, error);
-        }
-        // Return a "no match" object on failure or if no hits are found
-        return { peak_number: peakData.peak_number, match_name: "No Match Found", similarity_score: 0 };
-      };
-      
-      const runBatchIdentification = async () => {
-        setAutoIdentifyStatus('loading');
-        console.log('Starting automatic batch identification for all top peaks...');
-
-        // Use Promise.all to run all API calls in parallel for max speed
-        const allMatches = await Promise.all(
-          initialResults.top_spectra_data.map((spec: TopSpectrum) => identifySinglePeak(spec))
-        );
-        
-        // Filter out any null results from failed fetches
-        const validMatches = allMatches.filter(Boolean);
-
-        console.log('Batch identification complete. Found matches:', validMatches);
-        setLibraryMatches(validMatches as any[]);
-        setAutoIdentifyStatus('completed');
-      };
-
-      runBatchIdentification();
-    }
-  }, [initialResults, autoIdentifyStatus]);
-  // Memoized hook to create the final data for the quantitative table.
-  // This re-runs only when initialResults or libraryMatches changes, making it efficient.
+  // Memoized hook to merge results. This runs once and creates the data for the table.
   const quantReportData = useMemo(() => {
     const quantReport = initialResults?.quantitative_report || [];
+    const libraryMatches = initialResults?.library_matches || [];
     
     if (libraryMatches.length > 0) {
-      const matchMap = new Map(libraryMatches.map((item) => [item.peak_number, item]));
+      const matchMap = new Map(libraryMatches.map((item: any) => [item.peak_number, item]));
       return quantReport.map((peak: any) => ({
         ...peak,
         match_name: matchMap.get(peak.peak_number)?.match_name || 'N/A',
@@ -98,15 +40,15 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
       }));
     }
     
-    // Before any identification, just add placeholder columns.
     return quantReport.map((p: any) => ({ ...p, match_name: 'N/A' }));
-  }, [initialResults, libraryMatches]);
+  }, [initialResults]);
 
   // Destructure all other data needed for rendering directly from the initial results.
   const smoothedData = initialResults?.smoothed_chromatogram_data || [];
   const integratedPeaksData = initialResults?.integrated_peaks_details || [];
   const topSpectraData = initialResults?.top_spectra_data || [];
   const topPeakNumbers = topSpectraData.map((spec: any) => spec.peak_number);
+  const libraryMatchesData = initialResults?.library_matches || [];
 
   const metadata = returnvalue ? {
     input_data_hash_sha256: returnvalue.inputDataHash,
@@ -200,12 +142,6 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
         {/* Quantitative Report Table - This now dynamically updates */}
         <div className="mb-8">
             <h3 className="text-lg font-semibold mb-2 text-gray-300">Quantitative Report & Identification</h3>
-            {autoIdentifyStatus === 'loading' && (
-                <div className="flex items-center gap-2 text-sm text-cyan-400">
-                  <svg className="animate-spin h-4 w-4" /* ... spinner svg ... */ />
-                  <span>Identifying peaks online...</span>
-                </div>
-            )}
             {quantReportData.length > 0 ? (
                 <div className="overflow-x-auto bg-gray-900 rounded-lg border border-gray-700 max-h-96">
                     <table className="min-w-full text-sm text-left text-gray-300">
@@ -252,6 +188,7 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
           <MassSpectraDisplay 
             ref={msPlotRef}
             spectraData={topSpectraData}
+            libraryMatches={libraryMatchesData}
           />
         </div>
       </div>
