@@ -150,8 +150,6 @@ const GCMSAnalysisPage: React.FC = () => {
       formData.append('file', mzmlFile);
       formData.append('type', 'xcms'); // Corresponds to worker's R script
       formData.append('inputDataHash', inputDataHash);
-      // You could add noiseThreshold here too if needed:
-      // formData.append('noiseThreshold', noiseThreshold.toString());
 
       const response = await fetch('/api/jobs/create', { method: 'POST', body: formData });
       const result = await response.json();
