@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import JSZip from 'jszip';
+import { upload } from '@vercel/blob/client'; 
 
 // Contexts and Hooks
 import { useJobs, type Job } from '../contexts/JobContext';
@@ -161,11 +162,26 @@ const NMRAnalysisPage: React.FC = () => {
 
     try {
       const formData = new FormData();
-      formData.append('file', varianFile);
       formData.append('type', 'nmr'); // Corresponds to worker's analysisType
       formData.append('inputDataHash', inputDataHash);
 
-      const response = await fetch('/api/jobs/create', { method: 'POST', body: formData });
+      const blob = await upload(varianFile.name, varianFile, {
+        access: 'public',
+        handleUploadUrl: '/api/jobs/upload-token', // The shared upload token endpoint
+      });
+
+      // --- STAGE 2: Send the TINY JSON payload to our create endpoint ---
+      const response = await fetch('/api/jobs/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileUrl: blob.url,
+          originalFilename: varianFile.name,
+          analysisType: 'nmr',
+          inputDataHash: inputDataHash,
+        }),
+      });
+
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.error || 'Failed to create job on the server.');

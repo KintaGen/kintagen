@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { PinataSDK } from "pinata";
-import { Readable } from 'stream';
 
 // This is the Vercel function signature
 export default async function handler(

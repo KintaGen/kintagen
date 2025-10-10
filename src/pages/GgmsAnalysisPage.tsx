@@ -9,6 +9,7 @@ import { useOwnedNftProjects } from '../flow/kintagen-nft';
 import { useLighthouse } from '../hooks/useLighthouse';
 import { generateDataHash } from '../utils/hash';
 import { getAddToLogTransaction } from '../flow/cadence';
+import { upload } from '@vercel/blob/client'; // Import the client-side upload function
 
 // GCMS specific components
 import { GcmsAnalysisSetupPanel } from '../components/analysis/xcms/GcmsAnalysisSetupPanel';
@@ -150,8 +151,22 @@ const GCMSAnalysisPage: React.FC = () => {
       formData.append('file', mzmlFile);
       formData.append('type', 'xcms'); // Corresponds to worker's R script
       formData.append('inputDataHash', inputDataHash);
+      const blob = await upload(mzmlFile.name, mzmlFile, {
+        access: 'public',
+        handleUploadUrl: '/api/jobs/upload-token', 
+      });
 
-      const response = await fetch('/api/jobs/create', { method: 'POST', body: formData });
+      // --- STAGE 2: Send the TINY JSON payload to our create endpoint ---
+      const response = await fetch('/api/jobs/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileUrl: blob.url,
+          originalFilename: mzmlFile.name,
+          analysisType: 'xcms',
+          inputDataHash: inputDataHash,
+        }),
+      });
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.error || 'Failed to create job on the server.');

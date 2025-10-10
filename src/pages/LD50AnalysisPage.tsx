@@ -3,6 +3,7 @@ import { XCircleIcon } from '@heroicons/react/24/solid';
 import { useJobs, type Job } from '../contexts/JobContext';
 import { useFlowCurrentUser, useFlowConfig, TransactionDialog, useFlowMutate } from '@onflow/react-sdk';
 import JSZip from 'jszip';
+import { upload } from '@vercel/blob/client'; 
 
 import { getAddToLogTransaction } from '../flow/cadence';
 import { useOwnedNftProjects } from '../flow/kintagen-nft';
@@ -156,7 +157,7 @@ const LD50AnalysisPage: React.FC = () => {
 
     const isDemo = !selectedProjectId || selectedProjectId === DEMO_PROJECT_ID;
     const inputDataString = validatedCsvData || "";
-    const inputDataHash = await generateDataHash(isDemo ? "sample_data" : inputDataString);
+    const inputDataHash = await generateDataHash(inputDataString);
     const jobLabel = validatedCsvData ? `LD50 analysis with custom data` : `LD50 analysis with sample data`;
     const tempId = `temp_job_${Date.now()}`;
 
@@ -182,15 +183,27 @@ const LD50AnalysisPage: React.FC = () => {
     try {
       // Prepare FormData for the file upload to our Vercel API
       const formData = new FormData();
-      const dataBlob = new Blob([inputDataString], { type: 'text/csv' });
-      formData.append('file', dataBlob, 'analysis_data.csv');
       formData.append('type', 'drc'); // Corresponds to worker's analysisType
       formData.append('inputDataHash', inputDataHash);
 
-      // Call our NEW Vercel endpoint to create the job. This is a fast operation.
+      // --- STAGE 1: Convert CSV string to a File object and upload to Vercel Blob ---
+      const dataFile = new File([inputDataString], `${inputDataHash}_ld50.csv`, { type: "text/csv" });
+      
+      const blob = await upload(dataFile.name, dataFile, {
+        access: 'public',
+        handleUploadUrl: '/api/jobs/upload-token', // The same upload token endpoint
+      });
+
+      // --- STAGE 2: Send the TINY JSON payload to our create endpoint ---
       const response = await fetch('/api/jobs/create', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileUrl: blob.url,
+          originalFilename: dataFile.name,
+          analysisType: 'drc',
+          inputDataHash: inputDataHash,
+        }),
       });
 
       const result = await response.json();
