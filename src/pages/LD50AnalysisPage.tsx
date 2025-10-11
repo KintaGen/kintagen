@@ -191,7 +191,7 @@ const LD50AnalysisPage: React.FC = () => {
       
       const blob = await upload(dataFile.name, dataFile, {
         access: 'public',
-        handleUploadUrl: '/api/jobs/upload-token', // The same upload token endpoint
+        handleUploadUrl: '/api/jobs/upload-token'
       });
 
       // --- STAGE 2: Send the TINY JSON payload to our create endpoint ---

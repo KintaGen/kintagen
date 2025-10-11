@@ -23,6 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           tokenPayload: JSON.stringify({
             // You can add any custom metadata here if needed
           }),
+          addRandomSuffix: true
         };
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
