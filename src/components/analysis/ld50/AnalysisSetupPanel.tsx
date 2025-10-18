@@ -18,6 +18,7 @@ interface AnalysisSetupPanelProps {
   isAnalysisRunning: boolean;
   onDataValidated: (csvString: string) => void;
   onDataCleared: () => void;
+  validatedCsvData: string | null
 }
 
 export const AnalysisSetupPanel: React.FC<AnalysisSetupPanelProps> = ({
@@ -32,7 +33,8 @@ export const AnalysisSetupPanel: React.FC<AnalysisSetupPanelProps> = ({
   // Destructure new props
   isAnalysisRunning,
   onDataValidated,
-  onDataCleared
+  onDataCleared,
+  validatedCsvData
 }) => {
   const isDemoMode = !selectedProjectId;
 
@@ -83,7 +85,7 @@ export const AnalysisSetupPanel: React.FC<AnalysisSetupPanelProps> = ({
         <button 
             onClick={onRunAnalysis} 
             // Update disabled logic to include isAnalysisRunning
-            disabled={!isWebRReady || isAnalysisRunning} 
+            disabled={!isWebRReady || isAnalysisRunning || !validatedCsvData} 
             className="w-full sm:w-auto flex items-center justify-center bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors"
         >
             {isAnalysisRunning ? (

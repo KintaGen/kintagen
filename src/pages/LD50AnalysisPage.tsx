@@ -319,6 +319,7 @@ const LD50AnalysisPage: React.FC = () => {
           isAnalysisRunning={isAnalysisRunning}
           onDataValidated={(csvString) => setValidatedCsvData(csvString)}
           onDataCleared={() => setValidatedCsvData(null)}
+          validatedCsvData={validatedCsvData}
         />
         
         {pageError && ( <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg mb-4 flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Error</h3><p>{pageError}</p></div></div> )}
