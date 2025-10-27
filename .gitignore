@@ -28,3 +28,8 @@ dist-ssr
 .netlify
 .env
 .env*.local
+
+
+#Public folder
+
+public
