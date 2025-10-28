@@ -1,11 +1,9 @@
 import React from 'react';
-import { XMarkIcon, ClockIcon, BeakerIcon } from '@heroicons/react/24/solid';
+import { XMarkIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
 
-// Import the new hook and the current user hook
 import { useNftStory } from '../flow/kintagen-nft';
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 
-// Assuming your Project type is defined elsewhere
 interface Project {
   id: string;
   name: string;
@@ -21,9 +19,10 @@ interface ProjectDetailProps {
 const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
   const { user } = useFlowCurrentUser();
   
-  // Use our new hook to fetch the log history for the selected project
+  // This hook correctly fetches an array of objects with `title`, `agent`, `ipfsHash`, etc.
   const { story, isLoading, error } = useNftStory({
-    nftId: project.nft_id,
+    // nftId expects a number, but project.nft_id is a string. We need to parse it.
+    nftId: parseInt(project.nft_id, 10),
     ownerAddress: user?.addr,
   });
 
@@ -53,12 +52,29 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
           {story && (
             <div className="space-y-4">
               {story.map((step, index) => (
-                <div key={index} className="bg-gray-900/50 p-4 rounded-lg">
-                  <p className="font-semibold text-white">{step.action}</p>
-                  <p className="text-sm text-gray-400 mt-1">Agent: <span className="font-mono text-xs">{step.agent}</span></p>
-                  <p className="text-sm text-gray-400">Result CID: <span className="font-mono text-xs"><a href={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${step.resultCID}`} target="_blank" >{step.resultCID} </a></span></p>
-                  <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                <div key={index} className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                  {/* FIX: The data from the contract has a 'title', not an 'action' */}
+                  <p className="font-semibold text-white">{step.title}</p>
+                  
+                  <p className="text-sm text-gray-400 mt-2">Agent: <span className="font-mono text-xs bg-gray-700 px-1.5 py-0.5 rounded">{step.agent}</span></p>
+                  
+                  {/* FIX: The data from the contract has an 'ipfsHash', not a 'resultCID' */}
+                  <p className="text-sm text-gray-400 mt-1">
+                    Result CID: 
+                    <a 
+                      href={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${step.ipfsHash}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="font-mono text-xs text-cyan-400 hover:underline ml-2 inline-flex items-center gap-1"
+                    >
+                      {step.ipfsHash}
+                      <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                    </a>
+                  </p>
+                  
+                  <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
                     <ClockIcon className="h-3 w-3" />
+                    {/* The timestamp is a fixed-point number string, so parseFloat is correct */}
                     {new Date(parseFloat(step.timestamp) * 1000).toLocaleString()}
                   </p>
                 </div>
