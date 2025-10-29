@@ -81,8 +81,10 @@ access(all) contract PublicKintaGenNFTv3: NonFungibleToken {
 
         access(all) view fun getViews(): [Type] {
             return [
+                Type<MetadataViews.Display>(),
                 Type<MetadataViews.Traits>(),
                 Type<MetadataViews.Serial>(),
+                Type<MetadataViews.ExternalURL>(),
                 Type<[PublicKintaGenNFTv3.WorkflowStepView]>()
             ]
         }
@@ -98,6 +100,9 @@ access(all) contract PublicKintaGenNFTv3: NonFungibleToken {
                             path: nil
                         )
                     )
+                case Type<MetadataViews.ExternalURL>():
+                    let base = "https://kintagendemo.vercel.app/#/logbook/"
+                    return MetadataViews.ExternalURL(base.concat(self.id.toString()))
                 case Type<MetadataViews.Traits>():
                     var traits: [MetadataViews.Trait] = []
                     traits.append(MetadataViews.Trait(name: "Principal Investigator", value: self.principalInvestigator, displayType: "String", rarity: nil))
@@ -256,16 +261,20 @@ access(all) contract PublicKintaGenNFTv3: NonFungibleToken {
                     })
                 )
             case Type<MetadataViews.NFTCollectionDisplay>():
-                let media = MetadataViews.Media(
+                let square = MetadataViews.Media(
+                    file: MetadataViews.IPFSFile(cid: "bafkreihmwismiwtvnedp2yrdmoq6qwje66tkgdgjotbbhcw67iskadpxt4", path: nil),
+                    mediaType: "image/png"
+                )
+                let banner = MetadataViews.Media(
                     file: MetadataViews.IPFSFile(cid: "bafkreie6j2nehq5gpcjzymf5qj3txgxgm5xcg2gqzquthy2z2g44zbdvda", path: nil),
                     mediaType: "image/png"
                 )
                 return MetadataViews.NFTCollectionDisplay(
                     name: "KintaGen Scientific Projects",
                     description: "Workflow NFTs that capture the complete scientific project history, including every log entry.",
-                    externalURL: MetadataViews.ExternalURL("https://kintagen.com"),
-                    squareImage: media,
-                    bannerImage: media,
+                    externalURL: MetadataViews.ExternalURL("https://kintagendemo.vercel.app"),
+                    squareImage: square,
+                    bannerImage: banner,
                     socials: {}
                 )
         }
