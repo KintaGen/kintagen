@@ -84,10 +84,12 @@ access(all) contract PublicKintaGenNFTv3: NonFungibleToken {
                 Type<MetadataViews.Display>(),
                 Type<MetadataViews.Traits>(),
                 Type<MetadataViews.Serial>(),
-                Type<MetadataViews.ExternalURL>(),
-                Type<[PublicKintaGenNFTv3.WorkflowStepView]>()
-            ]
-        }
+            Type<MetadataViews.NFTCollectionDisplay>(),
+            Type<MetadataViews.NFTCollectionData>(),
+            Type<MetadataViews.ExternalURL>(),
+            Type<[PublicKintaGenNFTv3.WorkflowStepView]>()
+        ]
+    }
 
         access(all) fun resolveView(_ view: Type): AnyStruct? {
             switch view {
@@ -103,6 +105,16 @@ access(all) contract PublicKintaGenNFTv3: NonFungibleToken {
                 case Type<MetadataViews.ExternalURL>():
                     let base = "https://kintagendemo.vercel.app/#/logbook/"
                     return MetadataViews.ExternalURL(base.concat(self.id.toString()))
+                case Type<MetadataViews.NFTCollectionDisplay>():
+                    return PublicKintaGenNFTv3.resolveContractView(
+                        resourceType: nil,
+                        viewType: Type<MetadataViews.NFTCollectionDisplay>()
+                    ) as! MetadataViews.NFTCollectionDisplay
+                case Type<MetadataViews.NFTCollectionData>():
+                    return PublicKintaGenNFTv3.resolveContractView(
+                        resourceType: nil,
+                        viewType: Type<MetadataViews.NFTCollectionData>()
+                    ) as! MetadataViews.NFTCollectionData
                 case Type<MetadataViews.Traits>():
                     var traits: [MetadataViews.Trait] = []
                     traits.append(MetadataViews.Trait(name: "Principal Investigator", value: self.principalInvestigator, displayType: "String", rarity: nil))
@@ -245,7 +257,10 @@ access(all) contract PublicKintaGenNFTv3: NonFungibleToken {
     }
 
     access(all) view fun getContractViews(resourceType: Type?): [Type] {
-        return [Type<MetadataViews.NFTCollectionData>(), Type<MetadataViews.NFTCollectionDisplay>()]
+        return [
+            Type<MetadataViews.NFTCollectionData>(),
+            Type<MetadataViews.NFTCollectionDisplay>()
+        ]
     }
 
     access(all) fun resolveContractView(resourceType: Type?, viewType: Type): AnyStruct? {
