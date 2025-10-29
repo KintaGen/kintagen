@@ -46,7 +46,7 @@ const NMRAnalysisPage: React.FC = () => {
   const [varianFile, setVarianFile] = useState<File | null>(null);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
-  const [isFetchingLog, setIsFetchingLog] = useState(false); // New loading state for IPFS fetches
+  const [isFetchingLog, setIsFetchingLog] = useState(false);
   const [jobIdBeingLogged, setJobIdBeingLogged] = useState<string | null>(null);
   const [dialogTxId, setDialogTxId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -132,93 +132,90 @@ const NMRAnalysisPage: React.FC = () => {
   // Function to handle viewing results and logging them to the blockchain
   const handleViewAndLogResults = async (job: DisplayJob) => {
     setPageError(null);
+    setViewedJob(null); // Always clear previous results when an action is taken
 
-    // --- LOGIC FOR VIEWING AN ALREADY LOGGED JOB ---
+    // --- CASE 1: User clicks on a LOGGED job. Action: VIEW RESULTS ---
     if (job.state === 'logged') {
       setIsFetchingLog(true);
       setJobIdBeingLogged(job.id);
-      setViewedJob(null); // Clear previous results while loading
       try {
         const cid = job.logData?.ipfsHash;
-        if (!cid) throw new Error("No IPFS CID found for this logged entry.");
-        
+        if (!cid) throw new Error("No IPFS CID found for this on-chain log.");
         const gatewayUrl = `https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${cid}`;
         const response = await fetch(gatewayUrl);
-        if (!response.ok) throw new Error(`Failed to fetch artifact from IPFS (status: ${response.status})`);
-
+        if (!response.ok) throw new Error(`Failed to fetch artifact from IPFS.`);
         const zipBlob = await response.blob();
         const zip = await JSZip.loadAsync(zipBlob);
-
-        // Reconstruct the `returnvalue.results` object that the display component expects
         const reconstructedResults: { [key: string]: any } = {};
-
-        const mainPlotFile = zip.file("nmr_plot.png");
-        if(mainPlotFile) reconstructedResults.plot_b64 = await toBase64(await mainPlotFile.async("blob"));
-
-        const zoomPlotFile = zip.file("calibration_zoom_plot.png");
-        if(zoomPlotFile) reconstructedResults.residual_zoom_plot_b64 = await toBase64(await zoomPlotFile.async("blob"));
-
-        const summaryFile = zip.file("summary_text.txt");
-        if(summaryFile) reconstructedResults.summary_text = await summaryFile.async("string");
-        
-        // You can add more files here if needed (e.g., peaks.json)
-
-        // Set the job to be viewed with the data we just fetched and reconstructed
-        setViewedJob({ ...job, returnvalue: { results: reconstructedResults } });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-
+        const readJson = async (filename: string) => zip.file(filename) ? JSON.parse(await zip.file(filename)!.async("string")) : undefined;
+        const readText = async (filename: string) => zip.file(filename) ? zip.file(filename)!.async("string") : undefined;
+        const readImageB64 = async (filename: string) => zip.file(filename) ? toBase64(await zip.file(filename)!.async("blob")) : undefined;
+        [ reconstructedResults.spectrum_data, reconstructedResults.peaks, reconstructedResults.summary_table, reconstructedResults.referencing_info, reconstructedResults.summary_text, reconstructedResults.plot_b64, reconstructedResults.residual_zoom_plot_b64 ] = await Promise.all([ readJson("spectrum_data.json"), readJson("peaks.json"), readJson("summary_table.json"), readJson("referencing_info.json"), readText("summary_text.txt"), readImageB64("nmr_plot.png"), readImageB64("calibration_zoom_plot.png") ]);
+        setViewedJob({ ...job, returnvalue: { results: reconstructedResults, status: 'success' } });
       } catch (error: any) {
-        setPageError(`Failed to load historical data: ${error.message}`);
+        setPageError(`Failed to load on-chain data: ${error.message}`);
       } finally {
         setIsFetchingLog(false);
         setJobIdBeingLogged(null);
       }
       return;
     }
-
-    // --- LOGIC FOR LOGGING A NEWLY COMPLETED JOB ---
-    if (job.projectId === DEMO_PROJECT_ID || job.state !== 'completed' || !user?.addr) return;
-
-    setIsLogging(true);
-    setJobIdBeingLogged(job.id);
     
-    try {
-      const project = projects.find(p => p.id === job.projectId);
-      if (!project?.nft_id) throw new Error("Project NFT ID not found.");
+    // --- CASE 2: User clicks on a COMPLETED job. ---
+    if (job.state === 'completed') {
+      // Sub-case 2.1: It's the DEMO project. Action: SHOW RESULTS.
+      if (job.projectId === DEMO_PROJECT_ID) {
+        setViewedJob(job);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
 
-      const workerResponse = job.returnvalue;
-      if (workerResponse.status !== 'success') throw new Error(`Analysis script failed: ${workerResponse.error || 'Unknown error'}`);
+      // Sub-case 2.2: It's a REAL project. Action: LOG TO CHAIN.
+      if (job.projectId !== DEMO_PROJECT_ID && user?.addr) {
+        setIsLogging(true);
+        setJobIdBeingLogged(job.id);
+        try {
+          // Step 1: Upload to IPFS
+          const project = projects.find(p => p.id === job.projectId);
+          if (!project?.nft_id) throw new Error("Project NFT ID not found.");
+          if (job.returnvalue.status !== 'success') throw new Error(`Analysis script failed.`);
+          
+          const results = job.returnvalue.results;
+          const inputDataHash = job.inputDataHash;
+          if (!inputDataHash) throw new Error("Input data hash missing from job.");
 
-      const results = workerResponse.results; 
-      const inputDataHash = job.inputDataHash;
-      if(!inputDataHash) throw new Error("Input data hash not found in job results.");
+          const zip = new JSZip();
+          const addJsonToZip = (name: string, data: any) => data && zip.file(name, JSON.stringify(data, null, 2));
+          const addTextToZip = (name: string, data: any) => data && zip.file(name, data);
+          const addImageToZip = (name: string, b64: string) => b64 && zip.file(name, b64.split(',')[1], { base64: true });
+          addJsonToZip("spectrum_data.json", results.spectrum_data);
+          addJsonToZip("peaks.json", results.peaks);
+          addJsonToZip("summary_table.json", results.summary_table);
+          addJsonToZip("referencing_info.json", results.referencing_info);
+          addTextToZip("summary_text.txt", results.summary_text);
+          addImageToZip("nmr_plot.png", results.plot_b64);
+          addImageToZip("calibration_zoom_plot.png", results.residual_zoom_plot_b64);
+          const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact_${inputDataHash.substring(0,8)}.zip`);
+          const cid = await uploadFile(zipFile);
+          if (!cid) throw new Error(uploadError || "Failed to get CID from IPFS upload.");
+          
+          // Step 2: Add log to the blockchain
+          const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: "", ViewResolver: "", MetadataViews: "" };
+          const cadence = getAddToLogTransaction(addresses);
+          const logDescription = `Analysis results for input hash: ${inputDataHash}`;
+          
+          await executeTransaction({ 
+            cadence, 
+            args: (arg, t) => [arg(project.nft_id, t.UInt64), arg("KintaGen NMR Agent", t.String), arg(job.label, t.String), arg(logDescription, t.String), arg(cid, t.String)], 
+            limit: 9999 
+          });
 
-      const mainPlotB64 = results?.plot_b64?.split(',')[1];
-      const zoomPlotB64 = results?.residual_zoom_plot_b64?.split(',')[1];
-      if (!mainPlotB64) throw new Error("No plot found to save.");
-
-      const zip = new JSZip();
-      zip.file("metadata.json", JSON.stringify({ schema_version: "1.0.0", /* ... */ }, null, 2));
-      zip.file("summary_text.txt", results.summary_text);
-      zip.file("nmr_plot.png", mainPlotB64, { base64: true });
-      if (zoomPlotB64) zip.file("calibration_zoom_plot.png", zoomPlotB64, { base64: true });
-      // ... (add other JSON files to zip as needed)
-      const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact_${inputDataHash.substring(0,8)}.zip`);
-      
-      const cid = await uploadFile(zipFile);
-      if (!cid) throw new Error(uploadError || "Failed to get CID.");
-
-      const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: "", ViewResolver: "", MetadataViews: "" };
-      const cadence = getAddToLogTransaction(addresses);
-      const logDescription = `Analysis results for input hash: ${inputDataHash}`;
-      const args = (arg, t) => [arg(project.nft_id, t.UInt64), arg("Analysis", t.String), arg(job.label, t.String), arg(logDescription, t.String), arg(cid, t.String)];
-      
-      await executeTransaction({ cadence, args, limit: 9999 });
-
-    } catch (error: any) {
-      setPageError(`Failed to log results: ${error.message}`);
-      setIsLogging(false);
-      setJobIdBeingLogged(null);
+        } catch (error: any) {
+          setPageError(`Failed to log results: ${error.message}`);
+          setIsLogging(false);
+          setJobIdBeingLogged(null);
+        }
+      }
     }
   };
   
@@ -227,7 +224,6 @@ const NMRAnalysisPage: React.FC = () => {
     if (isTxSuccess && txId) {
       setDialogTxId(txId as string);
       setIsDialogOpen(true);
-      // State is now reset inside the Dialog's onSuccess callback
     }
     if (isTxError && txError) {
       const errorMessage = (txError as Error).message.includes("User rejected") ? "Transaction cancelled by user." : (txError as Error).message;
@@ -269,7 +265,7 @@ const NMRAnalysisPage: React.FC = () => {
           
           const justLoggedJob = jobs.find(j => j.id === jobIdBeingLogged);
           if (justLoggedJob) {
-            setViewedJob({ ...justLoggedJob, state: 'logged', returnvalue: justLoggedJob.returnvalue }); // Use returnvalue
+            setViewedJob({ ...justLoggedJob, state: 'logged', returnvalue: justLoggedJob.returnvalue });
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }
           

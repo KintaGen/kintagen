@@ -52,7 +52,7 @@ export const ProvenanceAndDownload: React.FC<ProvenanceAndDownloadProps> = ({ jo
             </h3>
             <div className="bg-gray-900/50 p-4 rounded-lg text-sm space-y-2">
               <p><strong className="text-gray-400">Agent Type:</strong> <span className="font-mono">{job.logData.agent}</span></p>
-              <p><strong className="text-gray-400">Result CID:</strong> <a href={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${job.logData.resultCID}`} target="_blank" rel="noopener noreferrer" className="text-cyan-300 font-mono text-xs break-all hover:underline">{job.logData.resultCID}</a></p>
+              <p><strong className="text-gray-400">Result CID:</strong> <a href={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${job.logData.ipfsHash}`} target="_blank" rel="noopener noreferrer" className="text-cyan-300 font-mono text-xs break-all hover:underline">{job.logData.ipfsHash}</a></p>
               <p><strong className="text-gray-400">Timestamp:</strong> <span className="font-mono text-xs">{new Date(parseFloat(job.logData.timestamp) * 1000).toLocaleString()}</span></p>
             </div>
         </div>

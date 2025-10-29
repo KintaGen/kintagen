@@ -210,7 +210,10 @@ const PeakTables: React.FC<{ peaks?: Peak[]; summary?: SummaryBand[] }> = ({ pea
 export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps> = ({ job }) => {
   const { returnvalue, logData } = job;
   const [metadata, setMetadata] = useState<any | null>(null);
-  
+  if (!job) {
+    return null; // or return a loading spinner, e.g., <p>Loading results...</p>
+  }
+  console.log(job)
   const results = useMemo(() => returnvalue?.results, [returnvalue]);
 
   useEffect(() => {
@@ -222,15 +225,15 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
       });
     } else if (job.state === 'logged') {
         setMetadata({
-            input_data_hash_sha256: job.logData.inputDataHash,
+            input_data_hash_sha256: job.inputDataHash,
             analysis_agent: "KintaGen NMR Agent v1.2",
         });
     }
   }, [job]);
 
   const handleDownload = async () => {
-    if (job.state === 'logged' && logData?.resultCID) {
-      window.open(`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${logData.resultCID}?download=true`, '_blank');
+    if (job.state === 'logged' && logData?.ipfsHash) {
+      window.open(`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${logData.ipfsHash}?download=true`, '_blank');
       return;
     }
 
