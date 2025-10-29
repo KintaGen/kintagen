@@ -135,81 +135,96 @@ const GCMSAnalysisPage: React.FC = () => {
   // Function to handle viewing and logging results
   const handleViewAndLogResults = async (job: DisplayJob) => {
     setPageError(null);
+    setViewedJob(null); // Always clear previous results when an action is taken
 
-    // Logic for viewing a previously logged job
+    // --- CASE 1: User clicks on a LOGGED job. Action: VIEW RESULTS ---
     if (job.state === 'logged') {
       setIsFetchingLog(true);
       setJobIdBeingLogged(job.id);
-      setViewedJob(null);
       try {
         const cid = job.logData?.ipfsHash;
-        if (!cid) throw new Error("No IPFS CID found for this logged entry.");
+        if (!cid) throw new Error("No IPFS CID found for this on-chain log.");
         const gatewayUrl = `https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${cid}`;
         const response = await fetch(gatewayUrl);
-        if (!response.ok) throw new Error(`Failed to fetch artifact from IPFS (status: ${response.status})`);
+        if (!response.ok) throw new Error(`Failed to fetch artifact from IPFS.`);
         const zipBlob = await response.blob();
         const zip = await JSZip.loadAsync(zipBlob);
         const reconstructedResults: { [key: string]: any } = {};
+        const readJson = async (filename: string) => zip.file(filename) ? JSON.parse(await zip.file(filename)!.async("string")) : undefined;
         
-        // Reconstruct all data from the zip that the display component might need
-        const reportFile = zip.file("quantitative_report.json");
-        if (reportFile) reconstructedResults.quantitative_report = JSON.parse(await reportFile.async("string"));
+        [
+          reconstructedResults.quantitative_report, reconstructedResults.top_spectra_data,
+          reconstructedResults.raw_chromatogram_data, reconstructedResults.smoothed_chromatogram_data,
+          reconstructedResults.integrated_peaks_details, reconstructedResults.library_matches
+        ] = await Promise.all([
+          readJson("quantitative_report.json"), readJson("top_spectra_data.json"),
+          readJson("raw_chromatogram.json"), readJson("smoothed_chromatogram.json"),
+          readJson("integrated_peaks.json"), readJson("library_matches.json")
+        ]);
 
-        const smoothedFile = zip.file("smoothed_chromatogram.json");
-        if(smoothedFile) reconstructedResults.smoothed_chromatogram_data = JSON.parse(await smoothedFile.async("string"));
-        
-        setViewedJob({ ...job, returnvalue: { results: reconstructedResults } });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-
+        setViewedJob({ ...job, returnvalue: { results: reconstructedResults, status: 'success' } });
       } catch (error: any) {
-        setPageError(`Failed to load historical data: ${error.message}`);
+        setPageError(`Failed to load on-chain data: ${error.message}`);
       } finally {
         setIsFetchingLog(false);
         setJobIdBeingLogged(null);
       }
       return;
     }
+    
+    // --- CASE 2: User clicks on a COMPLETED job. ---
+    if (job.state === 'completed') {
+      // Sub-case 2.1: It's the DEMO project. Action: SHOW RESULTS.
+      if (job.projectId === DEMO_PROJECT_ID) {
+        setViewedJob(job);
+        console.log(job)
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
 
-    // Logic for logging a newly completed job
-    if (job.projectId === DEMO_PROJECT_ID || job.state !== 'completed' || !user?.addr) return;
+      // Sub-case 2.2: It's a REAL project. Action: LOG TO CHAIN.
+      if (job.projectId !== DEMO_PROJECT_ID && user?.addr) {
+        setIsLogging(true);
+        setJobIdBeingLogged(job.id);
+        try {
+          const project = projects.find(p => p.id === job.projectId);
+          if (!project?.nft_id) throw new Error("Project NFT ID not found.");
+          if (job.returnvalue.status !== 'success') throw new Error(`Analysis script failed.`);
+          
+          const results = job.returnvalue.results;
+          const inputDataHash = job.inputDataHash;
+          if (!inputDataHash) throw new Error("Input data hash missing from job.");
 
-    setIsLogging(true);
-    setJobIdBeingLogged(job.id);
-    try {
-      const project = projects.find(p => p.id === job.projectId);
-      if (!project?.nft_id) throw new Error("Project NFT ID not found.");
+          // Step 1: Upload to IPFS
+          const zip = new JSZip();
+          const addJsonToZip = (name: string, data: any) => data && zip.file(name, JSON.stringify(data, null, 2));
+          addJsonToZip("quantitative_report.json", results.quantitative_report);
+          addJsonToZip("top_spectra_data.json", results.top_spectra_data);
+          addJsonToZip("raw_chromatogram.json", results.raw_chromatogram_data);
+          addJsonToZip("smoothed_chromatogram.json", results.smoothed_chromatogram_data);
+          addJsonToZip("integrated_peaks.json", results.integrated_peaks_details);
+          addJsonToZip("library_matches.json", results.library_matches); // Include MoNA results
+          const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact_${inputDataHash.substring(0,8)}.zip`);
+          const cid = await uploadFile(zipFile);
+          if (!cid) throw new Error(uploadError || "Failed to get CID from IPFS upload.");
+          
+          // Step 2: Add log to the blockchain
+          const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: "", ViewResolver: "", MetadataViews: "" };
+          const cadence = getAddToLogTransaction(addresses);
+          const logDescription = `Analysis results for input hash: ${inputDataHash}`;
+          
+          await executeTransaction({ 
+            cadence, 
+            args: (arg, t) => [arg(project.nft_id, t.UInt64), arg("KintaGen GC-MS Agent", t.String), arg(job.label, t.String), arg(logDescription, t.String), arg(cid, t.String)], 
+            limit: 9999 
+          });
 
-      const workerResponse = job.returnvalue;
-      if (workerResponse.status !== 'success') throw new Error(`Analysis script failed: ${workerResponse.error || 'Unknown error'}`);
-
-      const results = workerResponse.results;
-      const inputDataHash = job.inputDataHash;
-      if (!inputDataHash) throw new Error("Input data hash not found in job results.");
-
-      const zip = new JSZip();
-      
-      // Package all JSON files produced by the R script
-      zip.file("quantitative_report.json", JSON.stringify(results.quantitative_report, null, 2));
-      zip.file("top_spectra_data.json", JSON.stringify(results.top_spectra_data, null, 2));
-      zip.file("raw_chromatogram.json", JSON.stringify(results.raw_chromatogram_data, null, 2));
-      zip.file("smoothed_chromatogram.json", JSON.stringify(results.smoothed_chromatogram_data, null, 2));
-      zip.file("integrated_peaks.json", JSON.stringify(results.integrated_peaks_details, null, 2));
-      
-      const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact_${inputDataHash.substring(0,8)}.zip`);
-      const cid = await uploadFile(zipFile);
-      if (!cid) throw new Error(uploadError || "Failed to upload artifact.");
-
-      const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: "", ViewResolver: "", MetadataViews: "" };
-      const cadence = getAddToLogTransaction(addresses);
-      const logDescription = `Analysis results for input hash: ${inputDataHash}`;
-      const args = (arg, t) => [arg(project.nft_id, t.UInt64), arg("Analysis", t.String), arg(job.label, t.String), arg(logDescription, t.String), arg(cid, t.String)];
-      
-      await executeTransaction({ cadence, args, limit: 9999 });
-
-    } catch (error: any) {
-      setPageError(`Failed to log results: ${error.message}`);
-      setIsLogging(false);
-      setJobIdBeingLogged(null);
+        } catch (error: any) {
+          setPageError(`Failed to log results: ${error.message}`);
+          setIsLogging(false);
+          setJobIdBeingLogged(null);
+        }
+      }
     }
   };
   
