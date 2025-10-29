@@ -7,6 +7,7 @@ import MintingComponent from './pages/ProjectsPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
 import NMRAnalysisPage from './pages/NMRAnalysisPage';
 import GCMSAnalysisPage from './pages/GgmsAnalysisPage';
+import LogbookPage from './pages/LogbookPage';
 
 import VerificationPage  from './pages/VerificationPage'; // Assuming you placed it here
 
@@ -118,6 +119,7 @@ const App: React.FC = () => {
                   <Route path="/analysis" element={<LD50AnalysisPage />} />
                   <Route path="/analysis-nmr" element={<NMRAnalysisPage />} />
                   <Route path="/analysis-xcms" element={<GCMSAnalysisPage />} />
+                  <Route path="/logbook/:nftId" element={<LogbookPage />} />
 
                   <Route path="/verify" element={<VerificationPage />} />
 

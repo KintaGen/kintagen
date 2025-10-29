@@ -46,24 +46,14 @@ const NMRAnalysisPage: React.FC = () => {
   const [varianFile, setVarianFile] = useState<File | null>(null);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
+  const [isFetchingLog, setIsFetchingLog] = useState(false); // New loading state for IPFS fetches
   const [jobIdBeingLogged, setJobIdBeingLogged] = useState<string | null>(null);
   const [dialogTxId, setDialogTxId] = useState<string | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const flowConfig = useFlowConfig();
   const { user } = useFlowCurrentUser();
   const { uploadFile, error: uploadError } = useLighthouse();
-  const { mutate: executeTransaction, isPending: isTxPending } = useFlowMutate({
-    onSuccess: (txId) => {
-      setDialogTxId(txId);
-      setIsDialogOpen(true);
-    },
-    onError: (error) => {
-      const errorMsg = error.message.includes("User rejected") ? "Transaction cancelled by user." : error.message;
-      setPageError(`Transaction failed: ${errorMsg}`);
-      setIsLogging(false);
-      setJobIdBeingLogged(null);
-    }
-  });
+  const { mutate: executeTransaction, isPending: isTxPending, isSuccess: isTxSuccess, isError: isTxError, error: txError, data: txId } = useFlowMutate();
 
   // Polling useEffect to monitor job status from the backend
   useEffect(() => {
@@ -131,15 +121,62 @@ const NMRAnalysisPage: React.FC = () => {
     }
   };
 
+  // Helper to convert a Blob to a base64 data URL
+  const toBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
   // Function to handle viewing results and logging them to the blockchain
   const handleViewAndLogResults = async (job: DisplayJob) => {
-    // If the job is already logged, we can just display its historical data.
+    setPageError(null);
+
+    // --- LOGIC FOR VIEWING AN ALREADY LOGGED JOB ---
     if (job.state === 'logged') {
-      setViewedJob(job);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setIsFetchingLog(true);
+      setJobIdBeingLogged(job.id);
+      setViewedJob(null); // Clear previous results while loading
+      try {
+        const cid = job.logData?.ipfsHash;
+        if (!cid) throw new Error("No IPFS CID found for this logged entry.");
+        
+        const gatewayUrl = `https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${cid}`;
+        const response = await fetch(gatewayUrl);
+        if (!response.ok) throw new Error(`Failed to fetch artifact from IPFS (status: ${response.status})`);
+
+        const zipBlob = await response.blob();
+        const zip = await JSZip.loadAsync(zipBlob);
+
+        // Reconstruct the `returnvalue.results` object that the display component expects
+        const reconstructedResults: { [key: string]: any } = {};
+
+        const mainPlotFile = zip.file("nmr_plot.png");
+        if(mainPlotFile) reconstructedResults.plot_b64 = await toBase64(await mainPlotFile.async("blob"));
+
+        const zoomPlotFile = zip.file("calibration_zoom_plot.png");
+        if(zoomPlotFile) reconstructedResults.residual_zoom_plot_b64 = await toBase64(await zoomPlotFile.async("blob"));
+
+        const summaryFile = zip.file("summary_text.txt");
+        if(summaryFile) reconstructedResults.summary_text = await summaryFile.async("string");
+        
+        // You can add more files here if needed (e.g., peaks.json)
+
+        // Set the job to be viewed with the data we just fetched and reconstructed
+        setViewedJob({ ...job, returnvalue: { results: reconstructedResults } });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+      } catch (error: any) {
+        setPageError(`Failed to load historical data: ${error.message}`);
+      } finally {
+        setIsFetchingLog(false);
+        setJobIdBeingLogged(null);
+      }
       return;
     }
 
+    // --- LOGIC FOR LOGGING A NEWLY COMPLETED JOB ---
     if (job.projectId === DEMO_PROJECT_ID || job.state !== 'completed' || !user?.addr) return;
 
     setIsLogging(true);
@@ -157,11 +194,15 @@ const NMRAnalysisPage: React.FC = () => {
       if(!inputDataHash) throw new Error("Input data hash not found in job results.");
 
       const mainPlotB64 = results?.plot_b64?.split(',')[1];
+      const zoomPlotB64 = results?.residual_zoom_plot_b64?.split(',')[1];
       if (!mainPlotB64) throw new Error("No plot found to save.");
 
-      // Create the artifact ZIP file
       const zip = new JSZip();
-      // ... (add all plots and data files to the zip) ...
+      zip.file("metadata.json", JSON.stringify({ schema_version: "1.0.0", /* ... */ }, null, 2));
+      zip.file("summary_text.txt", results.summary_text);
+      zip.file("nmr_plot.png", mainPlotB64, { base64: true });
+      if (zoomPlotB64) zip.file("calibration_zoom_plot.png", zoomPlotB64, { base64: true });
+      // ... (add other JSON files to zip as needed)
       const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact_${inputDataHash.substring(0,8)}.zip`);
       
       const cid = await uploadFile(zipFile);
@@ -169,17 +210,8 @@ const NMRAnalysisPage: React.FC = () => {
 
       const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: "", ViewResolver: "", MetadataViews: "" };
       const cadence = getAddToLogTransaction(addresses);
-      
       const logDescription = `Analysis results for input hash: ${inputDataHash}`;
-      
-      // FIX: Ensure all 5 arguments are correctly wrapped with arg()
-      const args = (arg, t) => [
-        arg(project.nft_id, t.UInt64),
-        arg("Analysis", t.String),
-        arg(job.label, t.String),
-        arg(logDescription, t.String),
-        arg(cid, t.String)
-      ];
+      const args = (arg, t) => [arg(project.nft_id, t.UInt64), arg("Analysis", t.String), arg(job.label, t.String), arg(logDescription, t.String), arg(cid, t.String)];
       
       await executeTransaction({ cadence, args, limit: 9999 });
 
@@ -190,7 +222,22 @@ const NMRAnalysisPage: React.FC = () => {
     }
   };
   
-  const overallIsLogging = isLogging || isTxPending;
+  // This useEffect handles the result of the transaction
+  useEffect(() => {
+    if (isTxSuccess && txId) {
+      setDialogTxId(txId as string);
+      setIsDialogOpen(true);
+      // State is now reset inside the Dialog's onSuccess callback
+    }
+    if (isTxError && txError) {
+      const errorMessage = (txError as Error).message.includes("User rejected") ? "Transaction cancelled by user." : (txError as Error).message;
+      setPageError(`Transaction failed: ${errorMessage}`);
+      setIsLogging(false);
+      setJobIdBeingLogged(null);
+    }
+  }, [isTxSuccess, isTxError, txId, txError]);
+  
+  const overallIsLogging = isLogging || isTxPending || isFetchingLog;
 
   return (
     <>
@@ -209,6 +256,7 @@ const NMRAnalysisPage: React.FC = () => {
           onClearJobs={() => { const idToClear = selectedProjectId || DEMO_PROJECT_ID; setJobs(prev => prev.filter(j => j.projectId !== idToClear)); }}
           onViewAndLogResults={handleViewAndLogResults}
           jobIdBeingLogged={jobIdBeingLogged}
+          isLoggingAnyJob={overallIsLogging} 
         />
       </div>
 
@@ -219,11 +267,10 @@ const NMRAnalysisPage: React.FC = () => {
         onSuccess={async () => {
           await refetchProjects(); // Refresh the list from the blockchain
           
-          // FIX: Find the job we were logging and set it as the one to view
           const justLoggedJob = jobs.find(j => j.id === jobIdBeingLogged);
           if (justLoggedJob) {
-            // Create a temporary "logged" version to pass to the results display
-            setViewedJob({ ...justLoggedJob, state: 'logged', logData: justLoggedJob.returnvalue.results });
+            setViewedJob({ ...justLoggedJob, state: 'logged', returnvalue: justLoggedJob.returnvalue }); // Use returnvalue
+            window.scrollTo({ top: 0, behavior: 'smooth' });
           }
           
           setIsLogging(false);
