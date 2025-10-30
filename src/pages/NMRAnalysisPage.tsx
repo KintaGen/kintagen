@@ -57,13 +57,13 @@ const NMRAnalysisPage: React.FC = () => {
 
   // Polling useEffect to monitor job status from the backend
   useEffect(() => {
-    const activeJobs = jobs.filter(job => job.state === 'waiting' || job.state === 'processing');
+    const activeJobs = jobs.filter(job => (job.state === 'waiting' || job.state === 'processing') && job.kind === 'nmr');
     if (activeJobs.length === 0) return;
 
     const intervalId = setInterval(async () => {
       let jobsWereUpdated = false;
       const updatedJobs = await Promise.all(jobs.map(async (job) => {
-        if (job.state !== 'waiting' && job.state !== 'processing') return job;
+        if (job.kind !== 'nmr' || (job.state !== 'waiting' && job.state !== 'processing')) return job;
         try {
           const response = await fetch(`/api/jobs/status/${job.id}`);
           if (!response.ok) {
@@ -115,7 +115,6 @@ const NMRAnalysisPage: React.FC = () => {
     } catch (e: any) {
       setJobs(prevJobs => prevJobs.map(j => j.id === tempId ? { ...j, state: 'failed', failedReason: e.message } : j));
       setPageError(`Analysis failed: ${e.message}`);
-      logEvent(analytics, 'analysis_result', { status: 'failed', analysis_type: 'nmr1DH', error_message: e.message });
     } finally {
       setIsAnalysisRunning(false);
     }
@@ -132,7 +131,7 @@ const NMRAnalysisPage: React.FC = () => {
   // Function to handle viewing results and logging them to the blockchain
   const handleViewAndLogResults = async (job: DisplayJob) => {
     setPageError(null);
-    setViewedJob(null); // Always clear previous results when an action is taken
+    setViewedJob(null);
 
     // --- CASE 1: User clicks on a LOGGED job. Action: VIEW RESULTS ---
     if (job.state === 'logged') {
@@ -175,7 +174,6 @@ const NMRAnalysisPage: React.FC = () => {
         setIsLogging(true);
         setJobIdBeingLogged(job.id);
         try {
-          // Step 1: Upload to IPFS
           const project = projects.find(p => p.id === job.projectId);
           if (!project?.nft_id) throw new Error("Project NFT ID not found.");
           if (job.returnvalue.status !== 'success') throw new Error(`Analysis script failed.`);
@@ -184,10 +182,39 @@ const NMRAnalysisPage: React.FC = () => {
           const inputDataHash = job.inputDataHash;
           if (!inputDataHash) throw new Error("Input data hash missing from job.");
 
+          // --- Step 1: Create artifact with METADATA and upload to IPFS ---
+          const outputs = [];
+          const addAndHash = async (filename: string, content: string | Blob, isBase64 = false) => {
+              if (content) {
+                  // For base64, hash the decoded data; for others, hash the raw string
+                  const dataToHash = isBase64 ? content.split(',')[1] : content;
+                  const hash = await generateDataHash(dataToHash);
+                  outputs.push({ filename, hash_sha256: hash });
+              }
+          };
+          
+          await addAndHash("spectrum_data.json", JSON.stringify(results.spectrum_data));
+          await addAndHash("peaks.json", JSON.stringify(results.peaks));
+          await addAndHash("summary_table.json", JSON.stringify(results.summary_table));
+          await addAndHash("referencing_info.json", JSON.stringify(results.referencing_info));
+          await addAndHash("summary_text.txt", results.summary_text);
+          await addAndHash("nmr_plot.png", results.plot_b64, true);
+          await addAndHash("calibration_zoom_plot.png", results.residual_zoom_plot_b64, true);
+
+          const metadata = {
+            schema_version: "1.0.0",
+            analysis_agent: "KintaGen NMR Agent v1.0",
+            timestamp_utc: new Date().toISOString(),
+            input_data_hash_sha256: inputDataHash,
+            outputs: outputs.filter(Boolean)
+          };
+
           const zip = new JSZip();
           const addJsonToZip = (name: string, data: any) => data && zip.file(name, JSON.stringify(data, null, 2));
           const addTextToZip = (name: string, data: any) => data && zip.file(name, data);
           const addImageToZip = (name: string, b64: string) => b64 && zip.file(name, b64.split(',')[1], { base64: true });
+          
+          zip.file("metadata.json", JSON.stringify(metadata, null, 2));
           addJsonToZip("spectrum_data.json", results.spectrum_data);
           addJsonToZip("peaks.json", results.peaks);
           addJsonToZip("summary_table.json", results.summary_table);
@@ -195,6 +222,7 @@ const NMRAnalysisPage: React.FC = () => {
           addTextToZip("summary_text.txt", results.summary_text);
           addImageToZip("nmr_plot.png", results.plot_b64);
           addImageToZip("calibration_zoom_plot.png", results.residual_zoom_plot_b64);
+
           const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact_${inputDataHash.substring(0,8)}.zip`);
           const cid = await uploadFile(zipFile);
           if (!cid) throw new Error(uploadError || "Failed to get CID from IPFS upload.");
@@ -219,7 +247,7 @@ const NMRAnalysisPage: React.FC = () => {
     }
   };
   
-  // This useEffect handles the result of the transaction
+  // --- Transaction result handling useEffect (unchanged) ---
   useEffect(() => {
     if (isTxSuccess && txId) {
       setDialogTxId(txId as string);
@@ -258,20 +286,15 @@ const NMRAnalysisPage: React.FC = () => {
 
       <TransactionDialog
         open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        txId={dialogTxId || undefined}
-        onSuccess={async () => {
-          await refetchProjects(); // Refresh the list from the blockchain
-          
-          const justLoggedJob = jobs.find(j => j.id === jobIdBeingLogged);
-          if (justLoggedJob) {
-            setViewedJob({ ...justLoggedJob, state: 'logged', returnvalue: justLoggedJob.returnvalue });
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+        onOpenChange={(isOpen) => { 
+          setIsDialogOpen(isOpen); 
+          if (!isOpen) {
+            setIsLogging(false);
+            setJobIdBeingLogged(null);
           }
-          
-          setIsLogging(false);
-          setJobIdBeingLogged(null);
         }}
+        txId={dialogTxId || undefined}
+        onSuccess={refetchProjects}
         pendingTitle="Logging Analysis to the Chain"
         successTitle="Log Entry Confirmed!"
         successDescription="Your NMR analysis results have been permanently recorded."
