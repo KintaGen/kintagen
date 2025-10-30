@@ -119,7 +119,7 @@ const App: React.FC = () => {
                   <Route path="/analysis" element={<LD50AnalysisPage />} />
                   <Route path="/analysis-nmr" element={<NMRAnalysisPage />} />
                   <Route path="/analysis-xcms" element={<GCMSAnalysisPage />} />
-                  <Route path="/logbook/:nftId" element={<LogbookPage />} />
+                  <Route path="/logbook/:ownerAddress/:nftId" element={<LogbookPage />} />
 
                   <Route path="/verify" element={<VerificationPage />} />
 

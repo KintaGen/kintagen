@@ -1,18 +1,15 @@
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useFlowCurrentUser } from '@onflow/react-sdk';
 import { useNftStory } from '../flow/kintagen-nft';
 import { ArrowLeftIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
 
 const LogbookPage = () => {
-  const { nftId } = useParams();
-  const { user } = useFlowCurrentUser();
-
+  const { ownerAddress,nftId } = useParams();
+  
   const numericNftId = nftId ? parseInt(nftId, 10) : undefined;
-
   const { story, isLoading, error } = useNftStory({
     nftId: numericNftId,
-    ownerAddress: user?.addr,
+    ownerAddress: ownerAddress,
   });
 
   if (isLoading) {

@@ -19,7 +19,6 @@ interface ProjectDetailProps {
 
 const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
   const { user } = useFlowCurrentUser();
-  
   const { story, isLoading, error } = useNftStory({
     nftId: parseInt(project.nft_id, 10),
     ownerAddress: user?.addr,
@@ -55,7 +54,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
           <div className="flex justify-between items-start mb-6">
             <p className="text-gray-300 flex-1 pr-4">{project.description}</p>
             <Link
-              to={`/logbook/${project.nft_id}`}
+              to={`/logbook/${project.story[0].agent}/${project.nft_id}`}
               className="flex-shrink-0 inline-flex items-center gap-2 bg-cyan-500 text-white px-3 py-1.5 rounded-md hover:bg-cyan-600 transition-colors text-sm font-semibold"
             >
               <BookOpenIcon className="h-4 w-4" />
