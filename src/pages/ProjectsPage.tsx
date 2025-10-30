@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BeakerIcon, CubeTransparentIcon, SparklesIcon, WalletIcon, CheckBadgeIcon, PhotoIcon, ArrowUpOnSquareIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import ProjectDetail from '../components/ProjectDetail';
 import {
@@ -40,7 +40,7 @@ const ProjectsPage: React.FC = () => {
   const { user, authenticate } = useFlowCurrentUser();
   const { uploadFile, isLoading: isUploading, error: uploadError } = useLighthouse();
   
-  const { mutate, isPending: isTxPending } = useFlowMutate();
+  const { mutate: executeTransaction, isPending: isTxPending, isSuccess: isTxSuccess, isError: isTxError, error: txError, data: txId } = useFlowMutate();
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -55,83 +55,77 @@ const ProjectsPage: React.FC = () => {
   };
 
   const flowscanURL = (nftId: string) => {
-    const contractAddr = flowConfig.contracts?.["KintaGenNFT"]?.address;
+    const contractAddr = flowConfig.addresses["KintaGenNFT"];
     const network = flowConfig.flowNetwork;
     if (network === 'testnet' && contractAddr) {
-      return `https://testnet.flowscan.org/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv2/${nftId}`;
+      return `https://testnet.flowscan.org/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv3/${nftId}`;
     }
-    return `javascript:alert('This would link to a block explorer for NFT #${nftId}.')`; 
+    return `#`; 
   };
   
   const handleCreateAndMint = async () => {
     setFormError(null);
-    if (!newName) {
-      setFormError("Project Name is required.");
-      return;
-    }
-    if (!newImageFile) {
-      setFormError("A project image is required.");
-      return;
-    }
-    if (!user?.addr) {
-      setFormError("User is not authenticated.");
+    if (!newName || !newImageFile || !user?.addr) {
+      setFormError("Project Name, Image, and a connected wallet are required.");
       return;
     }
   
     setIsMinting(true);
   
     try {
-      // Step 1: Upload the image to IPFS
       const imageCid = await uploadFile(newImageFile);
       if (!imageCid) {
         throw new Error(uploadError || "Failed to upload image to IPFS.");
       }
   
-      // Step 2: Prepare and execute the transaction
       const addresses = {
         NonFungibleToken: flowConfig.addresses["NonFungibleToken"],
         KintaGenNFT: flowConfig.addresses["KintaGenNFT"],
-        ViewResolver: flowConfig.addresses["ViewResolver"],
-        MetadataViews: flowConfig.addresses["MetadataViews"],
+        ViewResolver: "",
+        MetadataViews: "",
       };
       const cadence = getMintNftTransaction(addresses);
-      const txId = await mutate({
+      
+      await executeTransaction({
         cadence,
         args: (arg, t) => [
           arg(user.addr, t.Address),
           arg(newName, t.String),
           arg(newDescription.substring(0, 200), t.String),
-          arg(imageCid, t.String), // Pass the image CID directly
+          arg(imageCid, t.String),
           arg(user.addr, t.String),
           arg(`run-hash-${Date.now()}`, t.String)
         ],
         limit: 9999
       });
-      
-      // Step 3: Show transaction dialog
-      setDialogTxId(txId);
-      setIsDialogOpen(true);
-      
-      // Clear form on success
-      setNewName('');
-      setNewDescription('');
-      setNewImageFile(null);
-      setImagePreview(null);
   
     } catch (error: any) {
-      if (error.message.includes("User rejected")) {
-        console.log("User rejected the transaction.");
-      } else {
+      if (!error.message.includes("User rejected")) {
         setFormError(`Minting failed: ${error.message}`);
       }
-    } finally {
       setIsMinting(false);
-    }
+    } 
   };
 
+  useEffect(() => {
+    if (isTxSuccess && txId) {
+      setDialogTxId(txId as string);
+      setIsDialogOpen(true);
+      setIsMinting(false); 
+    }
+    if (isTxError && txError) {
+      const errorMessage = (txError as Error).message.includes("User rejected") 
+        ? "Transaction cancelled by user." 
+        : (txError as Error).message;
+      setFormError(`Transaction failed: ${errorMessage}`);
+      setIsMinting(false);
+    }
+  }, [isTxSuccess, isTxError, txId, txError]);
+
+
   const isButtonDisabled = !newName || !newImageFile || isMinting || isTxPending;
-  const buttonText = isMinting 
-    ? (isUploading ? 'Uploading files...' : 'Waiting for transaction...') 
+  const buttonText = (isMinting || isTxPending)
+    ? (isUploading ? 'Uploading to IPFS...' : 'Waiting for transaction...') 
     : 'Create & Mint Project';
 
   return (
@@ -236,7 +230,13 @@ const ProjectsPage: React.FC = () => {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         txId={dialogTxId || undefined}
-        onSuccess={refetchProjects}
+        onSuccess={() => {
+          refetchProjects();
+          setNewName('');
+          setNewDescription('');
+          setNewImageFile(null);
+          setImagePreview(null);
+        }}
         pendingTitle="Minting Your Project NFT"
         pendingDescription="Please wait while your new project is being created on the Flow blockchain."
         successTitle="Project Minted!"

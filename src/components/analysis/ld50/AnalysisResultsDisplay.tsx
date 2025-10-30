@@ -64,12 +64,12 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
     
     // Case 2: The job is 'logged' on-chain.
     // We must fetch the results artifact from IPFS using the CID.
-    else if (job.state === 'logged' && job.logData?.resultCID) {
+    else if (job.state === 'logged' && job.logData?.ipfsHash) {
       const fetchAndParseZip = async () => {
         setIsFetchingFromIPFS(true);
         setFetchError(null);
         try {
-          const response = await fetch(`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${job.logData.resultCID}`);
+          const response = await fetch(`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${job.logData.ipfsHash}`);
           if (!response.ok) throw new Error(`Failed to fetch from IPFS (status: ${response.status})`);
           
           const zipBlob = await response.blob();
