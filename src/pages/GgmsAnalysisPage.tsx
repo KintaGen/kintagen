@@ -176,6 +176,7 @@ const GCMSAnalysisPage: React.FC = () => {
     if (job.state === 'completed') {
       // Sub-case 2.1: It's the DEMO project. Action: SHOW RESULTS.
       if (job.projectId === DEMO_PROJECT_ID) {
+        console.log(job)
         setViewedJob(job);
         console.log(job)
         window.scrollTo({ top: 0, behavior: 'smooth' });

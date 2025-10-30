@@ -24,7 +24,6 @@ const LogbookPage = () => {
   if (!story || story.length === 0) {
     return <div className="text-gray-400 text-center p-10">No log history found for this NFT.</div>;
   }
-
   return (
     <div className="bg-gray-900 min-h-screen text-white p-4 sm:p-6 lg:p-8">
       <div className="max-w-4xl mx-auto">
@@ -51,7 +50,7 @@ const LogbookPage = () => {
                   <div className="p-6">
                     <h1 className="text-xl font-bold flex items-center gap-3">
                       <BeakerIcon className="h-6 w-6 text-cyan-400" />
-                      {step.title}
+                      {step.name}
                     </h1>
                     <p className="text-gray-300 mt-2 text-sm">{step.description}</p>
                     <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">

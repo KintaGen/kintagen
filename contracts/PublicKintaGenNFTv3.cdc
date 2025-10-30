@@ -102,9 +102,15 @@ access(all) contract PublicKintaGenNFTv3: NonFungibleToken {
                             path: nil
                         )
                     )
-                case Type<MetadataViews.ExternalURL>():
-                    let base = "https://kintagendemo.vercel.app/#/logbook/"
-                    return MetadataViews.ExternalURL(base.concat(self.id.toString()))
+               case Type<MetadataViews.ExternalURL>():
+                   let base = "https://kintagendemo.vercel.app/#/logbook/"
+                   // self.owner is available on any resource. We get its address and add it to the URL.
+                   if self.owner != nil {
+                       let url = base.concat(self.owner!.address.toString()).concat("/").concat(self.id.toString())
+                       return MetadataViews.ExternalURL(url)
+                   }
+                   // Fallback in case owner is somehow nil
+                   return MetadataViews.ExternalURL(base.concat(self.id.toString()))
                 case Type<MetadataViews.NFTCollectionDisplay>():
                     return PublicKintaGenNFTv3.resolveContractView(
                         resourceType: nil,
