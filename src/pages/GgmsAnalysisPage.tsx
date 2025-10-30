@@ -135,7 +135,7 @@ const GCMSAnalysisPage: React.FC = () => {
   // Function to handle viewing and logging results
   const handleViewAndLogResults = async (job: DisplayJob) => {
     setPageError(null);
-    setViewedJob(null); // Always clear previous results when an action is taken
+    setViewedJob(null);
 
     // --- CASE 1: User clicks on a LOGGED job. Action: VIEW RESULTS ---
     if (job.state === 'logged') {
@@ -151,17 +151,7 @@ const GCMSAnalysisPage: React.FC = () => {
         const zip = await JSZip.loadAsync(zipBlob);
         const reconstructedResults: { [key: string]: any } = {};
         const readJson = async (filename: string) => zip.file(filename) ? JSON.parse(await zip.file(filename)!.async("string")) : undefined;
-        
-        [
-          reconstructedResults.quantitative_report, reconstructedResults.top_spectra_data,
-          reconstructedResults.raw_chromatogram_data, reconstructedResults.smoothed_chromatogram_data,
-          reconstructedResults.integrated_peaks_details, reconstructedResults.library_matches
-        ] = await Promise.all([
-          readJson("quantitative_report.json"), readJson("top_spectra_data.json"),
-          readJson("raw_chromatogram.json"), readJson("smoothed_chromatogram.json"),
-          readJson("integrated_peaks.json"), readJson("library_matches.json")
-        ]);
-
+        [ reconstructedResults.quantitative_report, reconstructedResults.top_spectra_data, reconstructedResults.raw_chromatogram_data, reconstructedResults.smoothed_chromatogram_data, reconstructedResults.integrated_peaks_details, reconstructedResults.library_matches ] = await Promise.all([ readJson("quantitative_report.json"), readJson("top_spectra_data.json"), readJson("raw_chromatogram.json"), readJson("smoothed_chromatogram.json"), readJson("integrated_peaks.json"), readJson("library_matches.json") ]);
         setViewedJob({ ...job, returnvalue: { results: reconstructedResults, status: 'success' } });
       } catch (error: any) {
         setPageError(`Failed to load on-chain data: ${error.message}`);
@@ -176,9 +166,7 @@ const GCMSAnalysisPage: React.FC = () => {
     if (job.state === 'completed') {
       // Sub-case 2.1: It's the DEMO project. Action: SHOW RESULTS.
       if (job.projectId === DEMO_PROJECT_ID) {
-        console.log(job)
         setViewedJob(job);
-        console.log(job)
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
@@ -196,15 +184,42 @@ const GCMSAnalysisPage: React.FC = () => {
           const inputDataHash = job.inputDataHash;
           if (!inputDataHash) throw new Error("Input data hash missing from job.");
 
-          // Step 1: Upload to IPFS
+          // --- Step 1: Create artifact with METADATA and upload to IPFS ---
+          const outputs = [];
+          const addAndHash = async (filename: string, content: any) => {
+              if (content) {
+                  const contentString = JSON.stringify(content);
+                  const hash = await generateDataHash(contentString);
+                  outputs.push({ filename, hash_sha256: hash });
+              }
+          };
+
+          await addAndHash("quantitative_report.json", results.quantitative_report);
+          await addAndHash("top_spectra_data.json", results.top_spectra_data);
+          await addAndHash("raw_chromatogram.json", results.raw_chromatogram_data);
+          await addAndHash("smoothed_chromatogram.json", results.smoothed_chromatogram_data);
+          await addAndHash("integrated_peaks.json", results.integrated_peaks_details);
+          await addAndHash("library_matches.json", results.library_matches);
+
+          const metadata = {
+            schema_version: "1.0.0",
+            analysis_agent: "KintaGen GC-MS Agent v1.0",
+            timestamp_utc: new Date().toISOString(),
+            input_data_hash_sha256: inputDataHash,
+            outputs: outputs
+          };
+
           const zip = new JSZip();
           const addJsonToZip = (name: string, data: any) => data && zip.file(name, JSON.stringify(data, null, 2));
+          
+          zip.file("metadata.json", JSON.stringify(metadata, null, 2));
           addJsonToZip("quantitative_report.json", results.quantitative_report);
           addJsonToZip("top_spectra_data.json", results.top_spectra_data);
           addJsonToZip("raw_chromatogram.json", results.raw_chromatogram_data);
           addJsonToZip("smoothed_chromatogram.json", results.smoothed_chromatogram_data);
           addJsonToZip("integrated_peaks.json", results.integrated_peaks_details);
-          addJsonToZip("library_matches.json", results.library_matches); // Include MoNA results
+          addJsonToZip("library_matches.json", results.library_matches);
+
           const zipFile = new File([await zip.generateAsync({ type: 'blob' })], `artifact_${inputDataHash.substring(0,8)}.zip`);
           const cid = await uploadFile(zipFile);
           if (!cid) throw new Error(uploadError || "Failed to get CID from IPFS upload.");
