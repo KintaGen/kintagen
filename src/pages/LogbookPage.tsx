@@ -1,12 +1,13 @@
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useNftStory } from '../flow/kintagen-nft';
-import { ArrowLeftIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
+import { ArrowLeftIcon, ClockIcon, BeakerIcon } from '@heroicons/react/24/solid';
+import { LogbookAnalysisEntry } from '../components/LogbookAnalysisEntry'; // Import our new wrapper
 
 const LogbookPage = () => {
-  const { ownerAddress,nftId } = useParams();
-  
+  const { ownerAddress, nftId } = useParams();
   const numericNftId = nftId ? parseInt(nftId, 10) : undefined;
+
   const { story, isLoading, error } = useNftStory({
     nftId: numericNftId,
     ownerAddress: ownerAddress,
@@ -24,9 +25,6 @@ const LogbookPage = () => {
     return <div className="text-gray-400 text-center p-10">No log history found for this NFT.</div>;
   }
 
-  // The first step of the story contains the project's core info and image CID.
-  const projectInfo = story[0];
-
   return (
     <div className="bg-gray-900 min-h-screen text-white p-4 sm:p-6 lg:p-8">
       <div className="max-w-4xl mx-auto">
@@ -37,49 +35,39 @@ const LogbookPage = () => {
           </Link>
         </div>
 
-        <div className="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
-          {/* NFT Image Display */}
-          <img
-            src={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${projectInfo.ipfsHash}`}
-            alt={projectInfo.title}
-            className="w-full h-auto max-h-80 object-cover"
-          />
-
-          <div className="p-6 border-b border-gray-700">
-            <h1 className="text-2xl font-bold flex items-center gap-3">
-              <BeakerIcon className="h-7 w-7 text-cyan-400" />
-              {projectInfo.title}
-            </h1>
-            <p className="text-gray-300 mt-2">{projectInfo.description}</p>
-          </div>
-
-          <div className="p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">On-Chain Log History</h3>
-            <div className="space-y-4">
-              {story.map((step, index) => (
-                <div key={index} className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
-                  <p className="font-semibold text-white">{step.title}</p>
-                  <p className="text-sm text-gray-400 mt-2">Agent: <span className="font-mono text-xs bg-gray-700 px-1.5 py-0.5 rounded">{step.agent}</span></p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Result CID:
-                    <a
-                      href={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${step.ipfsHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-mono text-xs text-cyan-400 hover:underline ml-2 inline-flex items-center gap-1"
-                    >
-                      {step.ipfsHash}
-                      <ArrowTopRightOnSquareIcon className="h-3 w-3" />
-                    </a>
-                  </p>
-                  <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
-                    <ClockIcon className="h-3 w-3" />
-                    {new Date(parseFloat(step.timestamp) * 1000).toLocaleString()}
-                  </p>
+        <h3 className="text-2xl font-semibold text-white mb-4">On-Chain Logbook</h3>
+        
+        <div className="space-y-6">
+          {story.map((step, index) => {
+            // Case 1: The first entry is always the project registration card.
+            if (index === 0) {
+              return (
+                <div key={index} className="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+                  <img
+                    src={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${step.ipfsHash}`}
+                    alt={step.title}
+                    className="w-full h-auto max-h-80 object-cover"
+                  />
+                  <div className="p-6">
+                    <h1 className="text-xl font-bold flex items-center gap-3">
+                      <BeakerIcon className="h-6 w-6 text-cyan-400" />
+                      {step.title}
+                    </h1>
+                    <p className="text-gray-300 mt-2 text-sm">{step.description}</p>
+                    <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
+                      <ClockIcon className="h-3 w-3" />
+                      {new Date(parseFloat(step.timestamp) * 1000).toLocaleString()}
+                    </p>
+                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
+              );
+            }
+
+            // Case 2: All other entries are analyses. Use our smart wrapper component.
+            return (
+              <LogbookAnalysisEntry key={index} step={step} />
+            );
+          })}
         </div>
       </div>
     </div>
