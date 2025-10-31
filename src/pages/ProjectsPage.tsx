@@ -58,7 +58,7 @@ const ProjectsPage: React.FC = () => {
     const contractAddr = flowConfig.addresses["KintaGenNFT"];
     const network = flowConfig.flowNetwork;
     if (network === 'testnet' && contractAddr) {
-      return `https://testnet.flowscan.org/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv3/${nftId}`;
+      return `https://testnet.flowscan.io/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv3.NFT/token/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv3.NFT-${nftId}`;
     }
     return `#`; 
   };
@@ -143,7 +143,7 @@ const ProjectsPage: React.FC = () => {
             </div>
             <div>
               <label htmlFor="projectDesc" className="block text-sm font-medium text-gray-300 mb-1">Full Description</label>
-              <textarea id="projectDesc" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} rows={4} placeholder="A detailed summary of the research goals, methods, and expected outcomes. This will be stored off-chain." className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none" />
+              <textarea id="projectDesc" value={newDescription} onChange={(e) => setNewDescription(e.target.value)} rows={4} placeholder="A detailed summary of the research goals, methods, and expected outcomes." className="w-full bg-gray-700 border border-gray-600 rounded-md py-2 px-3 text-white focus:outline-none" />
             </div>
             
             {/* Image Uploader */}
