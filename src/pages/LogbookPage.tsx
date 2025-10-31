@@ -8,10 +8,11 @@ const LogbookPage = () => {
   const { ownerAddress, nftId } = useParams();
   const numericNftId = nftId ? parseInt(nftId, 10) : undefined;
 
-  const { story, isLoading, error } = useNftStory({
+  const { projectName, story, isLoading, error } = useNftStory({
     nftId: numericNftId,
     ownerAddress: ownerAddress,
   });
+  
 
   if (isLoading) {
     return <div className="text-white text-center p-10">Loading NFT Logbook...</div>;
@@ -50,7 +51,7 @@ const LogbookPage = () => {
                   <div className="p-6">
                     <h1 className="text-xl font-bold flex items-center gap-3">
                       <BeakerIcon className="h-6 w-6 text-cyan-400" />
-                      {step.name}
+                      {projectName}
                     </h1>
                     <p className="text-gray-300 mt-2 text-sm">{step.description}</p>
                     <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">

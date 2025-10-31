@@ -1,8 +1,8 @@
 // src/flow/kintagen-nft.ts
-import { useMemo } from 'react';
+import { useMemo,useEffect,useState } from 'react';
 import { useFlowConfig, useFlowQuery, useFlowCurrentUser } from '@onflow/react-sdk';
 import {
-  getNftStoryScript,
+  getNftLogbookScript,
   getOwnedNftsScript,
   getNftStoriesScript
 } from './cadence';
@@ -15,38 +15,46 @@ interface UseNftStoryProps {
 }
 
 export const useNftStory = ({ nftId, ownerAddress }: UseNftStoryProps) => {
-  const flowConfig = useFlowConfig();
+  const flowConfig = useFlowConfig(); 
 
-  const cadenceScript = useMemo(() => {
-    const contracts = flowConfig.addresses;
-    // Use "KintaGenNFT" to check for the address from your config
-    if (!contracts?.ViewResolver || !contracts?.KintaGenNFT) {
+  // Memoize the script generation to prevent re-running on every render
+  const cadenceScript = useMemo(() => { 
+    const addresses = flowConfig.addresses;
+    if (!addresses?.ViewResolver || !addresses?.KintaGenNFT || !addresses?.NonFungibleToken) {
       return null;
     }
-    return getNftStoryScript({
-      ViewResolver: contracts.ViewResolver,
-      KintaGenNFT: contracts.KintaGenNFT, // Pass address using the config key
-      NonFungibleToken: '',
-      MetadataViews: '',
-    });
+    return getNftLogbookScript(addresses as any);
   }, [flowConfig.addresses]);
 
-  const { data: story, isLoading, error } = useFlowQuery({
+  // Use the data-fetching hook provided by the SDK
+  const { data, isLoading, error } = useFlowQuery({ 
     cadence: cadenceScript,
     args: (arg, t) => {
-      if (!ownerAddress) return [];
+      // This guard prevents the arg() function from ever being called with undefined values.
+      if (!ownerAddress || nftId === undefined) {
+        return []; 
+      }
+      
+      // Only when the values are valid do we build the arguments array.
       return [
-        arg(ownerAddress, t.Address),
-        arg(String(nftId), t.UInt64)
+        arg(ownerAddress, t.Address), // No "!" needed because of the guard
+        arg(String(nftId), t.UInt64)   // No "!" needed
       ];
     },
     query: {
-      enabled: !!cadenceScript && !!nftId && !!ownerAddress,
+      enabled: !!cadenceScript && !!ownerAddress && typeof nftId === 'number',
     }
   });
 
-  return { story: story as any[] | null, isLoading, error };
+  // Return the final data structure
+  return {
+    projectName: data?.projectName,
+    story: data?.story,
+    isLoading,
+    error,
+  };
 };
+
 
 
 // --- Helper Function for Adding a Log Entry ---
