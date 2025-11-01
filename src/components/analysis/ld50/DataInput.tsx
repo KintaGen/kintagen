@@ -213,7 +213,7 @@ export const DataInput: React.FC<DataInputProps> = ({ onDataValidated, onDataCle
           </button>
       )}
 
-      <h4 className="text-gray-200 font-semibold mb-3">Provide Custom Data (Optional)</h4>
+      <h4 className="text-gray-200 font-semibold mb-3">Provide Data</h4>
       
       <div className="mb-3">
         <label htmlFor="csv-file-input" className="text-sm text-gray-300">Upload CSV or Excel File:</label><br/>

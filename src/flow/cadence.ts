@@ -1,190 +1,167 @@
+// src/flow/cadence.ts
+
 // This interface defines the shape of all the contract addresses your app needs.
 interface ContractAddresses {
     NonFungibleToken: string;
-    PublicKintaGenNFT: string;
+    KintaGenNFT: string; // Aligned with your flow.json/config
     ViewResolver: string;
-}
+    MetadataViews: string;
+  }
   
   // --- TRANSACTIONS ---
   
-export const getMintNftTransaction = (addresses: ContractAddresses): string => {
+  export const getMintNftTransaction = (addresses: ContractAddresses): string => {
   return `
-    // This transaction is now network-agnostic.
-    // The addresses are injected from your FCL config.
     import NonFungibleToken from ${addresses.NonFungibleToken}
-    import PublicKintaGenNFT      from ${addresses.KintaGenNFT}
-
-    transaction(agent: String, outputCID: String, runHash: String) {
-
-        let collectionRef: &PublicKintaGenNFT.Collection
-
-        prepare(signer: auth(Storage, Capabilities) &Account) {
-
-            if signer.storage.borrow<&PublicKintaGenNFT.Collection>(from: PublicKintaGenNFT.CollectionStoragePath) == nil {
-                let collection <- PublicKintaGenNFT.createEmptyCollection(nftType: Type<@PublicKintaGenNFT.NFT>())
-                signer.storage.save(<-collection, to: PublicKintaGenNFT.CollectionStoragePath)
-                signer.capabilities.publish(
-                    signer.capabilities.storage.issue<&PublicKintaGenNFT.Collection>(PublicKintaGenNFT.CollectionStoragePath),
-                    at: PublicKintaGenNFT.CollectionPublicPath
-                )
-            }
-            
-            self.collectionRef = signer.storage.borrow<&PublicKintaGenNFT.Collection>(from: PublicKintaGenNFT.CollectionStoragePath)
-                ?? panic("Could not borrow a reference to the NFT collection")
-        }
-
-        execute {
-            let newNFT <- PublicKintaGenNFT.mint(agent: agent, outputCID: outputCID, runHash: runHash)
-            let newNftId = newNFT.id
-            self.collectionRef.deposit(token: <-newNFT)
-            log("Successfully minted PublicKintaGenNFT with ID ".concat(newNftId.toString()))
-        }
-    }
-  `;
-};
+    import PublicKintaGenNFTv3 from ${addresses.KintaGenNFT}
   
-export const getAddToLogTransaction = (addresses: ContractAddresses): string => {
-  return `
-    // NonFungibleToken import is not strictly needed by the code, but good for clarity
-    import NonFungibleToken from ${addresses.NonFungibleToken}
-    import PublicKintaGenNFT from ${addresses.KintaGenNFT}
-
-    transaction(nftId: UInt64, agent: String, actionDescription: String, outputCID: String) {
-      let nftRef: &PublicKintaGenNFT.NFT
-
-      prepare(signer: auth(BorrowValue) &Account) {
-          let collectionRef = signer.storage.borrow<&PublicKintaGenNFT.Collection>(from: PublicKintaGenNFT.CollectionStoragePath)
-              ?? panic("Could not borrow a reference to the owner's collection")
-          self.nftRef = collectionRef.borrowNFT(nftId) as! &PublicKintaGenNFT.NFT
-      }
-
-      execute {
-          self.nftRef.addLogEntry(agent: agent, actionDescription: actionDescription, outputCID: outputCID)
-          log("Successfully added a new entry to the log for NFT ID: ".concat(nftId.toString()))
-      }
-    }
-  `;
-};
-export const getSetupAndMintTransaction = (addresses: ContractAddresses): string => {
-  return `
-    import NonFungibleToken from ${addresses.NonFungibleToken}
-    import PublicKintaGenNFT from ${addresses.KintaGenNFT}
-
-    transaction(agent: String, outputCID: String, runHash: String) {
-      
-      // Define the reference placeholder at the top level
-      let collectionRef: &PublicKintaGenNFT.Collection
-
-      // The prepare block does all the setup and borrowing
-      prepare(signer: auth(Storage, Capabilities) &Account) {
-        
-        // 1. SETUP: Create a collection if it doesn't exist.
-        if signer.storage.borrow<&PublicKintaGenNFT.Collection>(from: PublicKintaGenNFT.CollectionStoragePath) == nil {
-            let collection <- PublicKintaGenNFT.createEmptyCollection(nftType: Type<@PublicKintaGenNFT.NFT>())
-            signer.storage.save(<-collection, to: PublicKintaGenNFT.CollectionStoragePath)
+    transaction(
+        recipient: Address,
+        project: String,
+        summary: String,
+        cid: String,
+        investigator: String,
+        runHash: String
+    ) {
+        let minter: &PublicKintaGenNFTv3.Minter
+        let receiver: &{NonFungibleToken.Receiver}
+  
+        prepare(signer: auth(BorrowValue) &Account) {
+            self.minter = signer.storage.borrow<&PublicKintaGenNFTv3.Minter>(from: PublicKintaGenNFTv3.MinterStoragePath)
+                ?? panic("PublicKintaGenNFTv3 minter not found in storage.")
+  
+            self.receiver = getAccount(recipient)
+                .capabilities
+                .borrow<&{NonFungibleToken.Receiver}>(PublicKintaGenNFTv3.CollectionPublicPath)
+                ?? panic("Recipient does not expose a KintaGen collection receiver.")
         }
-
-        // 2. FIX: Create the public link if it doesn't exist.
-        if !signer.capabilities.get<&{NonFungibleToken.CollectionPublic}>(PublicKintaGenNFT.CollectionPublicPath).check() {
-            signer.capabilities.unpublish(PublicKintaGenNFT.CollectionPublicPath)
-            signer.capabilities.publish(
-                signer.capabilities.storage.issue<&{NonFungibleToken.CollectionPublic}>(PublicKintaGenNFT.CollectionStoragePath),
-                at: PublicKintaGenNFT.CollectionPublicPath
+  
+        execute {
+            let token <- self.minter.mint(
+                projectName: project,
+                projectSummary: summary,
+                projectCID: cid,
+                principalInvestigator: investigator,
+                runHash: runHash
             )
+            self.receiver.deposit(token: <-token)
         }
-        
-        self.collectionRef = signer.storage.borrow<&PublicKintaGenNFT.Collection>(from: PublicKintaGenNFT.CollectionStoragePath)
-            ?? panic("Could not borrow a reference to the owner's collection")
-      }
-
-      // The execute block performs the final mint and deposit actions
-      execute {
-        // This is the correct way to call the contract-level mint function
-        let newNFT <- PublicKintaGenNFT.mint(agent: agent, outputCID: outputCID, runHash: runHash)
-        
-        // Use the borrowed reference to deposit
-        self.collectionRef.deposit(token: <-newNFT)
-
-        log("Successfully minted PublicKintaGenNFT with ID ".concat(newNFT.id.toString()))
-      }
     }
   `;
-};
-
-// --- SCRIPTS ---
-
-export const getNftStoryScript = (addresses: ContractAddresses): string => {
+  };
+  
+  export const getAddToLogTransaction = (addresses: ContractAddresses): string => {
   return `
-    import ViewResolver from ${addresses.ViewResolver}
-    import PublicKintaGenNFT from ${addresses.KintaGenNFT}
-
-    access(all) fun main(ownerAddress: Address, nftID: UInt64): [PublicKintaGenNFT.WorkflowStepView]? {
-        let owner = getAccount(ownerAddress)
-        let collectionCap = owner.capabilities.get<&{ViewResolver.ResolverCollection}>(PublicKintaGenNFT.CollectionPublicPath)
-        
-        if !collectionCap.check() { return nil }
-        
-        let resolverCollection = collectionCap.borrow() ?? panic("Could not borrow collection capability.")
-        let resolver = resolverCollection.borrowViewResolver(id: nftID) ?? panic("Could not borrow view resolver for the specified NFT.")
-        let storyView = resolver.resolveView(Type<PublicKintaGenNFT.WorkflowStepView>())
-        
-        return storyView as? [PublicKintaGenNFT.WorkflowStepView]
+    import PublicKintaGenNFTv3 from ${addresses.KintaGenNFT}
+  
+    transaction(nftID: UInt64, agent: String, title: String, details: String, cid: String) {
+        prepare(signer: auth(BorrowValue) &Account) {
+            let collection = signer.storage.borrow<&PublicKintaGenNFTv3.Collection>(from: PublicKintaGenNFTv3.CollectionStoragePath)
+                ?? panic("Signer does not own a PublicKintaGenNFTv3 collection.")
+  
+            let nft = collection.borrowNFT(nftID)! as! &PublicKintaGenNFTv3.NFT
+            nft.addLogEntry(agent: agent, title: title, description: details, ipfsHash: cid)
+        }
     }
   `;
-};
-
-
-export const getOwnedNftsScript = (addresses: ContractAddresses): string => {
+  };
+  
+  // --- SCRIPTS ---
+  
+  /**
+   * This script fetches everything needed for the Logbook page: the project name and its full story.
+   * It borrows a capability to both the NFT (for its name) and the ViewResolver (for its story).
+   */
+  export const getNftLogbookScript = (addresses: ContractAddresses): string => {
+    return `
+      import NonFungibleToken from ${addresses.NonFungibleToken}
+      import ViewResolver from ${addresses.ViewResolver}
+      import PublicKintaGenNFTv3 from ${addresses.KintaGenNFT}
+  
+      // This struct will hold all the data needed for the logbook page
+      access(all) struct LogbookInfo {
+          access(all) let projectName: String
+          access(all) let story: [PublicKintaGenNFTv3.WorkflowStepView]
+  
+          init(projectName: String, story: [PublicKintaGenNFTv3.WorkflowStepView]) {
+              self.projectName = projectName
+              self.story = story
+          }
+      }
+  
+      // The main function now returns our new struct
+      access(all) fun main(ownerAddress: Address, nftID: UInt64): LogbookInfo? {
+          let owner = getAccount(ownerAddress)
+          
+          // Borrow a capability that allows access to both NFT data and Views
+          let collectionCap = owner.capabilities.get<&{NonFungibleToken.CollectionPublic, ViewResolver.ResolverCollection}>(PublicKintaGenNFTv3.CollectionPublicPath)
+          
+          if !collectionCap.check() { 
+              return nil 
+          }
+          
+          let collection = collectionCap.borrow() ?? panic("Could not borrow collection capability.")
+          
+          // Borrow a reference to the specific NFT to get its name
+          let nft = collection.borrowNFT(nftID)
+          if nft == nil {
+              return nil
+          }
+          let kintaGenNft = nft as! &PublicKintaGenNFTv3.NFT
+          
+          // Also borrow the view resolver to get the story
+          let resolver = collection.borrowViewResolver(id: nftID) ?? panic("Could not borrow view resolver.")
+          let storyView = resolver.resolveView(Type<[PublicKintaGenNFTv3.WorkflowStepView]>())!
+          
+          // Construct and return the LogbookInfo object
+          return LogbookInfo(
+              projectName: kintaGenNft.projectName,
+              story: storyView as! [PublicKintaGenNFTv3.WorkflowStepView]
+          )
+      }
+    `;
+  };
+  
+  export const getOwnedNftsScript = (addresses: ContractAddresses): string => {
   return `
     import NonFungibleToken from ${addresses.NonFungibleToken}
-    import PublicKintaGenNFT from ${addresses.KintaGenNFT}
-
-    // This script reads the NFT IDs from a user's collection.
+    import PublicKintaGenNFTv3 from ${addresses.KintaGenNFT}
+  
     access(all) fun main(address: Address): [UInt64] {
-        // Get the public account object for the specified address.
         let account = getAccount(address)
-
-        // Get the public capability for their PublicKintaGenNFT Collection.
-        let collectionCap = account.capabilities.get<&{NonFungibleToken.CollectionPublic}>(PublicKintaGenNFT.CollectionPublicPath)
+        let collectionCap = account.capabilities.get<&{NonFungibleToken.CollectionPublic}>(PublicKintaGenNFTv3.CollectionPublicPath)
         
-        // If the capability doesn't exist or is invalid, return an empty array.
         if !collectionCap.check() {
             return []
         }
-
-        // Borrow a reference to the collection.
+  
         let collection = collectionCap.borrow()
             ?? panic("Could not borrow a reference to the collection")
-
-        // Call the public getIDs() function and return the result.
+  
         return collection.getIDs()
     }
   `;
-};
-
-
-export const getNftDisplaysScript = (addresses: ContractAddresses): string => {
+  };
+  
+  export const getNftDisplaysScript = (addresses: ContractAddresses): string => {
   return `
     import ViewResolver from ${addresses.ViewResolver}
-    import PublicKintaGenNFT from ${addresses.KintaGenNFT}
+    import PublicKintaGenNFTv3 from ${addresses.KintaGenNFT}
     import MetadataViews from ${addresses.MetadataViews}
-
-    // This script takes an array of IDs and returns an array of Display structs.
+  
     access(all) fun main(ownerAddress: Address, ids: [UInt64]): [MetadataViews.Display?] {
         let account = getAccount(ownerAddress)
-        let collectionCap = account.capabilities.get<&{ViewResolver.ResolverCollection}>(PublicKintaGenNFT.CollectionPublicPath)
+        let collectionCap = account.capabilities.get<&{ViewResolver.ResolverCollection}>(PublicKintaGenNFTv3.CollectionPublicPath)
         
-        // Return an empty array if the capability is missing.
         if !collectionCap.check() { 
             return []
         }
         
         let resolverCollection = collectionCap.borrow()
             ?? panic("Could not borrow collection capability.")
-
-        let displays: [MetadataViews.Display?] = []
-
-        // Loop through each ID and get its Display view
+  
+        var displays: [MetadataViews.Display?] = []
+  
         for id in ids {
             let resolver = resolverCollection.borrowViewResolver(id: id)
             if resolver != nil {
@@ -198,43 +175,70 @@ export const getNftDisplaysScript = (addresses: ContractAddresses): string => {
         return displays
     }
   `;
-};
-
-export const getNftStoriesScript = (addresses: ContractAddresses): string => {
+  };
+  
+  /**
+  * Generates the script to fetch all necessary project data for the main list view.
+  * This is the version with the final Cadence 1.0 syntax fix.
+  */
+  export const getNftStoriesScript = (addresses: ContractAddresses): string => {
   return `
+    import PublicKintaGenNFTv3 from ${addresses.KintaGenNFT}
+    import MetadataViews from ${addresses.MetadataViews}
     import ViewResolver from ${addresses.ViewResolver}
-    import PublicKintaGenNFT from ${addresses.KintaGenNFT}
-
-    // This script takes an array of IDs and returns an array of stories.
-    // The return type is an array of optional arrays of structs.
-    access(all) fun main(ownerAddress: Address, ids: [UInt64]): [[PublicKintaGenNFT.WorkflowStepView]?] {
+    import NonFungibleToken from ${addresses.NonFungibleToken}
+  
+    access(all) struct ProjectInfo {
+        access(all) let id: UInt64
+        access(all) let name: String
+        access(all) let description: String
+        access(all) let story: [PublicKintaGenNFTv3.WorkflowStepView]
+  
+        init(id: UInt64, name: String, description: String, story: [PublicKintaGenNFTv3.WorkflowStepView]) {
+            self.id = id
+            self.name = name
+            self.description = description
+            self.story = story
+        }
+    }
+  
+    access(all) fun main(ownerAddress: Address, ids: [UInt64]): [ProjectInfo?] {
         let account = getAccount(ownerAddress)
-        let collectionCap = account.capabilities.get<&{ViewResolver.ResolverCollection}>(PublicKintaGenNFT.CollectionPublicPath)
+        
+        let collectionCap = account.capabilities.get<&{NonFungibleToken.CollectionPublic, ViewResolver.ResolverCollection}>(PublicKintaGenNFTv3.CollectionPublicPath)
         
         if !collectionCap.check() { 
-            // If the user has no collection, return an empty array.
             return []
         }
         
-        let resolverCollection = collectionCap.borrow()
+        let collection = collectionCap.borrow()
             ?? panic("Could not borrow collection capability.")
-
-        // This will be our final array of stories.
-        let allStories: [[PublicKintaGenNFT.WorkflowStepView]?] = []
-
-        // Loop through each ID passed into the script.
+  
+        var allProjects: [ProjectInfo?] = []
+  
         for id in ids {
-            let resolver = resolverCollection.borrowViewResolver(id: id)
-            if resolver != nil {
-                let storyView = resolver!.resolveView(Type<PublicKintaGenNFT.WorkflowStepView>())
-                allStories.append(storyView as? [PublicKintaGenNFT.WorkflowStepView])
+            let nft = collection.borrowNFT(id)
+            if nft != nil {
+                // Now that the 'collection' reference has the correct type, this line is valid
+                let resolver = collection.borrowViewResolver(id: id)!
+                let storyView = resolver.resolveView(Type<[PublicKintaGenNFTv3.WorkflowStepView]>())!
+                
+                let kintaGenNft = nft as! &PublicKintaGenNFTv3.NFT
+  
+                allProjects.append(
+                    ProjectInfo(
+                        id: id,
+                        name: kintaGenNft.projectName,
+                        description: kintaGenNft.projectSummary,
+                        story: storyView as! [PublicKintaGenNFTv3.WorkflowStepView]
+                    )
+                )
             } else {
-                // If an NFT can't be found, append nil for that spot.
-                allStories.append(nil)
+                allProjects.append(nil)
             }
         }
         
-        return allStories
+        return allProjects
     }
   `;
-};
+  };

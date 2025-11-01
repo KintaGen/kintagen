@@ -1,11 +1,10 @@
 import React from 'react';
-import { XMarkIcon, ClockIcon, BeakerIcon } from '@heroicons/react/24/solid';
+import { Link } from 'react-router-dom';
+import { XMarkIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon, BookOpenIcon } from '@heroicons/react/24/solid';
 
-// Import the new hook and the current user hook
 import { useNftStory } from '../flow/kintagen-nft';
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 
-// Assuming your Project type is defined elsewhere
 interface Project {
   id: string;
   name: string;
@@ -20,10 +19,8 @@ interface ProjectDetailProps {
 
 const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
   const { user } = useFlowCurrentUser();
-  
-  // Use our new hook to fetch the log history for the selected project
   const { story, isLoading, error } = useNftStory({
-    nftId: project.nft_id,
+    nftId: parseInt(project.nft_id, 10),
     ownerAddress: user?.addr,
   });
 
@@ -43,7 +40,27 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
 
         {/* Body with Log History */}
         <div className="p-6 overflow-y-auto">
-          <p className="text-gray-300 mb-6">{project.description}</p>
+          {/* Conditionally render image when story data is available */}
+          {story && story.length > 0 && (
+            <div className="mb-6">
+              <img
+                src={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${story[0].ipfsHash}`}
+                alt={project.name}
+                className="w-full h-auto max-h-60 object-cover rounded-lg shadow-md"
+              />
+            </div>
+          )}
+          
+          <div className="flex justify-between items-start mb-6">
+            <p className="text-gray-300 flex-1 pr-4">{project.description}</p>
+            <Link
+              to={`/logbook/${project.story[0].agent}/${project.nft_id}`}
+              className="flex-shrink-0 inline-flex items-center gap-2 bg-cyan-500 text-white px-3 py-1.5 rounded-md hover:bg-cyan-600 transition-colors text-sm font-semibold"
+            >
+              <BookOpenIcon className="h-4 w-4" />
+              View Full Logbook
+            </Link>
+          </div>
 
           <h3 className="text-lg font-semibold text-white mb-4">On-Chain Log History</h3>
           
@@ -53,11 +70,22 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
           {story && (
             <div className="space-y-4">
               {story.map((step, index) => (
-                <div key={index} className="bg-gray-900/50 p-4 rounded-lg">
-                  <p className="font-semibold text-white">{step.action}</p>
-                  <p className="text-sm text-gray-400 mt-1">Agent: <span className="font-mono text-xs">{step.agent}</span></p>
-                  <p className="text-sm text-gray-400">Result CID: <span className="font-mono text-xs"><a href={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${step.resultCID}`} target="_blank" >{step.resultCID} </a></span></p>
-                  <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                <div key={index} className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                  <p className="font-semibold text-white">{step.title}</p>
+                  <p className="text-sm text-gray-400 mt-2">Agent: <span className="font-mono text-xs bg-gray-700 px-1.5 py-0.5 rounded">{step.agent}</span></p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Result CID: 
+                    <a 
+                      href={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${step.ipfsHash}`} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="font-mono text-xs text-cyan-400 hover:underline ml-2 inline-flex items-center gap-1"
+                    >
+                      {step.ipfsHash}
+                      <ArrowTopRightOnSquareIcon className="h-3 w-3" />
+                    </a>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
                     <ClockIcon className="h-3 w-3" />
                     {new Date(parseFloat(step.timestamp) * 1000).toLocaleString()}
                   </p>

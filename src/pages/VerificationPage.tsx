@@ -9,13 +9,16 @@ import {
 } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 
+import { generateDataHash } from '../utils/hash';
+
 // --- Type Definitions ---
-// Simplified for this specific task
 interface AnalysisMetadata {
+  analysis_agent: string; // We need this to determine the file type
   input_data_hash_sha256: string;
-  [key: string]: any; // Allow other fields
+  [key: string]: any;
 }
 
+type AnalysisType = 'ld50' | 'nmr' | 'gcms' | 'unknown';
 type VerificationStatus = 'success' | 'failure';
 
 interface VerificationResult {
@@ -25,18 +28,10 @@ interface VerificationResult {
   status: VerificationStatus;
 }
 
-// --- Hashing Helper Function (Unchanged) ---
-async function calculateSha256(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
-  const hashBuffer = await window.crypto.subtle.digest('SHA-256', buffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-
-// --- The Main Component, Refocused on Input Verification ---
+// --- The Main Component, Corrected to Handle All Analysis Types ---
 export default function VerificationPage() {
   const [metadata, setMetadata] = useState<AnalysisMetadata | null>(null);
+  const [analysisType, setAnalysisType] = useState<AnalysisType>('unknown');
   const [inputFile, setInputFile] = useState<File | null>(null);
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -44,6 +39,7 @@ export default function VerificationPage() {
 
   const handleReset = () => {
     setMetadata(null);
+    setAnalysisType('unknown');
     setInputFile(null);
     setResult(null);
     setError(null);
@@ -56,6 +52,9 @@ export default function VerificationPage() {
   const handleMetadataUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    handleReset(); 
+
     if (file.type !== 'application/json') {
       setError('Metadata must be a .json file.');
       return;
@@ -64,16 +63,24 @@ export default function VerificationPage() {
     reader.onload = (e) => {
       try {
         const parsedJson = JSON.parse(e.target?.result as string);
-        if (typeof parsedJson.input_data_hash_sha256 !== 'string') {
-          throw new Error("Metadata must contain an 'input_data_hash_sha256' string.");
+        if (typeof parsedJson.input_data_hash_sha256 !== 'string' || typeof parsedJson.analysis_agent !== 'string') {
+          throw new Error("Metadata must contain 'input_data_hash_sha256' and 'analysis_agent' strings.");
         }
         setMetadata(parsedJson);
+        
+        // --- Automatically determine analysis type from metadata ---
+        const agent = parsedJson.analysis_agent.toLowerCase();
+        if (agent.includes('ld50')) setAnalysisType('ld50');
+        else if (agent.includes('nmr')) setAnalysisType('nmr');
+        else if (agent.includes('gc-ms')) setAnalysisType('gcms');
+        else setAnalysisType('unknown');
+
       } catch (err: any) {
         setError(`Failed to parse metadata: ${err.message}`);
         setMetadata(null);
+        setAnalysisType('unknown');
       }
     };
-    reader.onerror = () => setError('Failed to read the metadata file.');
     reader.readAsText(file);
   };
 
@@ -81,21 +88,34 @@ export default function VerificationPage() {
     const file = event.target.files?.[0];
     if (file) {
         setInputFile(file);
-        setResult(null); // Reset result when a new file is chosen
+        setResult(null);
     }
   };
 
   const handleVerify = useCallback(async () => {
-    if (!metadata || !inputFile) {
-      setError('Both a metadata file and an input data file must be provided.');
+    if (!metadata || !inputFile || analysisType === 'unknown') {
+      setError('A valid metadata file and an input data file must be provided.');
       return;
     }
     setIsLoading(true);
     setError(null);
+    setResult(null);
 
     try {
+        let calculatedHash: string;
+        
+        // Case 1: LD50 uses a hash of the TEXT content.
+        if (analysisType === 'ld50') {
+            const fileText = await inputFile.text();
+            calculatedHash = await generateDataHash(fileText);
+        } 
+        // Case 2: NMR and GCMS use a hash of the raw FILE BUFFER.
+        else {
+            const fileBuffer = await inputFile.arrayBuffer();
+            calculatedHash = await generateDataHash(fileBuffer);
+        }
+
         const expectedHash = metadata.input_data_hash_sha256;
-        const calculatedHash = await calculateSha256(inputFile);
         const isMatch = calculatedHash === expectedHash;
 
         setResult({
@@ -104,12 +124,12 @@ export default function VerificationPage() {
             calculatedHash,
             status: isMatch ? 'success' : 'failure',
         });
-    } catch (e) {
-        setError('An error occurred during file hashing.');
+    } catch (e: any) {
+        setError(`An error occurred during verification: ${e.message}`);
     } finally {
         setIsLoading(false);
     }
-  }, [metadata, inputFile]);
+  }, [metadata, inputFile, analysisType]);
   
   const ResultDisplay = () => {
     if (!result) return null;
@@ -153,9 +173,9 @@ export default function VerificationPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto flex flex-col gap-6">
+    <div className="max-w-4xl mx-auto flex flex-col gap-6 p-4 md:p-8">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold mb-4">Input Data Verification</h1>
+        <h1 className="text-3xl font-bold">Input Data Verification</h1>
         <button
           onClick={handleReset}
           className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
@@ -164,38 +184,41 @@ export default function VerificationPage() {
           Start Over
         </button>
       </div>
-      <p className="text-gray-400 mb-8">
-        Verify the authenticity of an input data file by comparing its hash against a trusted metadata report.
+      <p className="text-gray-600">
+        Verify the authenticity of an original input data file by comparing its cryptographic hash against the one recorded in a trusted `metadata.json` report.
       </p>
       
-      {/* --- Step 1 & 2 Cards --- */}
       <div className="grid md:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 flex flex-col">
-          <h3 className="text-xl font-semibold text-gray-700 mb-4">Step 1: Upload Metadata</h3>
-          <p className="text-gray-600 text-sm mb-4">Select the `.json` report file.</p>
-          <div className="mt-auto">
-            <label htmlFor="metadata-input" className="cursor-pointer inline-flex items-center gap-2 bg-white hover:bg-gray-100 text-gray-800 font-semibold py-2 px-4 border border-gray-300 rounded-lg shadow-sm">
-              <DocumentTextIcon className="h-5 w-5" /> Select Metadata
-            </label>
-            <input id="metadata-input" type="file" accept=".json" onChange={handleMetadataUpload} className="hidden" />
-            {metadata && <p className="text-green-600 font-semibold mt-3 flex items-center gap-2 text-sm"><CheckCircleIcon className="h-5 w-5" /> Metadata loaded</p>}
-          </div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-4">Step 1: Upload Metadata</h3>
+            <p className="text-gray-600 text-sm mb-4">Select the `metadata.json` file from a downloaded artifact.</p>
+            <div className="mt-auto">
+                <label htmlFor="metadata-input" className="cursor-pointer inline-flex items-center gap-2 bg-white hover:bg-gray-100 text-gray-800 font-semibold py-2 px-4 border border-gray-300 rounded-lg shadow-sm">
+                    <DocumentTextIcon className="h-5 w-5" /> Select Metadata
+                </label>
+                <input id="metadata-input" type="file" accept=".json" onChange={handleMetadataUpload} className="hidden" />
+                {metadata && (
+                    <div className="text-green-600 font-semibold mt-3 flex flex-col gap-1 text-sm">
+                        <p className="flex items-center gap-2"><CheckCircleIcon className="h-5 w-5" /> Metadata Loaded</p>
+                        <p className="text-gray-500 font-normal ml-7">Type Detected: <span className="font-semibold uppercase text-blue-600">{analysisType}</span></p>
+                    </div>
+                )}
+            </div>
         </div>
         
         <div className={clsx("bg-white p-6 rounded-lg shadow-md border border-gray-200 flex flex-col transition-opacity", { 'opacity-50': !metadata })}>
-          <h3 className="text-xl font-semibold text-gray-700 mb-4">Step 2: Upload Input Data</h3>
-          <p className="text-gray-600 text-sm mb-4">Select the original data file (e.g., `.csv`, `.txt`) that was analyzed.</p>
-          <div className="mt-auto">
-            <label htmlFor="data-input" className={clsx("cursor-pointer inline-flex items-center gap-2 bg-white hover:bg-gray-100 text-gray-800 font-semibold py-2 px-4 border border-gray-300 rounded-lg shadow-sm", { 'cursor-not-allowed': !metadata })}>
-              <ArrowUpTrayIcon className="h-5 w-5" /> Select Input File
-            </label>
-            <input id="data-input" type="file" onChange={handleInputFileUpload} className="hidden" disabled={!metadata} />
-            {inputFile && <p className="text-blue-600 font-semibold mt-3 flex items-center gap-2 text-sm"><CheckCircleIcon className="h-5 w-5 text-blue-500" /> Selected: {inputFile.name}</p>}
-          </div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-4">Step 2: Upload Input Data</h3>
+            <p className="text-gray-600 text-sm mb-4">Select the original data file (e.g., `.csv`, `.zip`, `.mzML`) that was analyzed.</p>
+            <div className="mt-auto">
+                <label htmlFor="data-input" className={clsx("cursor-pointer inline-flex items-center gap-2 bg-white hover:bg-gray-100 text-gray-800 font-semibold py-2 px-4 border border-gray-300 rounded-lg shadow-sm", { 'cursor-not-allowed': !metadata })}>
+                    <ArrowUpTrayIcon className="h-5 w-5" /> Select Input File
+                </label>
+                <input id="data-input" type="file" onChange={handleInputFileUpload} className="hidden" disabled={!metadata} />
+                {inputFile && <p className="text-blue-600 font-semibold mt-3 flex items-center gap-2 text-sm"><CheckCircleIcon className="h-5 w-5 text-blue-500" /> Selected: {inputFile.name}</p>}
+            </div>
         </div>
       </div>
 
-      {/* --- Verification Action --- */}
       <div className="flex justify-center">
         <button
           onClick={handleVerify}
@@ -207,7 +230,6 @@ export default function VerificationPage() {
         </button>
       </div>
 
-      {/* --- Results & Errors --- */}
       {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg" role="alert">
         <strong className="font-bold">Error: </strong>
         <span>{error}</span>
