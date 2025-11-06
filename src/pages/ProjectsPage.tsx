@@ -58,7 +58,7 @@ const ProjectsPage: React.FC = () => {
     const contractAddr = flowConfig.addresses["KintaGenNFT"];
     const network = flowConfig.flowNetwork;
     if (network === 'testnet' && contractAddr) {
-      return `https://testnet.flowscan.io/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv3.NFT/token/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv3.NFT-${nftId}`;
+      return `https://testnet.flowscan.io/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv5.NFT/token/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv5.NFT-${nftId}`;
     }
     return `#`; 
   };
@@ -81,15 +81,14 @@ const ProjectsPage: React.FC = () => {
       const addresses = {
         NonFungibleToken: flowConfig.addresses["NonFungibleToken"],
         KintaGenNFT: flowConfig.addresses["KintaGenNFT"],
-        ViewResolver: "",
-        MetadataViews: "",
+        ViewResolver: flowConfig.addresses["ViewResolver"],
+        MetadataViews: flowConfig.addresses["MetadataViews"],
       };
       const cadence = getMintNftTransaction(addresses);
       
       await executeTransaction({
         cadence,
         args: (arg, t) => [
-          arg(user.addr, t.Address),
           arg(newName, t.String),
           arg(newDescription.substring(0, 200), t.String),
           arg(imageCid, t.String),

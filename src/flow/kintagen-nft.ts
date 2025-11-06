@@ -149,7 +149,7 @@ export const useOwnedNfts = ({ address }: UseOwnedNftsProps) => {
       refetchInterval: 30000, 
     }
   });
-
+  console.log(nftIDs)
   return { 
     nftIDs: nftIDs as string[] | null,
     isLoading, 
