@@ -1,17 +1,32 @@
 import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useNftStory } from '../flow/kintagen-nft';
-import { ArrowLeftIcon, ClockIcon, BeakerIcon } from '@heroicons/react/24/solid';
+// 1. Import the necessary hook and icon
+import { useFlowConfig } from '@onflow/react-sdk';
+import { ArrowLeftIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
 import { LogbookAnalysisEntry } from '../components/LogbookAnalysisEntry'; // Import our new wrapper
 
 const LogbookPage = () => {
   const { ownerAddress, nftId } = useParams();
   const numericNftId = nftId ? parseInt(nftId, 10) : undefined;
 
+  // 2. Get the flow configuration which contains network and contract addresses
+  const flowConfig = useFlowConfig();
+
   const { projectName, story, isLoading, error } = useNftStory({
     nftId: numericNftId,
     ownerAddress: ownerAddress,
   });
+
+  // 3. Create a robust function to generate the explorer URL
+  const flowscanURL = (nftId: string) => {
+    const contractAddr = flowConfig.addresses["KintaGenNFT"];
+    const network = flowConfig.flowNetwork;
+    if (network === 'testnet' && contractAddr) {
+      return `https://testnet.flowscan.io/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv6.NFT/token/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv6.NFT-${nftId}`;
+    }
+    return `#`; 
+  };
   
 
   if (isLoading) {
@@ -39,20 +54,33 @@ const LogbookPage = () => {
         
         <div className="space-y-6">
           {story.map((step, index) => {
-            // Case 1: The first entry is always the project registration card.
             if (index === 0) {
               return (
                 <div key={index} className="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
                   <img
-                    src={`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${step.ipfsHash}`}
+                    src={`https://ipfs.io/ipfs/${step.ipfsHash}`}
                     alt={step.title}
                     className="w-full h-auto max-h-80 object-cover"
                   />
                   <div className="p-6">
-                    <h1 className="text-xl font-bold flex items-center gap-3">
-                      <BeakerIcon className="h-6 w-6 text-cyan-400" />
-                      {projectName}
-                    </h1>
+                    <div className="flex items-center justify-between">
+                      <h1 className="text-xl font-bold flex items-center gap-3">
+                        <BeakerIcon className="h-6 w-6 text-cyan-400" />
+                        {projectName}
+                      </h1>
+                      
+                      <a 
+                        href={flowscanURL(nftId)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
+                        title="View on Flowscan"
+                      >
+                        View on Explorer
+                        <ArrowTopRightOnSquareIcon className="h-5 w-5" />
+                      </a>
+                    </div>
+
                     <p className="text-gray-300 mt-2 text-sm">{step.description}</p>
                     <p className="text-xs text-gray-500 mt-3 flex items-center gap-1.5">
                       <ClockIcon className="h-3 w-3" />
@@ -63,7 +91,6 @@ const LogbookPage = () => {
               );
             }
 
-            // Case 2: All other entries are analyses. Use our smart wrapper component.
             return (
               <LogbookAnalysisEntry key={index} step={step} />
             );

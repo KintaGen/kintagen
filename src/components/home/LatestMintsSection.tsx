@@ -3,6 +3,7 @@ import React from 'react';
 import { CubeIcon, PhotoIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
 import { useLatestNfts } from '../../flow/kintagen-nft';
 import { useFlowConfig } from '@onflow/react-sdk';
+import { Link } from 'react-router-dom';
 
 // This type now includes the thumbnail's IPFS CID
 interface LatestNftInfo {
@@ -36,10 +37,8 @@ const NftCard: React.FC<{ nft: LatestNftInfo }> = ({ nft }) => {
   };
 
   return (
-    <a
-      href={flowscanURL(nft.id)}
-      target="_blank"
-      rel="noopener noreferrer"
+    <Link
+      to={`/logbook/${nft.owner}/${nft.id}`}
       className="block bg-gray-800/50 rounded-lg border border-gray-700 group relative overflow-hidden
                  transition-all duration-300 ease-in-out hover:border-purple-500 hover:scale-[1.03] hover:bg-gray-800"
     >
@@ -78,7 +77,7 @@ const NftCard: React.FC<{ nft: LatestNftInfo }> = ({ nft }) => {
         className="h-5 w-5 text-white/70 absolute top-3 right-3
                    transition-opacity duration-300 opacity-0 group-hover:opacity-100" 
       />
-    </a>
+    </Link>
   );
 };
 
