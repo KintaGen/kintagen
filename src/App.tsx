@@ -60,6 +60,14 @@ const emulatorConfig = {
   // --- App Information ---
   "appDetailTitle": "KintaGen Platform Demo",
   "appDetailIcon": "https://avatars.githubusercontent.com/u/215318019?s=200&v=4",
+  "addresses": {
+    "NonFungibleToken": "0xf8d6e0586b0a20c7",    // Standard NFT contract address on Crescendo
+    "MetadataViews": "0xf8d6e0586b0a20c7",       // Standard Metadata contract address on Crescendo
+    "ViewResolver": "0xf8d6e0586b0a20c7",        // Standard ViewResolver contract address on Crescendo
+    "FlowToken": "0x0ae53cb6e3f42a79",
+    "KintaGenNFT": "0xf8d6e0586b0a20c7",          // Your contract's address
+    "FungibleToken": "0xf8d6e0586b0a20c7"
+  }
 } as const;
 const emulatorJSON = {
   "0xNonFungibleToken": "f8d6e0586b0a20c7",    // Standard NFT contract address on Crescendo

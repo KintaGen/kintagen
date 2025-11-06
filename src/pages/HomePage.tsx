@@ -12,6 +12,8 @@ import {
   ChartBarIcon
 } from '@heroicons/react/24/solid';
 
+import LatestMintsSection from '../components/home/LatestMintsSection'; // 1. IMPORT THE NEW COMPONENT
+
 // A small feature card component for reusability (Unchanged)
 const FeatureCard: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode }> = ({ icon, title, children }) => (
   <div className="bg-gray-800/50 p-6 rounded-lg border border-gray-700">
@@ -89,6 +91,8 @@ const HomePage: React.FC = () => {
           KintaGen's AI works on the rich metadata within your project logs. Ask questions about your research history, find past analyses, and ensure consistency across your experiments, all without exposing your raw data.
         </p>
       </div>
+      
+      <LatestMintsSection />
 
       {/* --- Explore the Demo CTA --- */}
       <div className="py-12">

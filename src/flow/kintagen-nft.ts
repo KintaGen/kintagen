@@ -4,7 +4,8 @@ import { useFlowConfig, useFlowQuery, useFlowCurrentUser } from '@onflow/react-s
 import {
   getNftLogbookScript,
   getOwnedNftsScript,
-  getNftStoriesScript
+  getNftStoriesScript,
+  getLatestNftsScript
 } from './cadence';
 
 // --- Custom Hook for Fetching a Single NFT Story ---
@@ -88,23 +89,22 @@ export const addToLog = async (
 // --- Helper Function for Minting an NFT ---
 
 interface MintNftProps {
-    recipient: string;
-    project: string;
-    summary: string;
-    cid: string;
-    investigator: string;
-    runHash: string;
+  project: string;
+  summary: string;
+  cid: string;
+  investigator: string;
+  runHash: string;
 }
-  
+
 export const mintNft = (
   sendTx: (options: any) => void,
   cadence: string,
   props: MintNftProps
-) => {
+  ) => {
   sendTx({
     cadence,
+    // The argument list is now shorter
     args: (arg, t) => [
-      arg(props.recipient, t.Address),
       arg(props.project, t.String),
       arg(props.summary, t.String),
       arg(props.cid, t.String),
@@ -242,5 +242,35 @@ export const useOwnedNftProjects = () => {
     isLoading: isLoadingIDs || isLoadingStories,
     error: idsError || storiesError,
     refetchProjects,
+  };
+};
+
+
+export const useLatestNfts = () => {
+  const flowConfig = useFlowConfig();
+
+  const cadenceScript = useMemo(() => {
+    const addresses = flowConfig.addresses;
+    if (!addresses?.NonFungibleToken || !addresses?.KintaGenNFT || !addresses?.ViewResolver || !addresses?.MetadataViews) {
+      return null;
+    }
+    return getLatestNftsScript(addresses as any);
+  }, [flowConfig.addresses]);
+
+  const { data, isLoading, error } = useFlowQuery({
+    cadence: cadenceScript,
+    args: (arg, t) => [
+      arg('6', t.Int), // We want to fetch the latest 6 NFTs
+    ],
+    query: {
+      enabled: !!cadenceScript,
+      refetchInterval: 30000, // Refetch every 30 seconds to keep the list fresh
+    }
+  });
+
+  return {
+    latestNfts: data as any[] | null, // Cast data to be easily usable
+    isLoading,
+    error,
   };
 };

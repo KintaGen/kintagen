@@ -58,7 +58,7 @@ const ProjectsPage: React.FC = () => {
     const contractAddr = flowConfig.addresses["KintaGenNFT"];
     const network = flowConfig.flowNetwork;
     if (network === 'testnet' && contractAddr) {
-      return `https://testnet.flowscan.io/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv5.NFT/token/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv5.NFT-${nftId}`;
+      return `https://testnet.flowscan.io/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv6.NFT/token/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv6.NFT-${nftId}`;
     }
     return `#`; 
   };
