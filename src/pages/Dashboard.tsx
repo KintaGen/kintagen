@@ -2,7 +2,7 @@
  *  DashboardPage.tsx · The main orchestrator for the dashboard.
  * -------------------------------------------------------------------------*/
 import React, { useEffect, useState, useMemo } from 'react';
-import ProjectDetail from '../components/ProjectDetail';
+import ProjectDetail from '../components/projects/ProjectDetail';
 
 // Import all the organized components
 import DashboardHeader from '../components/dashboard/DashboardHeader';

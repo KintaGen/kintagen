@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useNftStory } from '../flow/kintagen-nft';
 // 1. Import the necessary hook and icon
 import { useFlowConfig } from '@onflow/react-sdk';
+import { Helmet } from 'react-helmet-async'; 
 import { ArrowLeftIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
 import { LogbookAnalysisEntry } from '../components/LogbookAnalysisEntry'; // Import our new wrapper
 
@@ -29,19 +30,46 @@ const LogbookPage = () => {
   };
   
 
+  // Render loading state
   if (isLoading) {
-    return <div className="text-white text-center p-10">Loading NFT Logbook...</div>;
+    return (
+      <>
+        <Helmet>
+          <title>Loading Logbook...</title>
+        </Helmet>
+        <div className="text-white text-center p-10">Loading NFT Logbook...</div>
+      </>
+    );
   }
 
+  // Render error state
   if (error) {
-    return <div className="text-red-400 text-center p-10">Error fetching NFT data: {error.message}</div>;
+    return (
+       <>
+        <Helmet>
+          <title>Error</title>
+        </Helmet>
+        <div className="text-red-400 text-center p-10">Error fetching NFT data: {error.message}</div>
+      </>
+    );
   }
 
+  // Render empty state
   if (!story || story.length === 0) {
-    return <div className="text-gray-400 text-center p-10">No log history found for this NFT.</div>;
+    return (
+      <>
+        <Helmet>
+          <title>Logbook Not Found</title>
+        </Helmet>
+        <div className="text-gray-400 text-center p-10">No log history found for this NFT.</div>
+      </>
+    );
   }
   return (
     <div className="bg-gray-900 min-h-screen text-white p-4 sm:p-6 lg:p-8">
+      <Helmet>
+        <title>{`Logbook for ${projectName || 'NFT'}`}</title>
+      </Helmet>
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
           <Link to="/projects" className="inline-flex items-center text-cyan-400 hover:text-cyan-300 transition-colors">

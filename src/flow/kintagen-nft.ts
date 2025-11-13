@@ -274,3 +274,32 @@ export const useLatestNfts = () => {
     error,
   };
 };
+
+export const useAllNfts = () => {
+  const flowConfig = useFlowConfig();
+
+  const cadenceScript = useMemo(() => {
+    const addresses = flowConfig.addresses;
+    if (!addresses?.NonFungibleToken || !addresses?.KintaGenNFT || !addresses?.ViewResolver || !addresses?.MetadataViews) {
+      return null;
+    }
+    return getLatestNftsScript(addresses as any);
+  }, [flowConfig.addresses]);
+
+  const { data, isLoading, error } = useFlowQuery({
+    cadence: cadenceScript,
+    args: (arg, t) => [
+      arg('0', t.Int), // We want to fetch the latest 6 NFTs
+    ],
+    query: {
+      enabled: !!cadenceScript,
+      refetchInterval: 30000, // Refetch every 30 seconds to keep the list fresh
+    }
+  });
+
+  return {
+    allNfts: data as any[] | null, // Cast data to be easily usable
+    isLoading,
+    error,
+  };
+};

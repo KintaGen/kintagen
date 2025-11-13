@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { HelmetProvider } from 'react-helmet-async'; 
 
 // --- WAGMI AND QUERY CLIENT IMPORTS ---
 import { WagmiProvider, createConfig, http } from 'wagmi';
@@ -31,7 +32,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <LitProvider>
-          <App />
+          <HelmetProvider> 
+            <App />
+          </HelmetProvider> 
         </LitProvider>
       </QueryClientProvider>
     </WagmiProvider>

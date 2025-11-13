@@ -1,5 +1,6 @@
 import React,{useEffect, useState} from 'react';
 import { HashRouter, Routes, Route } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async'; 
 import Sidebar from './components/Sidebar';
 import HomePage from './pages/HomePage';
 //import ResearchChatPage from './pages/ResearchChatPage';

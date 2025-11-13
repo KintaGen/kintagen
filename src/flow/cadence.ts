@@ -290,12 +290,14 @@ interface ContractAddresses {
       access(all) fun main(limit: Int): [LatestNftInfo] {
           let totalSupply = PublicKintaGenNFTv6.totalSupply
           var nfts: [LatestNftInfo] = []
-          
+          var max = limit
           var currentId = totalSupply - 1
-          
+          if(limit == 0) {
+            max = Int(totalSupply)
+          }
           // Loop backwards from the newest NFT until we have enough tokens
           // or we have checked all possible IDs.
-          while currentId >= 0 && nfts.length < limit {
+          while currentId >= 0 && nfts.length < max {
               // This is the critical part that relies on a custom public function in your contract.
               if let ownerAddress = PublicKintaGenNFTv6.getOwner(id: currentId) {
                   let account = getAccount(ownerAddress)
