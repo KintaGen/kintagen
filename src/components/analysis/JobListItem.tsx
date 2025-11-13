@@ -2,15 +2,7 @@
 
 import React from 'react';
 import { ClockIcon, CheckCircleIcon, XCircleIcon, DocumentTextIcon, ArrowPathIcon } from '@heroicons/react/24/solid';
-
-// --- CHANGE #1: Add 'waiting' to the possible states ---
-interface DisplayJob {
-    id: string; 
-    label: string; 
-    projectId: string; 
-    state: 'completed' | 'failed' | 'processing' | 'logged' | 'waiting'; // Added 'waiting'
-    failedReason?: string; 
-}
+import { type DisplayJob } from '../../types';
 
 interface JobListItemProps {
   job: DisplayJob & { projectId: string };

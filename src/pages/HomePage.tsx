@@ -1,5 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { 
   BeakerIcon, 
   CubeTransparentIcon, 
@@ -28,8 +30,19 @@ const FeatureCard: React.FC<{ icon: React.ReactNode; title: string; children: Re
 );
 
 const HomePage: React.FC = () => {
+  usePageTitle('KintaGen - Verifiable Logbook for Research');
+
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8 text-white">
+    <>
+      <Helmet>
+        <title>KintaGen - Verifiable Logbook for Research</title>
+        <meta name="description" content="KintaGen creates an unbreakable, on-chain link between your local datasets, your analysis, and your results. Never again question which data produced which outcome." />
+        <meta name="keywords" content="research, data integrity, blockchain, provenance, verifiable logbook, scientific research, data tracking" />
+        <meta property="og:title" content="KintaGen - Verifiable Logbook for Research" />
+        <meta property="og:description" content="Your data stays with you. KintaGen creates an unbreakable, on-chain link between your local datasets, your analysis, and your results." />
+        <meta property="og:type" content="website" />
+      </Helmet>
+      <div className="max-w-6xl mx-auto p-4 md:p-8 text-white">
       
       {/* --- Hero Section --- */}
       <div className="text-center py-16">
@@ -117,6 +130,7 @@ const HomePage: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

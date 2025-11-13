@@ -12,20 +12,14 @@ import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
 
 
 import { generateDataHash } from '../../../utils/hash'; // Adjust path if needed
+import { type DisplayJob } from '../../../types';
 
-// Type definition for the job prop this component receives.
-// It includes all possible data sources.
-interface DisplayJob { 
-    projectId: string;
-    state: 'completed' | 'failed' | 'processing' | 'logged'; 
-    returnvalue?: any; // For local/demo jobs that are 'completed'
-    logData?: any;     // For jobs that are 'logged' on-chain
-    inputDataHash: string;
-}
+// Use a subset of DisplayJob for results display (id and label not needed here)
+type ResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'returnvalue' | 'logData' | 'inputDataHash'>;
 
 // Props interface for the component.
 interface AnalysisResultsDisplayProps {
-  job: DisplayJob;
+  job: ResultsDisplayJob;
   isLoading?: boolean; // True when the parent is logging the job to IPFS/blockchain
 }
 

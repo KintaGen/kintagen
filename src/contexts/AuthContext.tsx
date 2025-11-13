@@ -10,14 +10,14 @@ import '../fcl-config';
 // --- 2. Define the types for our context ---
 
 // Describes the shape of the user object provided by FCL
-interface FclUser {
+export interface FclUser {
   loggedIn: boolean | null; // null means not yet determined, true/false means determined
   addr?: string;
   // FCL provides more fields, but we only need these for most UI purposes
 }
 
 // Describes the shape of the value our context will provide
-interface AuthContextType {
+export interface AuthContextType {
   user: FclUser;
   logIn: () => void;
   logOut: () => void;

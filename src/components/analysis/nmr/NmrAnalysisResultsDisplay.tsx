@@ -46,19 +46,18 @@ interface NmrResults {
   summary_text?: string;
 }
 
-interface DisplayJob {
-  projectId: string;
-  state: 'completed' | 'failed' | 'processing' | 'logged';
+import { type DisplayJob } from '../../../types';
+
+// Use a subset of DisplayJob for results display with specific returnvalue type
+type NmrResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'inputDataHash' | 'logData'> & {
   returnvalue?: {
     results: NmrResults;
     status: 'success' | 'error';
   };
-  inputDataHash: string;
-  logData?: any;
-}
+};
 
 interface NmrAnalysisResultsDisplayProps {
-  job: DisplayJob;
+  job: NmrResultsDisplayJob;
 }
 
 

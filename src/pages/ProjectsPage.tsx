@@ -1,4 +1,6 @@
 import React, { useState, useMemo } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 import { useOwnedNftProjects, useAllNfts } from '../flow/kintagen-nft';
 import type { NftProject } from '../types';
@@ -29,6 +31,8 @@ const ProjectsPage: React.FC = () => {
 
   const allProjects = useMemo((): NftProject[] => allNfts || [], [allNfts]);
 
+  usePageTitle('Projects - KintaGen');
+
   const openProjectModal = (project: NftProject) => {
     setSelectedProject({
       id: project.id,
@@ -41,6 +45,13 @@ const ProjectsPage: React.FC = () => {
 
   return (
     <>
+      <Helmet>
+        <title>Projects - KintaGen</title>
+        <meta name="description" content="Manage your research projects and create immutable logbooks on the blockchain. Track your datasets, analyses, and results with verifiable provenance." />
+        <meta name="keywords" content="research projects, blockchain, NFT, logbook, data provenance" />
+        <meta property="og:title" content="Projects - KintaGen" />
+        <meta property="og:description" content="Manage your research projects and create immutable logbooks on the blockchain." />
+      </Helmet>
       <div className="max-w-7xl mx-auto p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-8">Projects</h1>
 

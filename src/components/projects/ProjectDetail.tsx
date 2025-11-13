@@ -2,13 +2,10 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { XMarkIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon, BookOpenIcon } from '@heroicons/react/24/solid';
 import { useNftStory } from '../../flow/kintagen-nft';
+import { type ProjectWithStringId } from '../../types';
 
-// Updated interface to expect the owner's address
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  nft_id: string;
+// Project with owner address required for ProjectDetail
+interface Project extends ProjectWithStringId {
   owner: string; // The owner's address is now required
 }
 

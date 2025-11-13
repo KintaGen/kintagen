@@ -1,10 +1,7 @@
 import React from 'react';
 // NEW: Import the ChartBarIcon for the Analyses card
 import { DocumentTextIcon, BeakerIcon, SparklesIcon, ChartBarIcon } from '@heroicons/react/24/solid';
-
-// --- Type Definitions ---
-interface ApiProject { id: number; name: string; created_at: string; }
-interface ApiGenericItem { cid: string; title: string; created_at: string; }
+import { type ApiProject, type ApiGenericItem } from '../../types';
 
 // MODIFIED: Props now correctly include `analyses` and remove NFT-related props.
 interface RecentActivityGridProps {

@@ -27,12 +27,15 @@ export const config = createConfig({
 });
 
 // --- RENDER THE APPLICATION WITH ALL PROVIDERS ---
+// Create a context for HelmetProvider to ensure proper isolation
+const helmetContext = {};
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
         <LitProvider>
-          <HelmetProvider> 
+          <HelmetProvider context={helmetContext}> 
             <App />
           </HelmetProvider> 
         </LitProvider>

@@ -2,8 +2,10 @@
 import React from 'react';
 import { VarianDataInput } from './VarianDataInput';
 import { DEMO_PROJECT_ID } from '../../../pages/NMRAnalysisPage'; // We will create this page next
+import { type ProjectWithStringId } from '../../../types';
 
-interface Project { id: string; name: string; }
+// Use ProjectWithStringId for Flow/on-chain contexts
+type Project = Pick<ProjectWithStringId, 'id' | 'name'>;
 
 interface NmrAnalysisSetupPanelProps {
     projects: Project[];

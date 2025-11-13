@@ -3,7 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useNftStory } from '../flow/kintagen-nft';
 // 1. Import the necessary hook and icon
 import { useFlowConfig } from '@onflow/react-sdk';
-import { Helmet } from 'react-helmet-async'; 
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle'; 
 import { ArrowLeftIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
 import { LogbookAnalysisEntry } from '../components/LogbookAnalysisEntry'; // Import our new wrapper
 
@@ -18,6 +19,10 @@ const LogbookPage = () => {
     nftId: numericNftId,
     ownerAddress: ownerAddress,
   });
+
+  // Update page title when projectName is available
+  const pageTitle = projectName ? `${projectName} - KintaGen` : 'Logbook - KintaGen';
+  usePageTitle(pageTitle);
 
   // 3. Create a robust function to generate the explorer URL
   const flowscanURL = (nftId: string) => {
@@ -68,7 +73,10 @@ const LogbookPage = () => {
   return (
     <div className="bg-gray-900 min-h-screen text-white p-4 sm:p-6 lg:p-8">
       <Helmet>
-        <title>{`Logbook for ${projectName || 'NFT'}`}</title>
+        <title>{`${projectName || 'Logbook'} - KintaGen`}</title>
+        <meta name="description" content={`On-chain logbook for ${projectName || 'this project'}. View the complete history of data registrations, analyses, and results with verifiable timestamps.`} />
+        <meta property="og:title" content={`${projectName || 'Logbook'} - KintaGen`} />
+        <meta property="og:description" content={`On-chain logbook showing the complete research history for ${projectName || 'this project'}.`} />
       </Helmet>
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">

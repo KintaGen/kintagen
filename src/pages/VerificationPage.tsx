@@ -1,4 +1,6 @@
 import React, { useState, useCallback } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { 
     ArrowUpTrayIcon, 
     DocumentTextIcon, 
@@ -10,16 +12,7 @@ import {
 import clsx from 'clsx';
 
 import { generateDataHash } from '../utils/hash';
-
-// --- Type Definitions ---
-interface AnalysisMetadata {
-  analysis_agent: string; // We need this to determine the file type
-  input_data_hash_sha256: string;
-  [key: string]: any;
-}
-
-type AnalysisType = 'ld50' | 'nmr' | 'gcms' | 'unknown';
-type VerificationStatus = 'success' | 'failure';
+import { type AnalysisMetadata, type AnalysisType, type VerificationStatus } from '../types';
 
 interface VerificationResult {
   filename: string;
@@ -30,6 +23,8 @@ interface VerificationResult {
 
 // --- The Main Component, Corrected to Handle All Analysis Types ---
 export default function VerificationPage() {
+  usePageTitle('Data Verification - KintaGen');
+  
   const [metadata, setMetadata] = useState<AnalysisMetadata | null>(null);
   const [analysisType, setAnalysisType] = useState<AnalysisType>('unknown');
   const [inputFile, setInputFile] = useState<File | null>(null);
@@ -173,9 +168,17 @@ export default function VerificationPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto flex flex-col gap-6 p-4 md:p-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Input Data Verification</h1>
+    <>
+      <Helmet>
+        <title>Data Verification - KintaGen</title>
+        <meta name="description" content="Verify the integrity of your analysis input data by comparing calculated hashes with recorded metadata. Ensure data authenticity and prevent tampering." />
+        <meta name="keywords" content="data verification, hash verification, data integrity, scientific verification" />
+        <meta property="og:title" content="Data Verification - KintaGen" />
+        <meta property="og:description" content="Verify the integrity of your analysis input data by comparing calculated hashes with recorded metadata." />
+      </Helmet>
+      <div className="max-w-4xl mx-auto flex flex-col gap-6 p-4 md:p-8">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Input Data Verification</h1>
         <button
           onClick={handleReset}
           className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg text-sm transition-colors"
@@ -237,5 +240,6 @@ export default function VerificationPage() {
       
       <ResultDisplay />
     </div>
+    </>
   );
 }

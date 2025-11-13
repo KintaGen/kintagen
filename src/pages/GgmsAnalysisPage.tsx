@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import JSZip from 'jszip';
 import { upload } from '@vercel/blob/client';
@@ -19,23 +21,19 @@ import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList';
 // Firebase
 import { logEvent } from "firebase/analytics";
 import { analytics } from '../services/firebase';
+import { type ProjectWithStringId, type DisplayJob } from '../types';
 
-// Type Definitions
-interface Project { id: string; name: string; description: string; nft_id: string; story?: any[]; }
-export interface DisplayJob {
-  id: string;
-  label: string;
-  projectId: string;
-  state: 'completed' | 'failed' | 'processing' | 'logged' | 'waiting';
-  failedReason?: string;
-  returnvalue?: any;
-  logData?: any;
-  inputDataHash?: string;
-}
+// Re-export for backward compatibility
+export type { DisplayJob } from '../types';
+
+// Use ProjectWithStringId for Flow/on-chain contexts
+type Project = ProjectWithStringId;
 
 export const DEMO_PROJECT_ID = 'demo-project';
 
 const GCMSAnalysisPage: React.FC = () => {
+  usePageTitle('GC-MS Feature Analysis - KintaGen');
+  
   // --- State Hooks ---
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
   const { jobs, setJobs } = useJobs();
@@ -262,6 +260,13 @@ const GCMSAnalysisPage: React.FC = () => {
 
   return (
     <>
+      <Helmet>
+        <title>GC-MS Feature Analysis - KintaGen</title>
+        <meta name="description" content="Perform GC-MS feature detection and quantification from mzML files. Generate differential and profiling analyses with verifiable on-chain results." />
+        <meta name="keywords" content="GC-MS, mass spectrometry, feature detection, metabolomics, mzML, chemical analysis" />
+        <meta property="og:title" content="GC-MS Feature Analysis - KintaGen" />
+        <meta property="og:description" content="Perform GC-MS feature detection and quantification with verifiable results." />
+      </Helmet>
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-4">GC-MS Feature Analysis</h1>
         <p className="text-gray-400 mb-8">Select a project and upload an mzML file to perform feature detection and quantification.</p>

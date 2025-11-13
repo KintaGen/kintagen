@@ -6,16 +6,13 @@ import { MassSpectraDisplay, type MassSpectraPlotRef, type TopSpectrum } from '.
 import { generateDataHash } from '../../../utils/hash';
 
 const R_API = import.meta.env.VITE_API_BASE_URL;
-// --- Interfaces ---
-interface DisplayJob { 
-  projectId: string;
-  state: 'completed' | 'failed' | 'processing' | 'logged'; 
-  returnvalue?: any;
-  logData?: any;
-}
+import { type DisplayJob } from '../../../types';
+
+// Use a subset of DisplayJob for results display (id and label not needed here)
+type ResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'returnvalue' | 'logData' | 'inputDataHash'>;
 
 interface GcmsAnalysisResultsDisplayProps {
-  job: DisplayJob;
+  job: ResultsDisplayJob;
 }
 
 // --- Component ---

@@ -3,15 +3,7 @@
 import React from 'react';
 import { TrashIcon } from '@heroicons/react/24/solid';
 import { JobListItem } from './JobListItem';
-
-// Assuming types are shared
-interface DisplayJob { 
-    id: string; 
-    label: string; 
-    projectId: string; 
-    state: 'completed' | 'failed' | 'processing' | 'logged'; 
-    failedReason?: string; 
-}
+import { type DisplayJob } from '../../types';
 
 // --- UPDATE THE PROPS INTERFACE ---
 interface AnalysisJobsListProps {

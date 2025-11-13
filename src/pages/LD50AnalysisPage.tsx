@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import { useJobs, type Job } from '../contexts/JobContext';
 import { useFlowCurrentUser, useFlowConfig, TransactionDialog, useFlowMutate } from '@onflow/react-sdk';
@@ -16,30 +18,19 @@ import { generateDataHash } from '../utils/hash';
 // Firebase
 import { logEvent } from "firebase/analytics";
 import { analytics } from '../services/firebase';
+import { type ProjectWithStringId, type DisplayJob } from '../types';
 
-// --- Type Definitions ---
-interface Project {
-  id: string;
-  name: string;
-  description: string;
-  nft_id: string;
-  story?: any[];
-}
+// Re-export for backward compatibility
+export type { DisplayJob } from '../types';
 
-export interface DisplayJob {
-  id: string;
-  label: string;
-  projectId: string;
-  state: 'completed' | 'failed' | 'processing' | 'logged' | 'waiting';
-  failedReason?: string;
-  returnvalue?: any;
-  logData?: any;
-  inputDataHash?: string;
-}
+// Use ProjectWithStringId for Flow/on-chain contexts
+type Project = ProjectWithStringId;
 
 export const DEMO_PROJECT_ID = 'demo-project';
 
 const LD50AnalysisPage: React.FC = () => {
+  usePageTitle('LD50 Dose-Response Analysis - KintaGen');
+  
   // --- State Hooks ---
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
   const { jobs, setJobs } = useJobs();
@@ -256,6 +247,13 @@ const LD50AnalysisPage: React.FC = () => {
 
   return (
     <>
+      <Helmet>
+        <title>LD50 Dose-Response Analysis - KintaGen</title>
+        <meta name="description" content="Run LD50 dose-response analysis on your research data. Calculate median lethal doses with verifiable results that are logged on-chain for provenance." />
+        <meta name="keywords" content="LD50, dose-response, toxicity analysis, bioassay, research analysis" />
+        <meta property="og:title" content="LD50 Dose-Response Analysis - KintaGen" />
+        <meta property="og:description" content="Run LD50 dose-response analysis with verifiable, on-chain results." />
+      </Helmet>
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-4">LD50 Dose-Response Analysis</h1>
         <p className="text-gray-400 mb-8">Select the Demo Project or one of your on-chain projects to run an analysis.</p>

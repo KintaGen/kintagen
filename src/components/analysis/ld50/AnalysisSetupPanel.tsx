@@ -1,9 +1,10 @@
 import React from 'react';
 import { BeakerIcon, ChartBarIcon,ClipboardDocumentListIcon,ArrowPathIcon } from '@heroicons/react/24/solid';
 import { DataInput } from './DataInput'; 
+import { type ProjectWithStringId } from '../../../types';
 
-// Assuming types are shared
-interface Project { id: string; name: string; nft_id: string; }
+// Use ProjectWithStringId for Flow/on-chain contexts
+type Project = ProjectWithStringId;
 
 interface AnalysisSetupPanelProps {
   projects: Project[];

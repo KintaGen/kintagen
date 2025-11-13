@@ -1,14 +1,7 @@
 // src/components/SessionHistoryDropdown.tsx
 import React from 'react';
 import { ClockIcon, TrashIcon } from '@heroicons/react/24/solid';
-
-// Define the shape of a Chat Session
-export interface ChatSession {
-  id: string; // The ID of the initial job that started this session
-  initialPrompt: string;
-  createdAt: number;
-  messages: { sender: 'user' | 'ai'; text: string | null; }[];
-}
+import { type ChatSession } from '../types';
 
 interface SessionHistoryDropdownProps {
   sessions: ChatSession[];

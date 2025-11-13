@@ -1,20 +1,10 @@
 import React, { createContext, useState, useContext, ReactNode } from 'react';
+import { type Job } from '../utils/jobs';
 
-// Keep your existing Job interface, or use this simplified one.
-// The important part is that there are no server-specific fields.
-export interface Job {
-  id: string;
-  kind: string;
-  label: string;
-  projectId?: string | null;
-  createdAt: number;
-  state: 'waiting' | 'processing' | 'completed' | 'failed';
-  returnvalue?: any;
-  failedReason?: string;
-  meta?: any;
-}
+// Re-export Job type for convenience
+export type { Job } from '../utils/jobs';
 
-interface JobContextType {
+export interface JobContextType {
   jobs: Job[];
   setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
 }

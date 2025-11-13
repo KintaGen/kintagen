@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { XCircleIcon } from '@heroicons/react/24/solid';
 import JSZip from 'jszip';
 import { upload } from '@vercel/blob/client'; 
@@ -19,24 +21,19 @@ import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList';
 // Firebase
 import { logEvent } from "firebase/analytics";
 import { analytics } from '../services/firebase';
+import { type ProjectWithStringId, type DisplayJob } from '../types';
 
-// --- Type Definitions ---
-interface Project { id: string; name: string; description: string; nft_id: string; story?: any[]; }
+// Re-export for backward compatibility
+export type { DisplayJob } from '../types';
 
-export interface DisplayJob {
-  id: string;
-  label: string;
-  projectId: string;
-  state: 'completed' | 'failed' | 'processing' | 'logged' | 'waiting';
-  failedReason?: string;
-  returnvalue?: any;
-  logData?: any;
-  inputDataHash?: string;
-}
+// Use ProjectWithStringId for Flow/on-chain contexts
+type Project = ProjectWithStringId;
 
 export const DEMO_PROJECT_ID = 'demo-project';
 
 const NMRAnalysisPage: React.FC = () => {
+  usePageTitle('1D NMR Spectrum Processing - KintaGen');
+  
   // --- State Hooks ---
   const { projects, isLoading: isLoadingProjects, error: projectsError, refetchProjects } = useOwnedNftProjects();
   const { jobs, setJobs } = useJobs();
@@ -265,6 +262,13 @@ const NMRAnalysisPage: React.FC = () => {
 
   return (
     <>
+      <Helmet>
+        <title>1D NMR Spectrum Processing - KintaGen</title>
+        <meta name="description" content="Process 1D NMR spectra from Varian data files. Automatically reference, detect peaks, and generate analysis reports with verifiable on-chain provenance." />
+        <meta name="keywords" content="NMR, nuclear magnetic resonance, spectrum processing, Varian data, chemical analysis" />
+        <meta property="og:title" content="1D NMR Spectrum Processing - KintaGen" />
+        <meta property="og:description" content="Process 1D NMR spectra with automatic referencing and peak detection." />
+      </Helmet>
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-4">1D NMR Spectrum Processing</h1>
         <p className="text-gray-400 mb-8">Select a project and upload a Varian data folder to process a 1D NMR spectrum.</p>

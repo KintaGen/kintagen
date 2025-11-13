@@ -2,14 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowPathIcon, XMarkIcon, DocumentTextIcon, KeyIcon } from '@heroicons/react/24/solid';
 import { useLitFlow } from '../lit/useLitFlow';
-
-// These types should match what is passed from the parent page
-interface GenericDataInfo {
-  cid: string;
-  title: string;
-  is_encrypted: boolean; // Using snake_case to match the database column name
-  lit_token_id?: string;
-}
+import { type GenericDataInfo } from '../types';
 
 interface FileViewerProps {
   item: GenericDataInfo;

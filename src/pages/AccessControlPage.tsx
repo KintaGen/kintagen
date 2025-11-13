@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import {
   KeyIcon, LockClosedIcon, UserPlusIcon, ArrowPathIcon, CheckCircleIcon, XCircleIcon,
   UserCircleIcon, ExclamationTriangleIcon, UsersIcon, LinkIcon, XMarkIcon,
@@ -12,17 +14,12 @@ import { accessKeyAbi } from '../lit/accessKeyAbi';
 import { config } from '../main';
 import { KeyHoldersList } from '../components/KeyHoldersList';
 import { useLitFlow } from '../lit/useLitFlow';
+import { type EncryptedFileRecord } from '../types';
 
 /* ------------------------------------------------------------------ */
 /*  TYPE DEFINITIONS                                                  */
 /* ------------------------------------------------------------------ */
-interface EncryptedFileRecord {
-  cid: string;
-  title: string;
-  is_encrypted: boolean;
-  lit_token_id: string;
-  uploaded_at: string;
-}
+// EncryptedFileRecord is now imported from '../types'
 
 /* ------------------------------------------------------------------ */
 /*  CONSTANTS                                                         */
@@ -35,6 +32,8 @@ const FILECOIN_GATEWAY = 'https://0xcdb8cc9323852ab3bed33f6c54a7e0c15d555353.cal
 /*  MAIN COMPONENT                                                    */
 /* ------------------------------------------------------------------ */
 const AccessControlPage: React.FC = () => {
+  usePageTitle('Access Control Management - KintaGen');
+  
   /* ---------------- state ---------------- */
   const [ownedFiles, setOwnedFiles] = useState<EncryptedFileRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -248,6 +247,13 @@ const AccessControlPage: React.FC = () => {
   /* ------------------------------------------------------------------ */
   return (
     <>
+      <Helmet>
+        <title>Access Control Management - KintaGen</title>
+        <meta name="description" content="Manage access to your encrypted research files. Grant or revoke access keys to collaborators, view key holders, and download your gated files." />
+        <meta name="keywords" content="access control, file encryption, key management, Lit Protocol, data sharing, collaboration" />
+        <meta property="og:title" content="Access Control Management - KintaGen" />
+        <meta property="og:description" content="Manage access to your encrypted research files with granular permissions." />
+      </Helmet>
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Access Control Management</h1>

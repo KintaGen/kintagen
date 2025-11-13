@@ -1,30 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { PaperAirplaneIcon, BeakerIcon } from '@heroicons/react/24/solid';
 import { UserCircleIcon, CpuChipIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
-import SessionHistoryDropdown, { type ChatSession } from '../components/SessionHistoryDropdown';
+import SessionHistoryDropdown from '../components/SessionHistoryDropdown';
+import { type ChatSession, type ChatMessage, type ProjectWithNumberId, type PaperInfo } from '../types';
 
-// --- TYPE DEFINITIONS ---
-interface ChatMessage {
-  sender: 'user' | 'ai';
-  text: string;
-}
-// Note: We are keeping the ChatSession type from your original component
-// as it's a good way to structure conversation history.
-export interface ChatSession {
-  id: string;
-  projectId: string | null;
-  initialPrompt: string;
-  createdAt: number;
-  messages: ChatMessage[];
-}
-interface Project {
-  id: number;
-  name: string;
-}
-interface PaperInfo {
-  cid: string;
-  title: string;
-}
+// Re-export for backward compatibility
+export type { ChatSession } from '../types';
+
+// Use ProjectWithNumberId for API responses
+type Project = ProjectWithNumberId;
 
 // --- PERSISTENCE FOR SESSIONS (Unchanged) ---
 const SESSIONS_KEY = 'chatSessions_v4'; // Incremented version to avoid conflicts
@@ -47,6 +33,8 @@ const sessionStore = {
 
 // --- COMPONENT ---
 const ResearchChatPage: React.FC = () => {
+  usePageTitle('Research Chat - KintaGen');
+  
   // --- STATE MANAGEMENT ---
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -190,10 +178,18 @@ const ResearchChatPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full max-h-[calc(100vh-4rem)] bg-gray-800 text-white">
-      {/* Header and Controls */}
-      <div className="p-4 border-b border-gray-700">
-        <h1 className="text-3xl font-bold mb-4">Research Chat</h1>
+    <>
+      <Helmet>
+        <title>Research Chat - KintaGen</title>
+        <meta name="description" content="Chat with AI about your research history. Ask questions about your project logs, find past analyses, and get insights from your research metadata." />
+        <meta name="keywords" content="AI chat, research assistant, research chat, scientific AI, research questions" />
+        <meta property="og:title" content="Research Chat - KintaGen" />
+        <meta property="og:description" content="Chat with AI about your research history and get insights from your project metadata." />
+      </Helmet>
+      <div className="flex flex-col h-full max-h-[calc(100vh-4rem)] bg-gray-800 text-white">
+        {/* Header and Controls */}
+        <div className="p-4 border-b border-gray-700">
+          <h1 className="text-3xl font-bold mb-4">Research Chat</h1>
         <div className="mb-4">
           <label htmlFor="project-select" className="block text-sm font-medium text-gray-300 mb-2 flex items-center">
             <BeakerIcon className="h-5 w-5 mr-2 text-cyan-400" /> Knowledge Base Scope
@@ -246,6 +242,7 @@ const ResearchChatPage: React.FC = () => {
         </form>
       </div>
     </div>
+    </>
   );
 };
 

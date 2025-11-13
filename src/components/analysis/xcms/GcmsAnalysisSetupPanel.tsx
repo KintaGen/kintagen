@@ -2,8 +2,10 @@
 import React from 'react';
 import { MzmlDataInput } from './MzmlDataInput'; // Import the new, specific input component
 import { DEMO_PROJECT_ID } from '../../../pages/GgmsAnalysisPage'; // Import from its corresponding page
+import { type ProjectWithStringId } from '../../../types';
 
-interface Project { id: string; name: string; }
+// Use ProjectWithStringId for Flow/on-chain contexts
+type Project = Pick<ProjectWithStringId, 'id' | 'name'>;
 
 interface GcmsAnalysisSetupPanelProps {
     projects: Project[];

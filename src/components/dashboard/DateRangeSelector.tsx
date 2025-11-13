@@ -1,6 +1,5 @@
 import React from 'react';
-
-type View = 'weekly' | 'monthly' | 'yearly';
+import { type View } from '../../types';
 
 interface DateRangeSelectorProps {
   view: View;

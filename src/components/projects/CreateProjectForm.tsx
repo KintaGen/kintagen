@@ -73,7 +73,10 @@ const CreateProjectForm: React.FC<CreateProjectFormProps> = ({ onMintSuccess }) 
         limit: 9999
       });
     } catch (error: any) {
-      if (!error.message.includes("User rejected")) setFormError(`Minting failed: ${error.message}`);
+      const errorMessage = error?.message || String(error || 'Unknown error');
+      if (!errorMessage.includes("User rejected") && !errorMessage.includes("Declined")) {
+        setFormError(`Minting failed: ${errorMessage}`);
+      }
     } 
   };
   
@@ -83,7 +86,10 @@ const CreateProjectForm: React.FC<CreateProjectFormProps> = ({ onMintSuccess }) 
       setIsDialogOpen(true);
     }
     if (isTxError && txError) {
-      const msg = (txError as Error).message.includes("User rejected") ? "Transaction cancelled." : (txError as Error).message;
+      const errorMessage = txError instanceof Error ? txError.message : String(txError || 'Unknown error');
+      const msg = errorMessage.includes("User rejected") || errorMessage.includes("Declined") 
+        ? "Transaction cancelled." 
+        : errorMessage;
       setFormError(`Transaction failed: ${msg}`);
     }
   }, [isTxSuccess, isTxError, txId, txError]);

@@ -1,6 +1,5 @@
 import React,{useEffect, useState} from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom';
-import { Helmet } from 'react-helmet-async'; 
+import { HashRouter, Routes, Route } from 'react-router-dom'; 
 import Sidebar from './components/Sidebar';
 import HomePage from './pages/HomePage';
 //import ResearchChatPage from './pages/ResearchChatPage';
@@ -98,14 +97,13 @@ const App: React.FC = () => {
 
   return (
       // @ts-ignore
-
       <FlowProvider
-        // Pass all configuration through the `config` prop
-        config={configToUse}
-        flowJson={jsonToUse}
+          // Pass all configuration through the `config` prop
+          config={configToUse}
+          flowJson={jsonToUse}
 
-      >
-      <HashRouter>
+        >
+        <HashRouter>
         <JobProvider>
           {/* --- This is the main layout container --- */}
           <div className="bg-gray-900 min-h-screen text-gray-200 flex">
@@ -150,7 +148,6 @@ const App: React.FC = () => {
         </JobProvider>
       </HashRouter>
     </FlowProvider>
-
   );
 };
 

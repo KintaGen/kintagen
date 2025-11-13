@@ -1,5 +1,7 @@
 // src/pages/DataIngestionPage.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { flowEvmTestnet } from '../config/chain';
 import {
   ArrowUpTrayIcon, DocumentTextIcon,
@@ -18,24 +20,17 @@ import { parseEventLogs } from 'viem';
 import FileViewer from '../components/FileViewer';
 import { useJobs } from '../contexts/JobContext'; // Import the global job context hook
 import { type Job } from '../utils/jobs'; // We only need the Job type
+import { type GenericDataInfo, type SuccessInfo, type ProjectWithNumberId } from '../types';
 
-// --- TYPE DEFINITIONS ---
-interface GenericDataInfo {
-  cid: string; title: string; is_encrypted: boolean; lit_token_id?: string;
-  year?: string; authors?: string[]; doi?: string; keywords?: string[];
-  project_id: number | null;
-  is_logged: boolean;
-}
-interface SuccessInfo { // This is now derived from job.returnvalue
-  cid: string; title: string; projectId: number | null;
-  isEncrypted: boolean; litTokenId?: string;
-}
-interface Project { id: number; name: string; nft_id: number | null; }
+// Use ProjectWithNumberId for API responses
+type Project = ProjectWithNumberId;
 
 const ACCESS_MANAGER_CONTRACT_ADDRESS = "0x5bc5A6E3dD358b67A752C9Dd58df49E863eA95F2";
 const TARGET_CHAIN = flowEvmTestnet;
 
 const DataIngestionPage: React.FC = () => {
+  usePageTitle('Data Ingestion - KintaGen');
+  
   // Use the global job state, removing all local job management
   const { jobs, setJobs } = useJobs();
 
@@ -246,6 +241,13 @@ const DataIngestionPage: React.FC = () => {
 
   return (
     <>
+      <Helmet>
+        <title>Data Ingestion - KintaGen</title>
+        <meta name="description" content="Upload and register your research data files (papers, experiments) to create verifiable fingerprints. Optionally encrypt files for controlled access using Lit Protocol." />
+        <meta name="keywords" content="data ingestion, file upload, data registration, encryption, Lit Protocol, research data" />
+        <meta property="og:title" content="Data Ingestion - KintaGen" />
+        <meta property="og:description" content="Upload and register your research data files with verifiable fingerprints." />
+      </Helmet>
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Ingest Data</h1>

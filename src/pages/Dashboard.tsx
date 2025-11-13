@@ -2,6 +2,8 @@
  *  DashboardPage.tsx · The main orchestrator for the dashboard.
  * -------------------------------------------------------------------------*/
 import React, { useEffect, useState, useMemo } from 'react';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
 import ProjectDetail from '../components/projects/ProjectDetail';
 
 // Import all the organized components
@@ -13,24 +15,19 @@ import ChartWrapper from '../components/dashboard/ChartWrapper';
 import AdditionsChart from '../components/dashboard/AdditionsChart';
 import TotalsChart from '../components/dashboard/TotalsChart';
 
+import { type ApiProject, type ApiGenericItem, type IndexedNftInfo, type View, type ProjectWithNumberId } from '../types';
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api';
 
-// --- Type definitions ---
-interface ApiProject { id: number; name: string; created_at: string; }
-interface ApiGenericItem { cid: string; title: string; created_at: string; }
-// This type describes the data fetched from your /api/nfts endpoint
-interface IndexedNftInfo {
-  id: number;
-  agent: string;
-  run_hash: string;
-  owner_address: string;
+// This is the type expected by the ProjectDetail modal
+interface Project extends ProjectWithNumberId {
+  description: string;
   created_at: string;
 }
-// This is the type expected by the ProjectDetail modal
-interface Project { id: number; name: string; description: string; created_at: string; nft_id: number | null; }
-type View = 'weekly' | 'monthly' | 'yearly';
 
 const DashboardPage: React.FC = () => {
+  usePageTitle('Dashboard - KintaGen');
+  
   // --- State Management ---
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,8 +162,16 @@ const DashboardPage: React.FC = () => {
 
   // --- Render ---
   return (
-    <div>
-      <DashboardHeader loading={loading} error={error} />
+    <>
+      <Helmet>
+        <title>Dashboard - KintaGen</title>
+        <meta name="description" content="View statistics and activity across all your research projects, papers, experiments, and analyses. Track your research progress at a glance." />
+        <meta name="keywords" content="dashboard, research statistics, data analytics, research tracking" />
+        <meta property="og:title" content="Dashboard - KintaGen" />
+        <meta property="og:description" content="View statistics and activity across all your research projects." />
+      </Helmet>
+      <div>
+        <DashboardHeader loading={loading} error={error} />
       {!loading && !error && (
         <>
           <StatCardsGrid stats={stats} />
@@ -191,6 +196,7 @@ const DashboardPage: React.FC = () => {
         <ProjectDetail project={selectedNft} onClose={() => setSelectedNft(null)} />
       )}
     </div>
+    </>
   );
 };
 
