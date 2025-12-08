@@ -6,7 +6,7 @@ import HomePage from './pages/HomePage';
 import MintingComponent from './pages/ProjectsPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
 import NMRAnalysisPage from './pages/NMRAnalysisPage';
-import GCMSAnalysisPage from './pages/GgmsAnalysisPage';
+import GCMSAnalysisPage from './pages/GcmsAnalysisPage';
 import LogbookPage from './pages/LogbookPage';
 
 import VerificationPage  from './pages/VerificationPage'; // Assuming you placed it here

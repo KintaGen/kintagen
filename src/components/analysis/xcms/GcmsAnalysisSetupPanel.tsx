@@ -1,10 +1,8 @@
-// components/analysis/gcms/GcmsAnalysisSetupPanel.tsx
 import React from 'react';
-import { MzmlDataInput } from './MzmlDataInput'; // Import the new, specific input component
-import { DEMO_PROJECT_ID } from '../../../pages/GgmsAnalysisPage'; // Import from its corresponding page
+import { MzmlDataInput } from './MzmlDataInput';
+import { DEMO_PROJECT_ID } from '../../../pages/GcmsAnalysisPage'; // Ensure path is correct for your structure
 import { type ProjectWithStringId } from '../../../types';
 
-// Use ProjectWithStringId for Flow/on-chain contexts
 type Project = Pick<ProjectWithStringId, 'id' | 'name'>;
 
 interface GcmsAnalysisSetupPanelProps {
@@ -15,8 +13,8 @@ interface GcmsAnalysisSetupPanelProps {
     isLoadingProjects: boolean;
     projectsError: Error | null;
     isAnalysisRunning: boolean;
-    onFileSelected: (file: File | null) => void;
-    selectedFileName: string;
+    onFilesSelected: (files: File[]) => void;
+    selectedFileNames: string[];
 }
 
 export const GcmsAnalysisSetupPanel: React.FC<GcmsAnalysisSetupPanelProps> = ({
@@ -27,15 +25,15 @@ export const GcmsAnalysisSetupPanel: React.FC<GcmsAnalysisSetupPanelProps> = ({
   isLoadingProjects,
   projectsError,
   isAnalysisRunning,
-  onFileSelected,
-  selectedFileName
+  onFilesSelected,
+  selectedFileNames
 }) => {
-    // This logic ensures the button is only enabled when a file is selected
-    const canRunAnalysis = !!selectedFileName;
+    // Enable button if at least one file is selected
+    const canRunAnalysis = selectedFileNames.length > 0;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-      {/* Panel 1: Project Selection (Identical structure to NMR panel) */}
+      {/* Panel 1: Project Selection */}
       <div className="bg-gray-700/50 p-4 rounded-lg">
         <h4 className="text-gray-200 font-semibold mb-3">1. Select Project</h4>
         <select
@@ -50,20 +48,20 @@ export const GcmsAnalysisSetupPanel: React.FC<GcmsAnalysisSetupPanelProps> = ({
         {projectsError && <p className="text-sm text-red-400 mt-2">Error loading projects.</p>}
       </div>
 
-      {/* Panel 2: Data Input (Uses the new MzmlDataInput component) */}
+      {/* Panel 2: Data Input (Multiple Files) */}
       <MzmlDataInput 
-        onFileSelected={onFileSelected}
-        selectedFileName={selectedFileName}
+        onFilesSelected={onFilesSelected}
+        selectedFileNames={selectedFileNames}
       />
 
-      {/* Panel 3: Action Button (Identical structure, just updated text) */}
+      {/* Panel 3: Action Button */}
       <div className="md:col-span-2 text-center">
         <button
           onClick={onRunAnalysis}
           disabled={!canRunAnalysis || isAnalysisRunning}
           className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-3 px-8 rounded-lg transition-colors text-lg"
         >
-          {isAnalysisRunning ? 'Processing...' : 'Run GC-MS Analysis'}
+          {isAnalysisRunning ? 'Processing...' : `Run GC-MS Analysis (${selectedFileNames.length} File${selectedFileNames.length !== 1 ? 's' : ''})`}
         </button>
       </div>
     </div>

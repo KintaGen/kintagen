@@ -23,10 +23,8 @@ import { logEvent } from "firebase/analytics";
 import { analytics } from '../services/firebase';
 import { type ProjectWithStringId, type DisplayJob } from '../types';
 
-// Re-export for backward compatibility
 export type { DisplayJob } from '../types';
 
-// Use ProjectWithStringId for Flow/on-chain contexts
 type Project = ProjectWithStringId;
 
 export const DEMO_PROJECT_ID = 'demo-project';
@@ -40,7 +38,10 @@ const GCMSAnalysisPage: React.FC = () => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [pageError, setPageError] = useState<string | null>(null);
   const [viewedJob, setViewedJob] = useState<DisplayJob | null>(null);
-  const [mzmlFile, setMzmlFile] = useState<File | null>(null);
+  
+  // Changed state to hold array of files
+  const [mzmlFiles, setMzmlFiles] = useState<File[]>([]);
+  
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
   const [isFetchingLog, setIsFetchingLog] = useState(false);
@@ -98,38 +99,74 @@ const GCMSAnalysisPage: React.FC = () => {
 
   // Function to start a new analysis job
   const handleRunAnalysis = async () => {
-    if (!mzmlFile) { setPageError("Please select an mzML file to analyze."); return; }
-    setPageError(null); setViewedJob(null); setIsAnalysisRunning(true);
-    const isDemo = !selectedProjectId || selectedProjectId === DEMO_PROJECT_ID;
-    const inputDataHash = await generateDataHash(await mzmlFile.arrayBuffer());
-    const jobLabel = `GC-MS analysis of ${mzmlFile.name}`;
-    const tempId = `temp_job_${Date.now()}`;
-    logEvent(analytics, 'run_analysis', { analysis_type: 'gcms_full_workflow', data_source_hash: inputDataHash, is_demo: isDemo });
-    const newJob: Job = { id: tempId, kind: 'gcms', label: jobLabel, projectId: selectedProjectId || DEMO_PROJECT_ID, createdAt: Date.now(), state: 'waiting', inputDataHash: inputDataHash };
-    setJobs(prev => [newJob, ...prev]);
+    if (mzmlFiles.length === 0) { setPageError("Please select at least one mzML file to analyze."); return; }
+    
+    setPageError(null); 
+    setViewedJob(null); 
+    setIsAnalysisRunning(true);
+    
     try {
-      const blob = await upload(mzmlFile.name, mzmlFile, { access: 'public', handleUploadUrl: '/api/jobs/upload-token' });
-      const response = await fetch('/api/jobs/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fileUrl: blob.url, originalFilename: mzmlFile.name, analysisType: 'xcms', inputDataHash: inputDataHash }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Failed to create job on the server.');
-      setJobs(prevJobs => prevJobs.map(j => j.id === tempId ? { ...j, id: result.jobId, state: 'processing' } : j));
+        const isDemo = !selectedProjectId || selectedProjectId === DEMO_PROJECT_ID;
+        
+        // Generate a composite hash for multiple files
+        let combinedHashString = "";
+        for (const file of mzmlFiles) {
+             const buffer = await file.arrayBuffer();
+             // Hash individual files to build the string (avoids loading huge combined buffer into memory)
+             const fileHash = await generateDataHash(buffer);
+             combinedHashString += fileHash;
+        }
+        // Final hash of the hashes
+        const inputDataHash = await generateDataHash(combinedHashString);
+        
+        // Determine Label
+        const jobLabel = mzmlFiles.length === 1 
+            ? `GC-MS analysis of ${mzmlFiles[0].name}`
+            : `GC-MS comparison (${mzmlFiles.length} files)`;
+
+        const tempId = `temp_job_${Date.now()}`;
+        
+        logEvent(analytics, 'run_analysis', { analysis_type: 'gcms_full_workflow', data_source_hash: inputDataHash, is_demo: isDemo, file_count: mzmlFiles.length });
+        
+        const newJob: Job = { id: tempId, kind: 'gcms', label: jobLabel, projectId: selectedProjectId || DEMO_PROJECT_ID, createdAt: Date.now(), state: 'waiting', inputDataHash: inputDataHash };
+        setJobs(prev => [newJob, ...prev]);
+
+        // Upload ALL files to Blob Storage
+        const uploadPromises = mzmlFiles.map(file => 
+            upload(file.name, file, { access: 'public', handleUploadUrl: '/api/jobs/upload-token' })
+        );
+
+        const uploadResults = await Promise.all(uploadPromises);
+        
+        // Construct the payload.
+        // We send a comma-separated string of URLs because the R script expects `args[1]` as a comma-separated string.
+        const fileUrls = uploadResults.map(r => r.url).join(',');
+        const originalFilenames = mzmlFiles.map(f => f.name).join(',');
+
+        const response = await fetch('/api/jobs/create', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ 
+                fileUrl: fileUrls, // Sending comma-sep string
+                originalFilename: originalFilenames, 
+                analysisType: 'xcms', 
+                inputDataHash: inputDataHash 
+            }) 
+        });
+        
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Failed to create job on the server.');
+        setJobs(prevJobs => prevJobs.map(j => j.id === tempId ? { ...j, id: result.jobId, state: 'processing' } : j));
+
     } catch (e: any) {
-      setJobs(prevJobs => prevJobs.map(j => (j.id === tempId ? { ...j, state: 'failed', failedReason: e.message } : j)));
-      setPageError(`Analysis failed: ${e.message}`);
-      logEvent(analytics, 'analysis_result', { status: 'failed', analysis_type: 'gcms_full_workflow', error_message: e.message });
+        setJobs(prevJobs => prevJobs.map(j => (j.id && j.label.includes(mzmlFiles[0]?.name || 'GC-MS') ? { ...j, state: 'failed', failedReason: e.message } : j)));
+        setPageError(`Analysis failed: ${e.message}`);
+        logEvent(analytics, 'analysis_result', { status: 'failed', analysis_type: 'gcms_full_workflow', error_message: e.message });
     } finally {
-      setIsAnalysisRunning(false);
+        setIsAnalysisRunning(false);
     }
   };
   
-  // Helper to convert Blob to base64 data URL
-  const toBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-
   // Function to handle viewing and logging results
   const handleViewAndLogResults = async (job: DisplayJob) => {
     setPageError(null);
@@ -162,14 +199,13 @@ const GCMSAnalysisPage: React.FC = () => {
     
     // --- CASE 2: User clicks on a COMPLETED job. ---
     if (job.state === 'completed') {
-      // Sub-case 2.1: It's the DEMO project. Action: SHOW RESULTS.
       if (job.projectId === DEMO_PROJECT_ID) {
         setViewedJob(job);
+        console.log(job)
         window.scrollTo({ top: 0, behavior: 'smooth' });
         return;
       }
 
-      // Sub-case 2.2: It's a REAL project. Action: LOG TO CHAIN.
       if (job.projectId !== DEMO_PROJECT_ID && user?.addr) {
         setIsLogging(true);
         setJobIdBeingLogged(job.id);
@@ -182,7 +218,6 @@ const GCMSAnalysisPage: React.FC = () => {
           const inputDataHash = job.inputDataHash;
           if (!inputDataHash) throw new Error("Input data hash missing from job.");
 
-          // --- Step 1: Create artifact with METADATA and upload to IPFS ---
           const outputs = [];
           const addAndHash = async (filename: string, content: any) => {
               if (content) {
@@ -222,7 +257,6 @@ const GCMSAnalysisPage: React.FC = () => {
           const cid = await uploadFile(zipFile);
           if (!cid) throw new Error(uploadError || "Failed to get CID from IPFS upload.");
           
-          // Step 2: Add log to the blockchain
           const addresses = { KintaGenNFT: flowConfig.addresses["KintaGenNFT"], NonFungibleToken: "", ViewResolver: "", MetadataViews: "" };
           const cadence = getAddToLogTransaction(addresses);
           const logDescription = `Analysis results for input hash: ${inputDataHash}`;
@@ -262,14 +296,11 @@ const GCMSAnalysisPage: React.FC = () => {
     <>
       <Helmet>
         <title>GC-MS Feature Analysis - KintaGen</title>
-        <meta name="description" content="Perform GC-MS feature detection and quantification from mzML files. Generate differential and profiling analyses with verifiable on-chain results." />
-        <meta name="keywords" content="GC-MS, mass spectrometry, feature detection, metabolomics, mzML, chemical analysis" />
-        <meta property="og:title" content="GC-MS Feature Analysis - KintaGen" />
-        <meta property="og:description" content="Perform GC-MS feature detection and quantification with verifiable results." />
+        <meta name="description" content="Perform GC-MS feature detection and quantification from mzML files." />
       </Helmet>
       <div className="max-w-6xl mx-auto p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-4">GC-MS Feature Analysis</h1>
-        <p className="text-gray-400 mb-8">Select a project and upload an mzML file to perform feature detection and quantification.</p>
+        <p className="text-gray-400 mb-8">Select a project and upload mzML files (1 or 2) to perform feature detection and alignment.</p>
         
         <GcmsAnalysisSetupPanel
           projects={projects}
@@ -279,8 +310,8 @@ const GCMSAnalysisPage: React.FC = () => {
           isLoadingProjects={isLoadingProjects}
           projectsError={projectsError}
           isAnalysisRunning={isAnalysisRunning}
-          onFileSelected={setMzmlFile}
-          selectedFileName={mzmlFile?.name || ''}
+          onFilesSelected={setMzmlFiles} // Updated prop
+          selectedFileNames={mzmlFiles.map(f => f.name)} // Updated prop
         />
         
         {pageError && ( <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg mb-4 flex items-start space-x-3"><XCircleIcon className="h-6 w-6 flex-shrink-0 mt-0.5" /><div><h3 className="font-bold">Error</h3><p>{pageError}</p></div></div> )}

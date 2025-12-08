@@ -40,8 +40,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       completedAt: new Date().toISOString(),
     };
 
-    // SET the updated job back to Redis, making sure to STRINGIFY it
-    await redis.set(jobId, JSON.stringify(updatedJobData as string));
+    // SET the updated job back to Redis with an expiration time for completed/failed jobs
+    const jobString = JSON.stringify(updatedJobData);
+    await redis.set(jobId, jobString);
+    
+    // Set expiration time for completed/failed jobs (6 hours in seconds)
+    if (status === 'completed' || status === 'failed') {
+      await redis.expire(jobId, 60 * 60 * 6); // 6 hours TTL
+    }
     
     res.status(200).json({ message: 'Status updated successfully.' });
   } catch (e: any) {
