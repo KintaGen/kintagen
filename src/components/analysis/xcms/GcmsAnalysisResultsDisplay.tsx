@@ -232,7 +232,7 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
                                         {peak.match_name !== 'N/A' ? peak.match_name : <span className="text-gray-500 italic">Unknown</span>}
                                     </td>
                                     <td className="px-6 py-4">
-                                        {peak.similarity_score ? peak.similarity_score.toFixed(0) : '-'}
+                                        {peak.similarity_score ? peak.similarity_score.toFixed(2) : '-'}
                                     </td>
                                 </tr>
                             ))}
