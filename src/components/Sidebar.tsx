@@ -52,6 +52,7 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
         { name: 'LD50', to: '/analysis' },
         { name: 'NMR', to: '/analysis-nmr' },
         { name: 'XCMS', to: '/analysis-xcms' },
+        { name: 'Custom Observation', to: '/custom' },
 
       ],
     },
