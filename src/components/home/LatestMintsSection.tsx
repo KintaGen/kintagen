@@ -21,7 +21,7 @@ const NftCard: React.FC<{ nft: LatestNftInfo }> = ({ nft }) => {
   // Helper to build a full IPFS URL from a CID
   const constructIpfsUrl = (cid: string) => {
     if (!cid) return null;
-    return `https://ipfs.io/ipfs/${cid}`;
+    return `https://dweb.link/ipfs/${cid}`;
   };
 
   const imageUrl = constructIpfsUrl(nft.thumbnailCid);

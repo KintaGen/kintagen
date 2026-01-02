@@ -46,7 +46,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
               {story.length > 0 && (
                 <div className="mb-6">
                   <img
-                    src={`https://ipfs.io/ipfs/${story[0].ipfsHash}`}
+                    src={`https://dweb.link/ipfs/${story[0].ipfsHash}`}
                     alt={project.name}
                     className="w-full h-auto max-h-60 object-cover rounded-lg shadow-md"
                   />
@@ -76,7 +76,7 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ project, onClose }) => {
                       <p className="text-sm text-gray-400 mt-1">
                         Result CID: 
                         <a 
-                          href={`https://ipfs.io/ipfs/${step.ipfsHash}`} 
+                          href={`https://dweb.link/ipfs/${step.ipfsHash}`} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="font-mono text-xs text-cyan-400 hover:underline ml-2 inline-flex items-center gap-1"

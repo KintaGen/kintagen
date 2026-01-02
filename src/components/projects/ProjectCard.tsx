@@ -11,7 +11,7 @@ interface ProjectCardProps {
 
 const ProjectCard: React.FC<ProjectCardProps> = ({ nft, onClick }) => {
   const flowConfig = useFlowConfig();
-  const imageUrl = nft.thumbnailCid ? `https://ipfs.io/ipfs/${nft.thumbnailCid}` : null;
+  const imageUrl = nft.thumbnailCid ? `https://dweb.link/ipfs/${nft.thumbnailCid}` : null;
 
   const flowscanURL = (nftId: string) => {
     const contractAddr = flowConfig.addresses["KintaGenNFT"];

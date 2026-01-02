@@ -88,7 +88,7 @@ const LogbookPage = () => {
               return (
                 <div key={index} className="bg-gray-800 rounded-lg shadow-xl overflow-hidden border border-gray-700">
                   <img
-                    src={`https://ipfs.io/ipfs/${step.ipfsHash}`}
+                    src={`https://dweb.link/ipfs/${step.ipfsHash}`}
                     alt={step.title}
                     className="w-full h-auto max-h-80 object-cover"
                   />
