@@ -15,6 +15,7 @@ import { generateDataHash } from '../utils/hash';
 import { AnalysisJobsList } from '../components/analysis/AnalysisJobsList';
 import { type DisplayJob } from '../types';
 import { CustomObservationDisplay } from '../components/analysis/custom/CustomObservationDisplay'; 
+import { MapInput } from '../components/MapInput'; // 1. IMPORT THE MAP COMPONENT
 
 export const DEMO_PROJECT_ID = 'demo-project';
 
@@ -27,10 +28,11 @@ const CustomObservationPage: React.FC = () => {
   const [pageError, setPageError] = useState<string | null>(null);
   
   // Form State
-  const fileInputRef = useRef<HTMLInputElement>(null); // Ref from your reference code
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [description, setDescription] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState(null); // 2. ADD STATE FOR LOCATION
   
   // Dynamic Attributes State
   const [attributes, setAttributes] = useState<{ trait_type: string; value: string }[]>([
@@ -88,7 +90,6 @@ const CustomObservationPage: React.FC = () => {
     if (!description) { setPageError("Please enter a description."); return; }
 
     setPageError(null);
-    // Clear viewed job when starting a new upload
     setViewedJob(null);
 
     try {
@@ -110,18 +111,41 @@ const CustomObservationPage: React.FC = () => {
       const jsonString = JSON.stringify(observationData, null, 2);
       const jsonHash = await generateDataHash(jsonString);
 
+      // --- 3. CREATE LOCATION ARTIFACT (if location was selected) ---
+      let locationJsonString = null;
+      if (selectedLocation) {
+        const locationData = {
+          type: 'Circle',
+          center: {
+              latitude: selectedLocation.lat,
+              longitude: selectedLocation.lng
+          },
+          radius_meters: selectedLocation.radius
+        };
+        locationJsonString = JSON.stringify(locationData, null, 2);
+      }
+      
       // 2. Create Zip Artifact
       const zip = new JSZip();
+      
+      const outputs = [
+        { filename: "observation.json", hash_sha256: jsonHash },
+        { filename: imageFile.name, hash_sha256: imageHash }
+      ];
+      
+      // --- 4. ADD LOCATION TO ZIP AND METADATA (if it exists) ---
+      if (locationJsonString) {
+        const locationHash = await generateDataHash(locationJsonString);
+        outputs.push({ filename: "location.json", hash_sha256: locationHash });
+        zip.file("location.json", locationJsonString);
+      }
       
       const metadata = {
         schema_version: "1.0.0",
         analysis_agent: "KintaGen Field Observer v1.0",
         timestamp_utc: new Date().toISOString(),
         input_data_hash_sha256: imageHash, 
-        outputs: [
-          { filename: "observation.json", hash_sha256: jsonHash },
-          { filename: imageFile.name, hash_sha256: imageHash }
-        ]
+        outputs: outputs
       };
       
       zip.file("metadata.json", JSON.stringify(metadata, null, 2));
@@ -165,7 +189,6 @@ const CustomObservationPage: React.FC = () => {
     const project = projects.find(p => p.id === selectedProjectId);
     if (!project) return [];
 
-    // Filter logs created by this page (looking for "Field Obs" in title or "Observer" agent)
     return (project.story || [])
       .filter(step => step.title.startsWith("Field Obs") || step.agent.includes("Observer"))
       .map((step, index) => ({
@@ -188,20 +211,13 @@ const CustomObservationPage: React.FC = () => {
       setDescription('');
       setImageFile(null);
       setImagePreview(null);
-      setAttributes([{ trait_type: 'Growth Stage', value: 'Seedling' }, { trait_type: '', value: '' }]);
+      setSelectedLocation(null); // 5. RESET LOCATION STATE
+      setAttributes([{ trait_type: 'Growth Stage', value: 'Seedling' }, { trait_type: 'Height', value: '' }, { trait_type: 'Condition', value: 'Healthy' }]);
     }
     
     if (isTxError && txError) {
-        // Robustly determine the error message string
-        const errorMessage = txError instanceof Error 
-            ? txError.message 
-            : typeof txError === 'string' 
-                ? txError 
-                : JSON.stringify(txError);
-
-        // Safety check: ensure we have a string before calling .includes
+        const errorMessage = txError instanceof Error ? txError.message : typeof txError === 'string' ? txError : JSON.stringify(txError);
         const safeMsg = errorMessage || "Unknown error";
-        
         setPageError(`Transaction failed: ${safeMsg.includes("Declined") ? "Cancelled by user" : safeMsg}`);
     }
   }, [isTxSuccess, isTxError, txId, txError]);
@@ -216,7 +232,7 @@ const CustomObservationPage: React.FC = () => {
       
       <div className="max-w-5xl mx-auto p-4 md:p-8">
         <h1 className="text-3xl font-bold mb-2">Field Observations</h1>
-        <p className="text-gray-400 mb-8">Upload growth photos and custom attributes directly to your NFT Project's on-chain history.</p>
+        <p className="text-gray-400 mb-8">Upload photos, custom attributes, and location data to your project's on-chain history.</p>
 
         {/* --- 1. UPLOAD FORM --- */}
         <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 mb-8 shadow-xl">
@@ -228,8 +244,7 @@ const CustomObservationPage: React.FC = () => {
               value={selectedProjectId}
               onChange={(e) => {
                 setSelectedProjectId(e.target.value)
-                setViewedJob(null); // Clear view when changing project
-
+                setViewedJob(null);
               }}
               disabled={isLoadingProjects || isProcessing}
               className="w-full bg-gray-900 border border-gray-700 text-white rounded-md p-3 focus:ring-2 focus:ring-green-500"
@@ -244,7 +259,7 @@ const CustomObservationPage: React.FC = () => {
           {selectedProjectId && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fadeIn">
               
-              {/* Left Column: Image & Description */}
+              {/* Left Column: Image, Description, and Map */}
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-400 mb-2">Observation Photo</label>
@@ -291,9 +306,12 @@ const CustomObservationPage: React.FC = () => {
                     className="w-full bg-gray-900 border border-gray-700 text-white rounded-md p-3 h-32 focus:ring-green-500 focus:border-green-500"
                   />
                 </div>
+                
+                {/* --- 6. RENDER THE MAP INPUT COMPONENT --- */}
+                <MapInput onRegionSelect={setSelectedLocation} />
               </div>
 
-              {/* Right Column: Attributes */}
+              {/* Right Column: Attributes & Submit Button */}
               <div className="flex flex-col">
                  <div className="flex justify-between items-center mb-2">
                   <label className="block text-sm font-medium text-gray-400">Custom Attributes</label>
@@ -350,22 +368,20 @@ const CustomObservationPage: React.FC = () => {
             </div>
           )}
         </div>
-        {/* Render this when a job is selected from the list below */}
+        
         {viewedJob && (
           <div className="mb-8 scroll-mt-24" id="observation-display">
              <CustomObservationDisplay job={viewedJob} />
           </div>
         )}
-        {/* --- 2. HISTORY LIST --- */}
+        
         {selectedProjectId && displayLogs.length > 0 && (
           <div>
             <h2 className="text-xl font-bold mb-4">Observation History</h2>
             <AnalysisJobsList 
               jobs={displayLogs} 
               onViewAndLogResults={(job) => {
-                // UPDATE: Set state instead of opening window
                 setViewedJob(job);
-                // Optional: Smooth scroll to the display area
                 setTimeout(() => {
                     document.getElementById('observation-display')?.scrollIntoView({ behavior: 'smooth' });
                 }, 100);

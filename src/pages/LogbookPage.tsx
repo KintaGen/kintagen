@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useNftStory } from '../flow/kintagen-nft';
 import { useFlowConfig } from '@onflow/react-sdk';
@@ -9,6 +9,7 @@ import { ArrowLeftIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon, Camera
 // Components
 import { LogbookAnalysisEntry } from '../components/LogbookAnalysisEntry';
 import { CustomObservationDisplay } from '../components/analysis/custom/CustomObservationDisplay';
+import { LogbookMapDisplay } from '../components/LogbookMapDisplay'; // 1. IMPORT THE MAP COMPONENT
 
 const LogbookPage = () => {
   const { ownerAddress, nftId } = useParams();
@@ -16,19 +17,20 @@ const LogbookPage = () => {
 
   const flowConfig = useFlowConfig();
 
+  // Using the hook structure that you've confirmed works correctly
   const { projectName, story, isLoading, error } = useNftStory({
     nftId: numericNftId,
     ownerAddress: ownerAddress,
   });
 
-  const pageTitle = projectName ? `${projectName} - KintaGen` : 'Logbook - KintaGen';
+  const pageTitle = projectName ? `${projectName} - KintaGen Logbook` : 'Logbook - KintaGen';
   usePageTitle(pageTitle);
 
   const flowscanURL = (nftId: string) => {
     const contractAddr = flowConfig.addresses["KintaGenNFT"];
     const network = flowConfig.flowNetwork;
     if (network === 'testnet' && contractAddr) {
-      return `https://testnet.flowscan.io/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv6.NFT/token/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv6.NFT-${nftId}`;
+      return `https://testnet.flowscan.org/nft/A.${contractAddr.replace("0x", "")}.PublicKintaGenNFTv3.NFT/${nftId}`;
     }
     return `#`; 
   };
@@ -121,16 +123,13 @@ const LogbookPage = () => {
             }
 
             // --- ENTRY TYPE CHECKING ---
-            // Check if this log entry is a Custom Observation based on the Agent Name
             const isFieldObservation = step.agent.includes("Field Observer") || step.title.includes("Field Obs");
 
-            // --- ENTRY 2A: Custom Field Observations ---
+            // --- ENTRY 2A: Custom Field Observations (with Map) ---
             if (isFieldObservation) {
-              // Construct a mock "Job" object required by the display component
-              // using the data directly from the blockchain log entry
               const mockJob = {
                 projectId: nftId || "",
-                state: 'logged' as const, // Force type literal
+                state: 'logged' as const,
                 logData: step,
                 inputDataHash: step.description.includes('Hash: ') ? step.description.split('Hash: ')[1] : ''
               };
@@ -153,9 +152,15 @@ const LogbookPage = () => {
                       </span>
                     </div>
 
-                    {/* The Display Component */}
-                    <div className="p-2">
-                      <CustomObservationDisplay job={mockJob} />
+                    {/* NEW LAYOUT: Display and Map Side-by-Side */}
+                    <div className="p-4 space-y-4">
+                        <div>
+                            <CustomObservationDisplay job={mockJob} />
+                        </div>
+                        <div>
+                            {/* 2. RENDER THE MAP COMPONENT, passing the main artifact hash */}
+                            <LogbookMapDisplay ipfsHash={step.ipfsHash} />
+                        </div>
                     </div>
                   </div>
                 </div>
