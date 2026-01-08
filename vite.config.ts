@@ -14,6 +14,9 @@ export default defineConfig({
       process: true,
     }),
   ],
+  build: {
+    sourcemap: false, // Set this to false
+  },
   server: {
     port: Number(process.env.PORT) || 3000,
     watch: {

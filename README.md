@@ -1,145 +1,124 @@
-
 📖 **Full README:** [View the documentation on GitHub](https://github.com/KintaGen)
 
-🚀 **Live Demo:** [Try the KintaGen app](https://kintagendemo.vercel.app/)
-
-
----
-
-# KintaGen UI (Frontend)
-
-> React 19 · TypeScript · Vite · TailwindCSS · Wagmi
-
-This repository contains the **browser-based client** for the KintaGen platform. Follow the steps below to install dependencies, configure environment variables, and run the development and production builds.
+🚀 **Live Demo:** [https://kintagendemo.vercel.app/](https://kintagendemo.vercel.app/)
 
 ---
 
-## 1. Prerequisites
+# KintaGen UI (Frontend and Serverless functions)
 
-| Tool | Version | Install Guide |
-| :--- | :--- | :--- |
-| **Node.js** | ≥ 18 (LTS) | [nodejs.org](https://nodejs.org/en) |
-| **pnpm** | ≥ 8 (recommended) | `npm i -g pnpm` |
-| **Flow/EVM Wallet** | Blocto, MetaMask, etc. | Connect in-app when prompted |
+> The user interface for KintaGen, a decentralized scientific logbook on the Flow blockchain.
 
-*Note: The backend server must be running for the frontend to function correctly. See the backend setup guide.*
+This repository contains the complete frontend application for the KintaGen platform. It provides the user-facing interface for all on-chain and off-chain interactions, acting as the primary gateway for scientists to create, manage, and verify their research history.
 
----
+The application is built with a "tool-first, crypto-second" philosophy, offering a full suite of analysis features in a wallet-free "Demo Mode" to ensure a frictionless onboarding experience.
 
-## 2. Key Technologies
+### Key Features Implemented in This UI:
 
-This project is built with a modern, type-safe stack:
-
-*   **UI Framework:** [React 19](https://react.dev/) with TypeScript.
-*   **Build Tool:** [Vite](https://vitejs.dev/) for fast development and optimized builds.
-*   **Routing:** [React Router](https://reactrouter.com/) for SPA navigation.
-*   **Styling:** [Tailwind CSS](https://tailwindcss.com/) for utility-first styling.
-*   **Icons:** [Heroicons](https://heroicons.com/) for a consistent icon set.
-*   **Blockchain Integration:** [Wagmi](https://wagmi.sh/) for connecting to EVM-compatible chains (like Flow EVM).
-*   **Client-Side Encryption:** [Lit Protocol SDK](https://litprotocol.com/) for in-browser file encryption and decryption.
-*   **Data Fetching & State:** [TanStack Query](https://tanstack.com/query/latest) for managing server state, caching, and background data fetching.
-*   **Data Visualization:** [Recharts](https://recharts.org/) for rendering charts on the dashboard.
+*   **Project Minting:** A user interface for creating new scientific projects by minting them as unique NFTs on the Flow blockchain.
+*   **Analysis Execution:** Forms for uploading raw scientific data (Varian `.zip`, `.mzML`, `.csv`) and triggering complex, server-side R analyses for NMR, GC-MS, and LD50 workflows.
+*   **On-Chain Logging:** A guided process for taking the results of a completed analysis, packaging them into a standardized IPFS artifact (including `metadata.json`), and permanently logging them to the corresponding project NFT.
+*   **Field Observations:** A dedicated module for logging qualitative data, including notes, custom attributes, photos, and geospatial map data.
+*   **Public Logbook Viewer:** A shareable, public page that fetches and displays the full, immutable on-chain history for any project NFT, making scientific progress transparent and accessible to anyone.
+*   **Cryptographic Verification:** A tool that allows any user to verify the integrity of an original input data file by comparing its hash against the permanent record stored in the on-chain `metadata.json`.
 
 ---
 
-## 3. Installation
+## 1. Core Technologies
+
+*   **Framework:** React & TypeScript
+*   **Deployment:** Vercel (including Serverless Functions for the backend)
+*   **Styling:** Tailwind CSS
+*   **Blockchain:** Flow (via `@onflow/react-sdk`)
+*   **File Storage:** IPFS (via Pinata)
+*   **Mapping:** React Leaflet
+
+---
+
+## 2. Quick Start
+
+### Prerequisites
+
+*   **Node.js** (v18+ LTS)
+*   **pnpm** (`npm i -g pnpm`)
+*   **Vercel CLI** (`npm i -g vercel`)
+
+### Installation & Setup
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/KintaGen/kintagen.git
+    git clone https://github.com/KintaGen/kintagen
     cd kintagen
     ```
 
-2.  **Install all dependencies:**
+2.  **Create .env file following .env.example pattern**
+
+3.  **Install dependencies:**
     ```bash
     pnpm install
     ```
-    > This single command installs dependencies for both the frontend and backend workspaces.
+
+4.  **Run the development server:**
+    The `vercel dev` command starts a local server that perfectly replicates the Vercel production environment, including serverless functions, environment variables, and rewrite rules.
+    ```bash
+    vercel dev
+    ```
+    The application will be available at `http://localhost:3000`.
 
 ---
 
-## 4. Environment Variables
-
-Copy the example environment file and edit the values as needed.
-
-```bash
-# Ensure you are in the root directory of the project
-cp .env.example .env
-```
-
-The frontend uses the following variables from the `.env` file at the root:
-
-| Variable | Purpose | Example |
-| :--- | :--- | :--- |
-| `VITE_API_BASE_URL` | The full URL of the backend REST API. | `http://localhost:3001/api` |
-| `DISABLE_ESLINT_PLUGIN` | *(Optional)* Skips ESLint in Vite dev mode if your editor already runs it. | `true` |
-
-> **Tip:** No need to restart `pnpm dev` when you change `.env`; Vite reloads automatically.
-
----
-
-## 5. Running in Development
-
-To run the frontend development server:
-
-```bash
-# From the repository root
-pnpm dev
-```
-
-*   This will open a browser window at `http://localhost:5173` (or the next available port).
-*   The Vite server proxies any request starting with `/flow-rpc` to the real Flow EVM Testnet RPC endpoint, avoiding CORS issues during development (see `vite.config.ts`).
-
----
-
-## 6. Available Scripts
-
-All scripts should be run from the repository root.
+## 3. Available Scripts
 
 | Command | Description |
 | :--- | :--- |
-| `pnpm dev` | Starts the Vite development server with Hot Module Replacement (HMR). |
-| `pnpm build` | Creates a production-ready build in the `dist/` directory. |
-| `pnpm preview` | Serves the `dist/` folder locally to verify the production build. |
-| `pnpm lint` | Runs ESLint to check for code quality and style issues. |
+| `vercel dev` | Starts the complete local development environment. |
+| `vercel deploy --prod`| Deploys to your main production URL. |
 
----
+--- 
 
-## 7. Project Structure
-
-The frontend source code is organized as follows:
+## 4. .env.example
 
 ```
-src/
-├── components/   # Reusable React components (Sidebar, StatCard, etc.)
-├── config/       # Shared configuration (Wagmi chain definitions)
-├── lit/          # Lit Protocol integration (hooks, providers, actions)
-├── pages/        # Top-level route components (Dashboard, ProjectsPage, etc.)
-├── App.tsx       # Main application component with routing setup
-└── main.tsx      # Application entry point, providers setup
+# --- VITE: Frontend Variables ---
+DISABLE_ESLINT_PLUGIN=true
+# The Flow network to connect to ('testnet' or 'mainnet').
+VITE_FLOW_NETWORK="testnet"
+
+# The PUBLIC Flow account address of your deployed KintaGen NFT smart contract.
+# Used by the frontend to interact with collections.
+VITE_API_PUBLIC_KINTAGEN_ADDRESS="0x3c16354a3859c81b"
+
+
+# --- BACKEND: Vercel Serverless Function Variables (Secrets) ---
+
+# -- Pinata (IPFS Uploads via Lighthouse alternative) --
+# Your Pinata JWT, used by the /api/pinata/upload function.
+PINATA_JWT="ey..."
+# Your dedicated Pinata Gateway URL (e.g., scarlet-rabbit.mypinata.cloud).
+# Used by the frontend to display IPFS images and artifacts.
+PINATA_GATEWAY="https://your-gateway-name.mypinata.cloud"
+
+# -- QStash (Asynchronous Job Queue) --
+# Used by the /api/jobs/create function to enqueue jobs.
+QSTASH_TOKEN="ey..."
+QSTASH_URL="https://qstash.upstash.io/v2/publish/"
+QSTASH_CURRENT_SIGNING_KEY="mkey_..."
+QSTASH_NEXT_SIGNING_KEY="mkey_..."
+
+# -- Redis (Job State Management) --
+# Your Redis connection string. For Vercel KV, this is provided as KV_URL.
+# Used by /api/jobs/create, /api/jobs/status, and /api/jobs/update-status.
+REDIS_URL="redis://..."
+
+# -- Vercel Blob (Knowledge Graph or File Upload Tokens) --
+# Token for /api/jobs/upload-token to generate upload URLs, and for the graphology blob.
+BLOB_READ_WRITE_TOKEN="vercel_blob_rw_..."
+
+# -- Internal Worker Communication --
+# The base URL of your separate R-script processing worker.
+# Used by QStash in /api/jobs/create to know where to send the job.
+NODE_WORKER_URL="https://your-r-script-worker-url.com"
+
+# A shared secret to ensure that only QStash can trigger your R-script worker.
+WORKER_SECRET="generate-a-strong-random-string-here"
+
 ```
-
----
-
-## 8. Production Deployment
-
-1.  **Build the application:**
-    ```bash
-    pnpm build
-    ```
-
-2.  **Deploy the output:**
-    *   Upload the contents of the `dist/` directory to any static hosting provider (Vercel, Netlify, AWS S3, etc.).
-    *   Ensure your hosting service is configured to handle Single-Page Applications (SPAs) by rewriting all routes to `index.html`.
-
----
-
-## 9. Troubleshooting
-
-| Symptom | Common Fix |
-| :--- | :--- |
-| **API requests fail (404 or CORS error)** | Ensure the backend server is running and that `VITE_API_BASE_URL` in your `.env` file is correct and points to the backend's address. |
-| **"Cannot read properties of undefined" on wallet connection** | Check that your browser wallet (e.g., MetaMask) is installed, enabled, and set to the correct network (Flow EVM Testnet). |
-| **Lit Protocol decryption fails** | Verify you are connected with the wallet that holds the correct access key NFT. Check the browser console for specific Lit Protocol errors. |
-| **On-chain actions hang or fail (e.g., `grantAccess`)** | Make sure your connected wallet has a small amount of testnet FLOW for gas fees. You can get some from the [Flow Testnet Faucet](https://testnet-faucet.onflow.org/). |
-| **Page appears unstyled** | This can happen if Tailwind CSS fails to initialize. Run `pnpm install` again and restart the dev server. |
