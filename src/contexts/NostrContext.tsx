@@ -22,9 +22,10 @@ interface NostrProfile {
 
 interface NostrContextType {
     pubkey: string | null;
-    privKey: Uint8Array | null; // <--- ADD THIS
+    privKey: Uint8Array | null;
     profile: NostrProfile | null;
-    connect: () => Promise<void>;
+    // UPDATE: Return the keys on success, or null on failure
+    connect: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>; 
     updateProfile: (name: string, about: string, picture?: string) => Promise<void>;
     isLoading: boolean;
   }
@@ -82,13 +83,12 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // 3. Connect (Login logic)
   const connect = useCallback(async () => {
-    if (!flowUser?.loggedIn || !flowUser?.addr) return;
+    if (!flowUser?.loggedIn || !flowUser?.addr) return null;
     setIsLoading(true);
 
     try {
       const messageToSign = "Sign this message to login to KintaGen via Nostr. This generates your deterministic keys.";
       
-      // Native Browser TextEncoder (No Buffer)
       const hexMessage = Array.from(new TextEncoder().encode(messageToSign))
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
@@ -98,21 +98,22 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!userSignature) throw new Error("No signature found.");
 
-      // Derive Uint8Array Private Key
       const sk = await deriveNostrKey(userSignature.signature);
-      
-      // Get Hex Public Key
       const pk = getPublicKey(sk);
 
       setPrivKey(sk);
       setPubkey(pk);
 
-      // Fetch existing data
-      await fetchProfile(pk);
+      // Fetch existing data (non-blocking)
+      fetchProfile(pk);
+
+      // RETURN THE KEYS IMMEDIATELY
+      return { pubkey: pk, privKey: sk };
 
     } catch (error) {
       console.error("Nostr Login Error:", error);
-      alert("Failed to login to Nostr layer.");
+      // Don't alert here, let the caller decide how to handle the cancellation
+      return null; 
     } finally {
       setIsLoading(false);
     }
