@@ -13,7 +13,10 @@ const RELAYS = [
   'wss://nos.lol',
   'wss://relay.snort.social'
 ];
-
+export interface NostrLink {
+    title: string;
+    url: string;
+  }
 interface NostrProfile {
   name?: string;
   about?: string;
@@ -120,10 +123,16 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [flowUser, fetchProfile]);
 
   // 4. Update Profile (Write to Relays)
-  const updateProfile = async (name: string, about: string, picture?: string) => {
+  const updateProfile = async (name: string, about: string, links: NostrLink[], picture?: string) => {
     if (!privKey || !pubkey) return;
 
-    const content = JSON.stringify({ name, about, picture });
+    // We save the links array directly into the content JSON
+    const content = JSON.stringify({ 
+        name, 
+        about, 
+        picture,
+        links // <--- Included in JSON
+    });
 
     const eventTemplate = {
       kind: 0,
@@ -132,15 +141,12 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       content: content,
     };
 
-    // finalizeEvent takes the Uint8Array secret key
     const signedEvent = finalizeEvent(eventTemplate, privKey);
 
     try {
-      // pool.publish returns an array of Promises. We use Promise.any to succeed if at least one relay accepts it.
       await Promise.any(pool.publish(RELAYS, signedEvent));
-      
       // Optimistic update
-      setProfile({ name, about, picture });
+      setProfile({ name, about, picture, links });
     } catch (error) {
       console.error("Failed to publish to any relay", error);
       throw new Error("Could not save profile to the network.");
