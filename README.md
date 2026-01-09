@@ -10,10 +10,14 @@
 
 This repository contains the complete frontend application for the KintaGen platform. It provides the user-facing interface for all on-chain and off-chain interactions, acting as the primary gateway for scientists to create, manage, and verify their research history.
 
+KintaGen runs R analyses (NMR, GC-MS) via Vercel/Redis/QStash, logging results to Flow NFTs & IPFS. **Integrated with Nostr, it adds decentralized profiles and encryption to securely link private data to public on-chain provenance.**
+
 The application is built with a "tool-first, crypto-second" philosophy, offering a full suite of analysis features in a wallet-free "Demo Mode" to ensure a frictionless onboarding experience.
 
 ### Key Features Implemented in This UI:
 
+*   **Decentralized Researcher Profiles (Nostr):** Uses the Nostr protocol to generate deterministic identities derived from the user's Flow wallet. Researchers can maintain a portable, censorship-resistant profile with academic links (ORCID, Lattes, LinkedIn) that exists independently of the KintaGen platform.
+*   **Secure Data Vault (NIP-44 Encryption):** Allows scientists to encrypt sensitive raw data (CSV, PDF) client-side using their Nostr private keys. The encrypted data is pinned to IPFS and linked to the public blockchain log, ensuring that while the *provenance* is public, the *content* remains accessible only to the owner and authorized peers.
 *   **Project Minting:** A user interface for creating new scientific projects by minting them as unique NFTs on the Flow blockchain.
 *   **Analysis Execution:** Forms for uploading raw scientific data (Varian `.zip`, `.mzML`, `.csv`) and triggering complex, server-side R analyses for NMR, GC-MS, and LD50 workflows.
 *   **On-Chain Logging:** A guided process for taking the results of a completed analysis, packaging them into a standardized IPFS artifact (including `metadata.json`), and permanently logging them to the corresponding project NFT.
@@ -29,6 +33,7 @@ The application is built with a "tool-first, crypto-second" philosophy, offering
 *   **Deployment:** Vercel (including Serverless Functions for the backend)
 *   **Styling:** Tailwind CSS
 *   **Blockchain:** Flow (via `@onflow/react-sdk`)
+*   **Identity & Encryption:** Nostr Protocol (`nostr-tools`, NIP-01, NIP-19, NIP-44)
 *   **File Storage:** IPFS (via Pinata)
 *   **Mapping:** React Leaflet
 
