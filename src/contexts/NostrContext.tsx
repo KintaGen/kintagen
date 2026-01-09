@@ -1,0 +1,168 @@
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+// 1. UPDATED IMPORTS based on documentation
+import { SimplePool } from 'nostr-tools/pool';
+import { finalizeEvent, getPublicKey } from 'nostr-tools/pure';
+import { useFlowCurrentUser } from '@onflow/react-sdk';
+import * as fcl from "@onflow/fcl";
+fcl.config()
+   .put("accessNode.api", "https://rest-testnet.onflow.org")
+   .put("discovery.wallet", "https://fcl-discovery.onflow.org/testnet/authn");
+const RELAYS = [
+  'wss://relay.damus.io',
+  'wss://relay.primal.net',
+  'wss://nos.lol',
+  'wss://relay.snort.social'
+];
+
+interface NostrProfile {
+  name?: string;
+  about?: string;
+  picture?: string;
+}
+
+interface NostrContextType {
+    pubkey: string | null;
+    privKey: Uint8Array | null; // <--- ADD THIS
+    profile: NostrProfile | null;
+    connect: () => Promise<void>;
+    updateProfile: (name: string, about: string, picture?: string) => Promise<void>;
+    isLoading: boolean;
+  }
+
+const NostrContext = createContext<NostrContextType | null>(null);
+
+export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user: flowUser } = useFlowCurrentUser();
+  
+  // Initialize pool. Doc says: "Doesn't matter what you do, you always should be using a SimplePool"
+  const [pool] = useState(() => new SimplePool());
+  
+  // Sk must be Uint8Array for finalizeEvent
+  const [privKey, setPrivKey] = useState<Uint8Array | null>(null);
+  
+  // Pk is a hex string
+  const [pubkey, setPubkey] = useState<string | null>(null);
+  
+  const [profile, setProfile] = useState<NostrProfile | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 1. Helper: Convert Flow Signature to Nostr Private Key (Uint8Array)
+  const deriveNostrKey = async (signatureHex: string): Promise<Uint8Array> => {
+    const signatureBytes = new Uint8Array(
+      signatureHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
+    );
+    const hash = await crypto.subtle.digest('SHA-256', signatureBytes);
+    return new Uint8Array(hash);
+  };
+
+  // 2. Fetch Profile from Relays using pool.get
+  const fetchProfile = useCallback(async (pkHex: string) => {
+    setIsLoading(true);
+    try {
+      // Kind 0 = Metadata
+      const event = await pool.get(RELAYS, {
+        kinds: [0],
+        authors: [pkHex],
+      });
+
+      if (event) {
+        try {
+          const content = JSON.parse(event.content);
+          setProfile(content);
+        } catch (e) {
+          console.error("Failed to parse profile JSON", e);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching Nostr profile:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [pool]);
+
+  // 3. Connect (Login logic)
+  const connect = useCallback(async () => {
+    if (!flowUser?.loggedIn || !flowUser?.addr) return;
+    setIsLoading(true);
+
+    try {
+      const messageToSign = "Sign this message to login to KintaGen via Nostr. This generates your deterministic keys.";
+      
+      // Native Browser TextEncoder (No Buffer)
+      const hexMessage = Array.from(new TextEncoder().encode(messageToSign))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      const signatures = await fcl.currentUser.signUserMessage(hexMessage);
+      const userSignature = signatures.find((s: any) => s.addr === flowUser.addr);
+
+      if (!userSignature) throw new Error("No signature found.");
+
+      // Derive Uint8Array Private Key
+      const sk = await deriveNostrKey(userSignature.signature);
+      
+      // Get Hex Public Key
+      const pk = getPublicKey(sk);
+
+      setPrivKey(sk);
+      setPubkey(pk);
+
+      // Fetch existing data
+      await fetchProfile(pk);
+
+    } catch (error) {
+      console.error("Nostr Login Error:", error);
+      alert("Failed to login to Nostr layer.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [flowUser, fetchProfile]);
+
+  // 4. Update Profile (Write to Relays)
+  const updateProfile = async (name: string, about: string, picture?: string) => {
+    if (!privKey || !pubkey) return;
+
+    const content = JSON.stringify({ name, about, picture });
+
+    const eventTemplate = {
+      kind: 0,
+      created_at: Math.floor(Date.now() / 1000),
+      tags: [],
+      content: content,
+    };
+
+    // finalizeEvent takes the Uint8Array secret key
+    const signedEvent = finalizeEvent(eventTemplate, privKey);
+
+    try {
+      // pool.publish returns an array of Promises. We use Promise.any to succeed if at least one relay accepts it.
+      await Promise.any(pool.publish(RELAYS, signedEvent));
+      
+      // Optimistic update
+      setProfile({ name, about, picture });
+    } catch (error) {
+      console.error("Failed to publish to any relay", error);
+      throw new Error("Could not save profile to the network.");
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      // In v2, we can close connections if needed, though SimplePool manages them fairly well.
+      // pool.close(RELAYS); 
+    };
+  }, [pool]);
+
+  return (
+    <NostrContext.Provider value={{ pubkey,privKey, profile, connect, updateProfile, isLoading }}>
+      {children}
+    </NostrContext.Provider>
+  );
+};
+
+export const useNostr = () => {
+  const context = useContext(NostrContext);
+  if (!context) throw new Error('useNostr must be used within NostrProvider');
+  return context;
+};

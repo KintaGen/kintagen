@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   HomeIcon,
   FolderIcon,
-  ChatBubbleLeftRightIcon,
+  UserIcon,
   BeakerIcon,
   ChevronDownIcon,
   ShieldCheckIcon
@@ -42,6 +42,8 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
   
   const navLinks: NavLinkInfo[] = [
     { name: 'Home', to: '/', icon: HomeIcon },
+    { name: 'Profile', to: '/profile', icon: UserIcon },
+
     { name: 'Projects', to: '/projects', icon: FolderIcon },
 
     //{ name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },

@@ -3,6 +3,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import HomePage from './pages/HomePage';
 //import ResearchChatPage from './pages/ResearchChatPage';
+import ProfilePage from './pages/ProfilePage';
 import MintingComponent from './pages/ProjectsPage';
 import LD50AnalysisPage from './pages/LD50AnalysisPage';
 import NMRAnalysisPage from './pages/NMRAnalysisPage';
@@ -14,11 +15,10 @@ import VerificationPage  from './pages/VerificationPage'; // Assuming you placed
 
 import Header from './components/Header';
 import { JobProvider, useJobs } from './contexts/JobContext';
+import { NostrProvider } from './contexts/NostrContext'; // CHANGE THIS
+
 import GlobalJobStatusToast from './components/GlobalJobStatusToast';
 import { FlowProvider } from '@onflow/react-sdk';
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
 
 import './services/firebase';
 
@@ -26,25 +26,38 @@ const ToastManager = () => {
   const { jobs } = useJobs(); // Get the global jobs state
   return <GlobalJobStatusToast jobs={jobs} />;
 };
+const accountProofResolver = async () => {
+  const nonce = "75f8587e5bd5f9dcc9909d0dae1f0ac5814458b2ae129620502cb936fde7120a"; // Example 32-byte hex
+  // OR generate random: 
+  // const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+  //   .map(b => b.toString(16).padStart(2, '0')).join('');
 
+  return {
+    appIdentifier: "KintaGen Platform",
+    nonce: nonce 
+  };
+};
 const testnetConfig = {
   // --- Network Information ---
   "accessNodeUrl": "https://rest-testnet.onflow.org",
-  "discoveryWallet": "https://fcl-discovery.onflow.org/testnet/authn",
-
+  // Ensure this URL is exactly this:
+  "discoveryWallet": "https://fcl-discovery.onflow.org/testnet/authn", 
+  
   // --- App Information ---
   "appDetailTitle": "KintaGen Platform",
   "appDetailIcon": "https://avatars.githubusercontent.com/u/215318019?s=200&v=4",
   "flowNetwork": "testnet",
+
+  // --- Address Configuration ---
   "addresses": {
-    "NonFungibleToken": "0x631e88ae7f1d7c20",    // Standard NFT contract address on Crescendo
-    "MetadataViews": "0x631e88ae7f1d7c20",       // Standard Metadata contract address on Crescendo
-    "ViewResolver": "0x631e88ae7f1d7c20",        // Standard ViewResolver contract address on Crescendo
+    "NonFungibleToken": "0x631e88ae7f1d7c20",    
+    "MetadataViews": "0x631e88ae7f1d7c20",       
+    "ViewResolver": "0x631e88ae7f1d7c20",        
     "FlowToken": "0x7e60df042a9c0868",
-    "KintaGenNFT": "0x3c16354a3859c81b",          // Your contract's address
+    "KintaGenNFT": "0x3c16354a3859c81b",          
     "FungibleToken": "0x9a0766d93b6608b7",
   }
-};
+} as const;
 const testnetJson = {
   "0xNonFungibleToken": "0x631e88ae7f1d7c20",    // Standard NFT contract address on Crescendo
   "0xMetadataViews": "0x631e88ae7f1d7c20",       // Standard Metadata contract address on Crescendo
@@ -81,7 +94,6 @@ const emulatorJSON = {
 
 // 1. Read the network name from our environment variable.
 const flowNetwork = import.meta.env.VITE_FLOW_NETWORK;
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 // 2. Choose the correct configuration object based on the variable.
 const configToUse = flowNetwork === 'emulator' ? emulatorConfig : testnetConfig;
@@ -104,6 +116,7 @@ const App: React.FC = () => {
           flowJson={jsonToUse}
 
         >
+        <NostrProvider>
         <HashRouter>
         <JobProvider>
           {/* --- This is the main layout container --- */}
@@ -122,6 +135,7 @@ const App: React.FC = () => {
                 <Routes>
                   {/* ... your routes ... */}
                   <Route path="/" element={<HomePage />} /> 
+                  <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/projects" element={<MintingComponent />} />
                   {/*<Route path="/chat" element={<ResearchChatPage />} />*/}
                   <Route path="/analysis" element={<LD50AnalysisPage />} />
@@ -150,6 +164,7 @@ const App: React.FC = () => {
           <ToastManager />
         </JobProvider>
       </HashRouter>
+      </NostrProvider>
     </FlowProvider>
   );
 };
