@@ -1,6 +1,6 @@
 import React from 'react';
 import { MzmlDataInput } from './MzmlDataInput';
-import { DEMO_PROJECT_ID } from '../../../pages/GcmsAnalysisPage'; // Ensure path is correct for your structure
+import { DEMO_PROJECT_ID } from '../../../types';
 import { type ProjectWithStringId } from '../../../types';
 
 type Project = Pick<ProjectWithStringId, 'id' | 'name'>;

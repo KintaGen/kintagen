@@ -4,7 +4,7 @@ import { useOwnedNftProjects } from '../flow/kintagen-nft';
 import { DEMO_PROJECT_ID, type DisplayJob } from '../types';
 
 export const useAnalysisJobs = (
-    analysisKind: 'ld50' | 'nmr',
+    analysisKind: 'ld50' | 'nmr' | 'gcms',
     logTitlePrefix: string,
     selectedProjectId: string
 ) => {
