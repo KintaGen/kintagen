@@ -4,7 +4,7 @@ import {
   CheckCircleIcon, 
   ArrowDownTrayIcon 
 } from '@heroicons/react/24/solid';
-import { type DisplayJob, DEMO_PROJECT_ID } from '../../pages/LD50AnalysisPage';
+import { type DisplayJob, DEMO_PROJECT_ID } from '../../types';
 
 // --- Type Definitions ---
 // Define a specific type for the metadata prop for clarity and safety.

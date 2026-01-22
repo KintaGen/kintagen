@@ -151,3 +151,5 @@ export interface PaperInfo {
     cid: string;
     title: string;
 }
+
+export const DEMO_PROJECT_ID = 'demo-project'
