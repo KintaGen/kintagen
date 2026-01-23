@@ -21,6 +21,8 @@ interface NostrProfile {
   name?: string;
   about?: string;
   picture?: string;
+  flowWalletAddress?: string; // Added flowWalletAddress
+  links?: NostrLink[]; // Ensure links are part of the profile interface
 }
 
 interface NostrContextType {
@@ -29,7 +31,8 @@ interface NostrContextType {
     profile: NostrProfile | null;
     // UPDATE: Return the keys on success, or null on failure
     connect: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>; 
-    updateProfile: (name: string, about: string, picture?: string) => Promise<void>;
+    updateProfile: (name: string, about: string, links: NostrLink[], flowWalletAddress?: string, picture?: string) => Promise<void>;
+    fetchProfileByFlowWalletAddress: (flowAddr: string) => Promise<NostrProfile | null>;
     isLoading: boolean;
   }
 
@@ -123,7 +126,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [flowUser, fetchProfile]);
 
   // 4. Update Profile (Write to Relays)
-  const updateProfile = async (name: string, about: string, links: NostrLink[], picture?: string) => {
+  const updateProfile = async (name: string, about: string, links: NostrLink[], flowWalletAddress?: string, picture?: string) => {
     if (!privKey || !pubkey) return;
 
     // We save the links array directly into the content JSON
@@ -131,13 +134,18 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         name, 
         about, 
         picture,
-        links // <--- Included in JSON
+        links, // <--- Included in JSON
+        flowWalletAddress // Included flowWalletAddress in the JSON
     });
-
+    const tags: string[][] = [];
+    if (flowWalletAddress) {
+      tags.push(["f", flowWalletAddress]); // Add the custom tag
+    }
+    tags.push(["A","kintagendemo-v0"]);
     const eventTemplate = {
       kind: 0,
       created_at: Math.floor(Date.now() / 1000),
-      tags: [],
+      tags: tags,
       content: content,
     };
 
@@ -146,13 +154,35 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       await Promise.any(pool.publish(RELAYS, signedEvent));
       // Optimistic update
-      setProfile({ name, about, picture, links });
+      setProfile({ name, about, picture, links, flowWalletAddress }); // Update local state with flowWalletAddress
     } catch (error) {
       console.error("Failed to publish to any relay", error);
       throw new Error("Could not save profile to the network.");
     }
   };
-
+  const fetchProfileByFlowWalletAddress = useCallback(async (flowAddr: string): Promise<NostrProfile | null> => {
+    try {
+      // Query for kind 0 events that have a ["f", flowAddr] tag
+      const event = await pool.get(RELAYS, {
+        kinds: [0],
+        "#f": [flowAddr], // Filter by the custom "f" tag
+      });
+      console.log(event)
+      if (event) {
+        try {
+          const content = JSON.parse(event.content);
+          return content as NostrProfile;
+        } catch (e) {
+          console.error("Failed to parse profile JSON from event found by Flow address", e);
+          return null;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error("Error fetching Nostr profile by Flow wallet address:", error);
+      return null;
+    }
+  }, [pool]);
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -162,7 +192,17 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [pool]);
 
   return (
-    <NostrContext.Provider value={{ pubkey,privKey, profile, connect, updateProfile, isLoading }}>
+    <NostrContext.Provider value={
+      { 
+        pubkey,
+        privKey,
+        profile,
+        connect,
+        updateProfile,
+        fetchProfileByFlowWalletAddress,
+        isLoading
+      }
+    }>
       {children}
     </NostrContext.Provider>
   );

@@ -21,6 +21,7 @@ const ProfilePage: React.FC = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState('');
     const [about, setAbout] = useState('');
+    const [flowWalletAddress, setFlowWalletAddress] = useState(''); // Added state for Flow wallet
     
     // State for the dynamic list of links
     const [links, setLinks] = useState<NostrLink[]>([]);
@@ -32,10 +33,11 @@ const ProfilePage: React.FC = () => {
         if (profile) {
             setName(profile.name || '');
             setAbout(profile.about || '');
+            setFlowWalletAddress(profile.flowWalletAddress || flowUser?.addr || ''); // Set from profile or current Flow user
             // Load existing links or initialize empty
             setLinks(profile.links || []);
         }
-    }, [profile]);
+    }, [profile, flowUser]); // Added flowUser to dependencies to react to its changes
 
     // --- Link Management Functions ---
     const addLink = () => {
@@ -59,7 +61,7 @@ const ProfilePage: React.FC = () => {
         try {
             // Filter out empty links before saving
             const validLinks = links.filter(l => l.title.trim() !== "" && l.url.trim() !== "");
-            await updateProfile(name, about, validLinks);
+            await updateProfile(name, about, validLinks, flowWalletAddress); // Pass flowWalletAddress
             setLinks(validLinks); // Update local state with cleaned list
             setIsEditing(false);
         } catch (e) {
@@ -143,6 +145,27 @@ const ProfilePage: React.FC = () => {
                     ) : (
                         <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">
                             {profile?.about || <span className="italic text-gray-500">No bio set.</span>}
+                        </p>
+                    )}
+                </div>
+
+                {/* --- FLOW WALLET ADDRESS SECTION --- */}
+                <div className="mb-8">
+                    <label className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-2 block">
+                        Flow Wallet Address
+                    </label>
+                    {isEditing ? (
+                        <input
+                            type="text"
+                            value={flowWalletAddress}
+                            onChange={(e) => setFlowWalletAddress(e.target.value)}
+                            className="w-full bg-gray-900 p-4 rounded-md border border-gray-600 text-gray-200 focus:ring-2 focus:ring-purple-500 outline-none font-mono"
+                            placeholder="Your Flow wallet address (e.g., 0x123abc...)"
+                            readOnly // Often, this is read-only as it's tied to the login
+                        />
+                    ) : (
+                        <p className="text-gray-300 font-mono break-all">
+                            {profile?.flowWalletAddress || <span className="italic text-gray-500">Not connected.</span>}
                         </p>
                     )}
                 </div>
@@ -238,6 +261,7 @@ const ProfilePage: React.FC = () => {
                                     setIsEditing(false);
                                     // Reset links to what's in profile
                                     setLinks(profile?.links || []);
+                                    setFlowWalletAddress(profile?.flowWalletAddress || flowUser?.addr || ''); // Reset Flow wallet
                                 }} 
                                 className="px-4 py-2 text-gray-400 hover:text-white font-medium"
                             >

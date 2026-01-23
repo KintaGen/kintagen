@@ -1,22 +1,53 @@
 // src/components/home/LatestMintsSection.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react'; // Added useState and useEffect
 import { CubeIcon, PhotoIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid';
 import { useLatestNfts } from '../../flow/kintagen-nft';
 import { useFlowConfig } from '@onflow/react-sdk';
 import { Link } from 'react-router-dom';
+import { useNostr } from '../../contexts/NostrContext'; // Import useNostr
 
 // This type now includes the thumbnail's IPFS CID
 interface LatestNftInfo {
   id: string;
   name: string;
   description: string;
-  owner: string;
+  owner: string; // Flow wallet address
   thumbnailCid: string; // Added field
 }
 
 // A dedicated component for the NFT card for better organization
 const NftCard: React.FC<{ nft: LatestNftInfo }> = ({ nft }) => {
   const flowConfig = useFlowConfig();
+  const { fetchProfileByFlowWalletAddress } = useNostr(); // Get the lookup function from NostrContext
+  const [nostrUsername, setNostrUsername] = useState<string | null>(null);
+  const [isResolvingNostr, setIsResolvingNostr] = useState(false);
+
+  useEffect(() => {
+    const resolveNostrUsername = async () => {
+      if (nft.owner && fetchProfileByFlowWalletAddress) {
+        setIsResolvingNostr(true);
+        try {
+          const profile = await fetchProfileByFlowWalletAddress(nft.owner);
+          if (profile?.name) {
+            setNostrUsername(profile.name);
+          } else {
+            setNostrUsername(null); // Explicitly set to null if no name found
+          }
+        } catch (error) {
+          console.error("Error resolving Nostr username for Flow address", nft.owner, error);
+          setNostrUsername(null); // Ensure state is reset on error
+        } finally {
+          setIsResolvingNostr(false);
+        }
+      }
+    };
+    
+    // Only attempt to resolve if we don't already have a username
+    // and the owner address is available
+    if (!nostrUsername && nft.owner) {
+      resolveNostrUsername();
+    }
+  }, [nft.owner, fetchProfileByFlowWalletAddress, nostrUsername]); // Dependencies
 
   // Helper to build a full IPFS URL from a CID
   const constructIpfsUrl = (cid: string) => {
@@ -26,7 +57,7 @@ const NftCard: React.FC<{ nft: LatestNftInfo }> = ({ nft }) => {
 
   const imageUrl = constructIpfsUrl(nft.thumbnailCid);
 
-  // Helper to generate the correct Flowscan link
+  // Helper to generate the correct Flowscan link (kept for reference, not directly used in render)
   const flowscanURL = (nftId: string) => {
     const contractAddr = flowConfig.addresses["KintaGenNFT"];
     const network = flowConfig.flowNetwork;
@@ -68,7 +99,14 @@ const NftCard: React.FC<{ nft: LatestNftInfo }> = ({ nft }) => {
 
         <div className="text-xs text-gray-500 border-t border-gray-700 pt-2">
           <p>
-            <span className="font-medium text-gray-400">Owner:</span> {nft.owner.substring(0, 6)}...{nft.owner.substring(nft.owner.length - 4)}
+            <span className="font-medium text-gray-400">Owner:</span>{' '}
+            {isResolvingNostr ? (
+              <span className="italic text-gray-600">Resolving Nostr...</span>
+            ) : nostrUsername ? (
+              <span className="text-purple-300 font-bold">{nostrUsername}</span>
+            ) : (
+              `${nft.owner.substring(0, 6)}...${nft.owner.substring(nft.owner.length - 4)}`
+            )}
           </p>
         </div>
       </div>
@@ -84,8 +122,9 @@ const NftCard: React.FC<{ nft: LatestNftInfo }> = ({ nft }) => {
 // Main section component remains the orchestrator
 const LatestMintsSection: React.FC = () => {
   const { latestNfts, isLoading, error } = useLatestNfts();
-  console.log(latestNfts)
-  console.log(error)
+  // console.log(latestNfts) // You might want to remove console logs in production
+  // console.log(error)
+
   const renderSkeletons = () => (
     Array.from({ length: 6 }).map((_, index) => (
       <div key={index} className="bg-gray-800/50 rounded-lg border border-gray-700 animate-pulse overflow-hidden">
