@@ -4,6 +4,7 @@ import {
   HomeIcon,
   FolderIcon,
   UserIcon,
+  UsersIcon,
   BeakerIcon,
   ChevronDownIcon,
   ShieldCheckIcon
@@ -42,7 +43,8 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
   
   const navLinks: NavLinkInfo[] = [
     { name: 'Home', to: '/', icon: HomeIcon },
-    { name: 'Profile', to: '/profile', icon: UserIcon },
+    { name: 'My Profile', to: '/my-profile', icon: UserIcon },
+    { name: 'Profiles', to: '/profiles', icon: UsersIcon },
 
     { name: 'Projects', to: '/projects', icon: FolderIcon },
 

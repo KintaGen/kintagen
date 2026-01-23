@@ -10,6 +10,8 @@ import NMRAnalysisPage from './pages/NMRAnalysisPage';
 import GCMSAnalysisPage from './pages/GcmsAnalysisPage';
 import LogbookPage from './pages/LogbookPage';
 import CustomObservationPage from './pages/CustomObservationPage';
+import AllProfilesPage from './pages/AllProfilesPage';
+import IndividualProfilePage from './pages/IndividualProfilePage'; // NEW IMPORT
 
 import VerificationPage  from './pages/VerificationPage'; // Assuming you placed it here
 
@@ -135,9 +137,11 @@ const App: React.FC = () => {
                 <Routes>
                   {/* ... your routes ... */}
                   <Route path="/" element={<HomePage />} /> 
-                  <Route path="/profile" element={<ProfilePage />} />
+                  <Route path="/my-profile" element={<ProfilePage />} />
                   <Route path="/projects" element={<MintingComponent />} />
                   {/*<Route path="/chat" element={<ResearchChatPage />} />*/}
+                  <Route path="/profiles" element={<AllProfilesPage />} />
+                  <Route path="/profile/:pubkey" element={<IndividualProfilePage />} /> 
                   <Route path="/analysis" element={<LD50AnalysisPage />} />
                   <Route path="/analysis-nmr" element={<NMRAnalysisPage />} />
                   <Route path="/analysis-xcms" element={<GCMSAnalysisPage />} />

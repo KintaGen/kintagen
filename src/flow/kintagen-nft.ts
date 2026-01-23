@@ -303,3 +303,17 @@ export const useAllNfts = () => {
     error,
   };
 };
+
+
+export const useNftsByOwner = (ownerAddress: string | null | undefined) => {
+  const { allNfts, isLoading, error } = useAllNfts(); // Assuming you have useAllNfts
+
+  const ownedNfts = useMemo(() => {
+    if (!ownerAddress || !allNfts) {
+      return [];
+    }
+    return allNfts.filter(nft => nft.owner === ownerAddress);
+  }, [allNfts, ownerAddress]);
+
+  return { ownedNfts, isLoading, error };
+};

@@ -17,13 +17,14 @@ export interface NostrLink {
     title: string;
     url: string;
   }
-interface NostrProfile {
-  name?: string;
-  about?: string;
-  picture?: string;
-  flowWalletAddress?: string; // Added flowWalletAddress
-  links?: NostrLink[]; // Ensure links are part of the profile interface
-}
+  export interface NostrProfile { 
+    name?: string;
+    about?: string;
+    picture?: string;
+    flowWalletAddress?: string;
+    links?: NostrLink[];
+    pubkey?: string; 
+  }
 
 interface NostrContextType {
     pubkey: string | null;
@@ -33,6 +34,8 @@ interface NostrContextType {
     connect: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>; 
     updateProfile: (name: string, about: string, links: NostrLink[], flowWalletAddress?: string, picture?: string) => Promise<void>;
     fetchProfileByFlowWalletAddress: (flowAddr: string) => Promise<NostrProfile | null>;
+    fetchAllProfiles: () => Promise<NostrProfile[]>;
+    fetchProfileByPubkey: (pubkey: string) => Promise<NostrProfile | null>; 
     isLoading: boolean;
   }
 
@@ -171,7 +174,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (event) {
         try {
           const content = JSON.parse(event.content);
-          return content as NostrProfile;
+          return { ...content, pubkey: event.pubkey } as NostrProfile;
         } catch (e) {
           console.error("Failed to parse profile JSON from event found by Flow address", e);
           return null;
@@ -183,6 +186,66 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return null;
     }
   }, [pool]);
+  const fetchProfileByPubkey = useCallback(async (targetPubkey: string): Promise<NostrProfile | null> => {
+    if (!targetPubkey) return null;
+    try {
+      // Get the latest kind 0 event for the specific pubkey
+      const event = await pool.get(RELAYS, {
+        kinds: [0],
+        authors: [targetPubkey],
+      });
+
+      if (event) {
+        try {
+          const content = JSON.parse(event.content);
+          return { ...content, pubkey: event.pubkey } as NostrProfile;
+        } catch (e) {
+          console.error(`Failed to parse profile JSON for pubkey ${targetPubkey}:`, e);
+          return null;
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error(`Error fetching Nostr profile for pubkey ${targetPubkey}:`, error);
+      return null;
+    }
+  }, [pool]);
+
+  const fetchAllProfiles = useCallback(async (): Promise<NostrProfile[]> => {
+    try {
+      // Fetch all kind 0 events tagged with "A" as "kintagendemo-v0"
+      const events = await pool.querySync(RELAYS, {
+        kinds: [0],
+        "#A": ["kintagendemo-v0"], // Filter by the specific "A" tag
+      });
+
+      const profilesMap = new Map<string, NostrProfile>(); // Use a Map to store the latest profile for each pubkey
+
+      for (const event of events) {
+        try {
+          const content = JSON.parse(event.content);
+          const currentProfile: NostrProfile = { ...content, pubkey: event.pubkey };
+
+          // Only keep the latest event (profile) for each public key
+          // Nostr events are immutable, but users publish new kind 0 events
+          // to update their profile. We want the most recent one.
+          const existingProfile = profilesMap.get(event.pubkey);
+          if (!existingProfile || event.created_at > (existingProfile as any).created_at) { // Cast to any to access created_at
+            (currentProfile as any).created_at = event.created_at; // Store created_at for comparison
+            profilesMap.set(event.pubkey, currentProfile);
+          }
+        } catch (e) {
+          console.error(`Error parsing profile from event ${event.id}:`, e);
+        }
+      }
+
+      return Array.from(profilesMap.values());
+    } catch (error) {
+      console.error("Error fetching all Nostr profiles:", error);
+      return [];
+    }
+  }, [pool]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -200,6 +263,8 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         connect,
         updateProfile,
         fetchProfileByFlowWalletAddress,
+        fetchAllProfiles,
+        fetchProfileByPubkey,
         isLoading
       }
     }>
