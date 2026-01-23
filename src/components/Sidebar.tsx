@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink,Link, useLocation } from 'react-router-dom';
 import {
   HomeIcon,
   FolderIcon,
@@ -7,9 +7,9 @@ import {
   UsersIcon,
   BeakerIcon,
   ChevronDownIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  ChatBubbleBottomCenterTextIcon
 } from '@heroicons/react/24/outline';
-import FeedbackButton from './FeedbackButton'; 
 import { Connect } from "@onflow/react-sdk";
 import clsx from 'clsx'; // A tiny utility for constructing `className` strings conditionally
 
@@ -160,7 +160,16 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
         </ul>
       </nav>
 
-      <FeedbackButton feedbackFormUrl={feedbackFormUrl} />
+      <div className="p-4 border-t border-gray-700">
+        <Link
+          to="feedback"
+          className="flex items-center justify-center gap-2 w-full px-4 py-2 text-sm font-medium bg-gray-700/50 border border-gray-600 rounded-lg hover:bg-gray-700 hover:text-white transition-colors"
+        >
+          <ChatBubbleBottomCenterTextIcon className="h-5 w-5" />
+          <span>Provide Feedback</span>
+        </Link>
+      </div>
+
     </div>
   );
 };
