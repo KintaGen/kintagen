@@ -23,6 +23,8 @@ const NostrLoginModal: React.FC<NostrLoginModalProps> = ({
   isConnecting,
   flowUserLoggedIn,
 }) => {
+  const isOtherOptionsDisabled = isConnecting || flowUserLoggedIn;
+
   return (
     <Transition appear show={isOpen} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
@@ -81,19 +83,29 @@ const NostrLoginModal: React.FC<NostrLoginModalProps> = ({
                     <p className="text-sm text-red-400 text-center">You must be logged into Flow to use this option.</p>
                   )}
 
+                  {flowUserLoggedIn && (
+                    <p className="text-sm text-yellow-400 text-center">
+                      Please log out of Flow to use other Nostr connection options.
+                    </p>
+                  )}
+
                   <button
-                    className="w-full flex items-center justify-center gap-3 px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={`w-full flex items-center justify-center gap-3 px-5 py-3 border border-transparent text-base font-medium rounded-md text-white ${
+                      isOtherOptionsDisabled ? 'bg-gray-600 cursor-not-allowed opacity-70' : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
                     onClick={onLoginWithExtension}
-                    disabled={isConnecting}
+                    disabled={isOtherOptionsDisabled}
                   >
                     <PuzzlePieceIcon className="h-6 w-6" />
                     {isConnecting ? 'Connecting...' : 'Login with Nostr Extension (e.g., Nos2x, Alby)'}
                   </button>
 
                   <button
-                    className="w-full flex items-center justify-center gap-3 px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={`w-full flex items-center justify-center gap-3 px-5 py-3 border border-transparent text-base font-medium rounded-md text-white ${
+                      isOtherOptionsDisabled ? 'bg-gray-600 cursor-not-allowed opacity-70' : 'bg-green-600 hover:bg-green-700'
+                    }`}
                     onClick={onGenerateNewKeys}
-                    disabled={isConnecting}
+                    disabled={isOtherOptionsDisabled}
                   >
                     <KeyIcon className="h-6 w-6" />
                     {isConnecting ? 'Generating...' : 'Generate New Nostr Keys'}
