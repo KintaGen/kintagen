@@ -11,7 +11,8 @@ import {
   ChatBubbleBottomCenterTextIcon
 } from '@heroicons/react/24/outline';
 import { Connect } from "@onflow/react-sdk";
-import clsx from 'clsx'; // A tiny utility for constructing `className` strings conditionally
+import clsx from 'clsx';
+import { useNostr } from '../contexts/NostrContext'; // Import useNostr
 
 // --- No changes to interfaces ---
 interface SubNavLinkInfo {
@@ -25,20 +26,32 @@ interface NavLinkInfo {
   subLinks?: SubNavLinkInfo[];
 }
 
-// The Sidebar now accepts an `isOpen` prop to control its visibility on mobile
 const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
   const [openMenus, setOpenMenus] = useState<{ [key: string]: boolean }>({
     Analysis: true,
   });
 
   const location = useLocation();
-  const feedbackFormUrl = 'https://forms.gle/link_here';
+  const { pubkey,logoutNostr } = useNostr(); // Get logoutNostr from context
 
   const toggleMenu = (name: string) => {
     setOpenMenus((prevOpenMenus) => ({
       ...prevOpenMenus,
       [name]: !prevOpenMenus[name],
     }));
+  };
+
+  // NEW: Handler for Flow connection success
+  const handleFlowConnect = async () => {
+    // When Flow connects, ensure any other Nostr session is logged out
+    if(pubkey) await logoutNostr();
+    console.log("Flow Wallet Connected!"); // Original log
+  };
+
+  // NEW: Handler for Flow disconnection
+  const handleFlowDisconnect = async () => {
+    if(pubkey) await logoutNostr();
+    console.log("Flow Wallet Logged out"); 
   };
   
   const navLinks: NavLinkInfo[] = [
@@ -48,7 +61,6 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
 
     { name: 'Projects', to: '/projects', icon: FolderIcon },
 
-    //{ name: 'Research Chat', to: '/chat', icon: ChatBubbleLeftRightIcon },
     {
       name: 'Analysis',
       icon: BeakerIcon,
@@ -67,14 +79,9 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
   return (
     <div
       className={clsx(
-        // Base styles for all screen sizes
         "w-64 bg-gray-800 text-gray-200 flex flex-col fixed h-full z-30",
         "transition-transform duration-300 ease-in-out",
-
-        // Mobile state: Controlled by the `isOpen` prop
         isOpen ? 'transform translate-x-0' : 'transform -translate-x-full',
-        
-        // Desktop override: Always visible, regardless of `isOpen` state
         "md:translate-x-0"
       )}
     >
@@ -85,11 +92,11 @@ const Sidebar: React.FC<{ isOpen: boolean }> = ({ isOpen }) => {
         <ul>
           <li className={`flex items-center justify-between w-full p-3 my-1 rounded-lg transition-colors duration-200`}>
           <Connect
-            onConnect={() => console.log("Connected!")}
-            onDisconnect={() => console.log("Logged out")}
+            onConnect={handleFlowConnect} // Use the new handler
+            onDisconnect={handleFlowDisconnect} // Use the new handler
           />
           </li>
-          
+
           {navLinks.map((link) => {
             if (link.subLinks) {
               const isMenuOpen = !!openMenus[link.name];

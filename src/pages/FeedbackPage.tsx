@@ -1,52 +1,54 @@
-// src/pages/FeedbackPage.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { usePageTitle } from '../hooks/usePageTitle';
-// Import AppNostrEvent for type consistency, but NostrProfile comes from useNostr
-import { useNostr, AppNostrEvent } from '../contexts/NostrContext';
+// CORRECTED LINE: Removed AppNostrEvent from direct import
+import { useNostr } from '../contexts/NostrContext';
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid';
 import { Link } from 'react-router-dom';
+import NostrLoginModal from '../components/NostrLoginModal';
+import { useFlowCurrentUser } from '@onflow/react-sdk';
 
-// The group chat ID is now managed within NostrContext, but we can keep it here for reference
-// const FEEDBACK_GROUP_CHAT_ID = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd'; // Moved to NostrContext
+const FEEDBACK_GROUP_CHAT_ID = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd';
 
 const FeedbackPage: React.FC = () => {
   usePageTitle('Feedback & Suggestions - KintaGen');
+  const { user: flowUser } = useFlowCurrentUser();
 
-  // Consume from NostrContext
   const {
     pubkey: currentUserPubkey,
-    privKey: currentUserPrivKey, // Needed for local checks, though sendFeedback handles the actual logic
     isLoading: isNostrConnecting,
-    feedbackMessages,
+    feedbackMessages, // This is already typed by NostrContextType
     isLoadingFeedbackMessages,
     sendFeedback,
     getNostrTime,
-    getProfileForMessage, // Use this to get cached profiles for messages
+    getProfileForMessage,
+    showNostrLoginModal,
+    openNostrLoginModal,
+    closeNostrLoginModal,
+    connectWithFlow,
+    connectWithExtension,
+    generateAndConnectKeys,
   } = useNostr();
 
-  // Local state for feedback input and sending status
   const [feedbackText, setFeedbackText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
 
-  const messagesEndRef = useRef<HTMLDivElement>(null); // For auto-scrolling
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to the bottom of the messages div whenever new messages arrive
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [feedbackMessages]); // Trigger scroll when feedbackMessages update
+  }, [feedbackMessages]);
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!feedbackText.trim()) return;
 
-    // The sendFeedback function in context handles the login check internally,
-    // but we can add a client-side check for immediate feedback to the user.
     if (!currentUserPubkey) {
-      setSendError("Please log in with a Nostr key to send feedback.");
+      setSendError("Please log in to Nostr to send feedback.");
+      openNostrLoginModal();
       return;
     }
 
@@ -54,14 +56,8 @@ const FeedbackPage: React.FC = () => {
     setSendError(null);
 
     try {
-      // Pass the hardcoded group chat ID from here, or define it in NostrContext and expose it.
-      // For simplicity and to avoid exposing too much internal config, let's keep it defined within NostrContext's sendFeedback.
-      // Or, if you want to allow sending to different groups, pass it.
-      // For now, assuming the FEEDBACK_GROUP_CHAT_ID is hardcoded *within* the sendFeedback implementation in NostrContext.
-      // If NostrContext's sendFeedback expects it, uncomment the line below and pass it.
-      const FEEDBACK_GROUP_CHAT_ID_FROM_CONTEXT = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd'; // Re-declare for clarity or get from context if exposed
-      await sendFeedback(feedbackText, FEEDBACK_GROUP_CHAT_ID_FROM_CONTEXT); // Call the context's function
-      setFeedbackText(''); // Clear input
+      await sendFeedback(feedbackText, FEEDBACK_GROUP_CHAT_ID);
+      setFeedbackText('');
     } catch (err: any) {
       console.error("Failed to publish feedback:", err);
       setSendError(err.message || "Failed to send feedback. Please try again.");
@@ -69,6 +65,22 @@ const FeedbackPage: React.FC = () => {
       setIsSending(false);
     }
   };
+
+  const handleLoginWithFlow = async () => {
+    await connectWithFlow();
+    // No need to call closeNostrLoginModal here, connectWithFlow already does it on success
+  };
+
+  const handleLoginWithExtension = async () => {
+    await connectWithExtension();
+    // No need to call closeNostrLoginModal here, connectWithExtension already does it on success
+  };
+
+  const handleGenerateNewKeys = async () => {
+    await generateAndConnectKeys();
+    // No need to call closeNostrLoginModal here, generateAndConnectKeys already does it on success
+  };
+
 
   return (
     <>
@@ -95,7 +107,6 @@ const FeedbackPage: React.FC = () => {
               <div className="text-center text-gray-500 py-8">No feedback yet. Be the first!</div>
             )}
             {!isLoadingFeedbackMessages && feedbackMessages.map((msg, index) => {
-              // Use getProfileForMessage from context, which will fetch and cache
               const senderProfile = getProfileForMessage(msg.pubkey);
               const isCurrentUser = currentUserPubkey === msg.pubkey;
 
@@ -135,8 +146,9 @@ const FeedbackPage: React.FC = () => {
                 </div>
               );
             })}
-            <div ref={messagesEndRef} /> {/* For auto-scrolling */}
+            <div ref={messagesEndRef} />
           </div>
+
 
           <form onSubmit={handleSubmitFeedback} className="flex gap-2">
             <textarea
@@ -167,10 +179,27 @@ const FeedbackPage: React.FC = () => {
           {!currentUserPubkey && (
              <p className="text-yellow-400 text-sm mt-3 text-center">
                 You need to be logged in with a Nostr key to submit feedback.
+                <button
+                    onClick={openNostrLoginModal}
+                    className="ml-2 text-purple-400 hover:underline"
+                    disabled={isNostrConnecting}
+                >
+                    Connect Now
+                </button>
              </p>
           )}
         </div>
       </div>
+
+      <NostrLoginModal
+        isOpen={showNostrLoginModal}
+        onClose={closeNostrLoginModal}
+        onLoginWithFlow={handleLoginWithFlow}
+        onLoginWithExtension={handleLoginWithExtension}
+        onGenerateNewKeys={handleGenerateNewKeys}
+        isConnecting={isNostrConnecting}
+        flowUserLoggedIn={flowUser?.loggedIn || false}
+      />
     </>
   );
 };

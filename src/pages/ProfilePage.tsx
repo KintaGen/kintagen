@@ -25,7 +25,7 @@ const ProfilePage: React.FC = () => {
     usePageTitle('My Profile - KintaGen'); // Set page title
 
     const { user: flowUser } = useFlowCurrentUser();
-    const { pubkey, privKey, profile, connect, updateProfile, isLoading: isNostrLoading } = useNostr();
+    const { pubkey, privKey, profile, connectWithFlow, updateProfile, isLoading: isNostrLoading } = useNostr();
 
     const [activeTab, setActiveTab] = useState<'profile' | 'nfts'>('profile'); // New: Active tab state
 
@@ -111,7 +111,7 @@ const ProfilePage: React.FC = () => {
                     These keys are derived deterministically from your Flow wallet.
                 </p>
                 <button 
-                    onClick={connect} 
+                    onClick={connectWithFlow} 
                     disabled={isNostrLoading}
                     className="bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 flex items-center mx-auto"
                 >
