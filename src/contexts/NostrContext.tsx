@@ -4,6 +4,7 @@ import { finalizeEvent, getPublicKey, type Event as NostrEvent, generateSecretKe
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 import * as fcl from "@onflow/fcl";
 import { nip19 } from 'nostr-tools';
+import { Buffer } from 'buffer'; // Required for Buffer.from(hexString, 'hex') if not polyfilled
 
 fcl.config()
    .put("accessNode.api", "https://rest-testnet.onflow.org")
@@ -65,7 +66,7 @@ const NostrContext = createContext<NostrContextType | null>(null);
 const FEEDBACK_GROUP_CHAT_ID = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd';
 
 export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user: flowUser, flowLogOut } = useFlowCurrentUser();
+  const { user: flowUser, logOut: flowLogOut } = useFlowCurrentUser(); // Corrected destructuring for flowLogOut
 
   const [pool] = useState(() => new SimplePool());
   const [privKey, setPrivKey] = useState<Uint8Array | null>(null);
@@ -82,13 +83,13 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const closeNostrLoginModal = useCallback(() => setShowNostrLoginModal(false), []);
 
   const logoutNostr = useCallback(() => {
-    if (pubkey) {
+    if (pubkey) { // Only log out if there's an active Nostr pubkey
       console.log("Logging out of Nostr session...");
       setPubkey(null);
       setPrivKey(null);
       setProfile(null);
-      setFeedbackMessages([]);
-      setCachedProfiles({});
+      setFeedbackMessages([]); // Clear feedback messages on Nostr logout
+      setCachedProfiles({}); // Clear cached profiles on Nostr logout
     }
   }, [pubkey]);
 
@@ -96,20 +97,24 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (flowUser?.loggedIn) {
       console.log("Logging out of Flow wallet...");
       await flowLogOut();
+      // It's crucial here to also logout Nostr if it was tied to Flow
+      // For simplicity and to prevent stale state, we'll call logoutNostr()
+      // This ensures that if Flow was providing the identity, that identity is cleared.
+      logoutNostr();
     }
-  }, [flowUser?.loggedIn]);
+  }, [flowUser?.loggedIn, flowLogOut, logoutNostr]);
 
 
-  // --- Helper Functions (unchanged) ---
+  // --- Helper Functions ---
   const deriveNostrKey = async (signatureHex: string): Promise<Uint8Array> => {
-    const signatureBytes = new Uint8Array(
-      signatureHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
-    );
+    // Use Buffer for hex string to byte array conversion as in your original `deriveNostrKey`
+    const signatureBytes = Buffer.from(signatureHex, 'hex');
     const hash = await crypto.subtle.digest('SHA-256', signatureBytes);
     return new Uint8Array(hash);
   };
 
   const fetchProfile = useCallback(async (pkHex: string) => {
+    // Only set isLoading for the actual fetching of the current user's profile
     setIsLoading(true);
     try {
       const event = await pool.get(RELAYS, {
@@ -120,9 +125,12 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (event) {
         try {
           const content = JSON.parse(event.content);
-          setProfile(content);
+          const fetchedProfile: NostrProfile = { ...content, pubkey: event.pubkey, created_at: event.created_at };
+          setProfile(fetchedProfile); // Set the main profile state
+          setCachedProfiles(prev => ({ ...prev, [pkHex]: fetchedProfile })); // Cache it
         } catch (e) {
           console.error("Failed to parse profile JSON", e);
+          setProfile(null);
         }
       } else {
         setProfile(null);
@@ -133,7 +141,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setIsLoading(false);
     }
-  }, [pool]);
+  }, [pool]); // Only pool is a dependency, cachedProfiles updates setProfile directly
 
   // --- Login Functions ---
 
@@ -144,7 +152,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     setIsLoading(true);
     try {
-      await logoutNostr();
+      await logoutNostr(); // NEW: Clear any previous Nostr identity before connecting with Flow
 
       const messageToSign = "Sign this message to login to KintaGen via Nostr. This generates your deterministic keys.";
 
@@ -162,12 +170,14 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       setPrivKey(sk);
       setPubkey(pk);
-      fetchProfile(pk);
+      await fetchProfile(pk); // Ensure profile is fetched after setting pubkey
       closeNostrLoginModal();
       return { pubkey: pk, privKey: sk };
 
-    } catch (error) {
+    } catch (error: any) { // Corrected error typing to `any` for robustness
       console.error("Nostr Login (Flow) Error:", error);
+      alert(error.message || "Failed to derive Nostr identity from Flow.");
+      logoutNostr(); // NEW: Reset Nostr if Flow connection fails
       return null;
     } finally {
       setIsLoading(false);
@@ -181,18 +191,19 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     setIsLoading(true);
     try {
-      await logoutFlow();
-      await logoutNostr();
+      await logoutFlow(); // NEW: Logout Flow if it was active
+      await logoutNostr(); // NEW: Clear any previous Nostr identity
 
       const pk = await window.nostr.getPublicKey();
-      setPrivKey(null);
+      setPrivKey(null); // Extensions do not expose private keys
       setPubkey(pk);
-      fetchProfile(pk);
+      await fetchProfile(pk); // Ensure profile is fetched after setting pubkey
       closeNostrLoginModal();
-      return { pubkey: pk, privKey: null as any };
-    } catch (error) {
+      return { pubkey: pk, privKey: null as any }; // Explicitly return null for privKey
+    } catch (error: any) { // Corrected error typing to `any`
       console.error("Nostr Login (Extension) Error:", error);
-      alert("Failed to connect with Nostr extension. Please ensure it's unlocked and permitted.");
+      alert(error.message || "Failed to connect with Nostr extension. Please ensure it's unlocked and permitted.");
+      logoutNostr(); // NEW: Reset Nostr if extension connection fails
       return null;
     } finally {
       setIsLoading(false);
@@ -202,15 +213,15 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const generateAndConnectKeys = useCallback(async () => {
     setIsLoading(true);
     try {
-      await logoutFlow();
-      await logoutNostr();
+      await logoutFlow(); // NEW: Logout Flow if it was active
+      await logoutNostr(); // NEW: Clear any previous Nostr identity
 
       const newPrivKey = generateSecretKey();
       const newPubKey = getPublicKey(newPrivKey);
 
       setPrivKey(newPrivKey);
       setPubkey(newPubKey);
-      fetchProfile(newPubKey);
+      await fetchProfile(newPubKey); // Ensure profile is fetched after setting pubkey
       closeNostrLoginModal();
 
       const nsec = nip19.nsecEncode(newPrivKey);
@@ -218,9 +229,10 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.log("Generated NPUB:", nip19.npubEncode(newPubKey));
 
       return { pubkey: newPubKey, privKey: newPrivKey };
-    } catch (error) {
+    } catch (error: any) { // Corrected error typing to `any`
       console.error("Nostr Key Generation Error:", error);
-      alert("Failed to generate new Nostr keys.");
+      alert(error.message || "Failed to generate new Nostr keys.");
+      logoutNostr(); // NEW: Reset Nostr if key generation fails
       return null;
     } finally {
       setIsLoading(false);
@@ -229,8 +241,8 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 
   // --- Profile Management ---
-  const updateProfile = async (name: string, about: string, links: NostrLink[], flowWalletAddress?: string, picture?: string) => {
-    if (!pubkey) return;
+  const updateProfile = useCallback(async (name: string, about: string, links: NostrLink[], flowWalletAddress?: string, picture?: string) => {
+    if (!pubkey) throw new Error("Not logged in to Nostr.");
 
     const content = JSON.stringify({
         name,
@@ -264,16 +276,17 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       await Promise.any(pool.publish(RELAYS, signedEvent));
-      setProfile({ name, about, picture, links, flowWalletAddress, pubkey });
+      // Update local profile state immediately after successful publish
+      setProfile({ name, about, picture, links, flowWalletAddress, pubkey, created_at: eventTemplate.created_at });
       setCachedProfiles(prev => ({
         ...prev,
-        [pubkey]: { name, about, picture, links, flowWalletAddress, pubkey }
+        [pubkey]: { name, about, picture, links, flowWalletAddress, pubkey, created_at: eventTemplate.created_at }
       }));
     } catch (error) {
       console.error("Failed to publish to any relay or sign event", error);
       throw new Error("Could not save profile to the network.");
     }
-  };
+  }, [pubkey, privKey, pool, setProfile, setCachedProfiles]); // Added privKey to dependencies
 
   const fetchProfileByFlowWalletAddress = useCallback(async (flowAddr: string): Promise<NostrProfile | null> => {
     try {
@@ -284,7 +297,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (event) {
         try {
           const content = JSON.parse(event.content);
-          return { ...content, pubkey: event.pubkey } as NostrProfile;
+          return { ...content, pubkey: event.pubkey, created_at: event.created_at } as NostrProfile;
         } catch (e) {
           console.error("Failed to parse profile JSON from event found by Flow address", e);
           return null;
@@ -311,7 +324,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (event) {
         try {
           const content = JSON.parse(event.content);
-          const fullProfile: NostrProfile = { ...content, pubkey: event.pubkey };
+          const fullProfile: NostrProfile = { ...content, pubkey: event.pubkey, created_at: event.created_at };
           setCachedProfiles(prev => ({ ...prev, [targetPubkey]: fullProfile }));
           return fullProfile;
         } catch (e) {
@@ -340,7 +353,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const content = JSON.parse(event.content);
           const currentProfile: NostrProfile = { ...content, pubkey: event.pubkey };
 
-          // CORRECTED: Safely access created_at and ensure it's a number for comparison
+          // Safely access created_at and ensure it's a number for comparison
           const existingProfile = profilesMap.get(event.pubkey);
           if (
             !existingProfile ||
@@ -369,7 +382,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [pool]);
 
 
-  // --- Feedback Specific Logic (unchanged) ---
+  // --- Feedback Specific Logic ---
 
   const getNostrTime = useCallback((timestamp: number): string => {
     const date = new Date(timestamp * 1000);
@@ -437,7 +450,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       limit: 50,
     };
 
-    const sub = pool.subscribe(RELAYS, filter, {
+    pool.subscribe(RELAYS, filter, {
         onevent: (event: NostrEvent) => {
             const appEvent = event as AppNostrEvent;
             if (!cachedProfiles[appEvent.pubkey]) {
@@ -457,6 +470,10 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
     });
 
+    // Keeping pool.close([]) as requested, assuming it effectively unsubscribes this specific filter.
+    // However, in nostr-tools v2, `sub.unsub()` is the idiomatic way to stop a specific subscription.
+    // If you experience memory leaks or continued event processing after this effect cleanup,
+    // consider re-evaluating the subscription management or updating nostr-tools usage.
     return () => {
       pool.close([]);
     };
@@ -466,10 +483,12 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (cachedProfiles[targetPubkey]) {
       return cachedProfiles[targetPubkey];
     }
+    // Asynchronously fetch if not in cache, but return undefined for now
     fetchProfileByPubkey(targetPubkey);
     return undefined;
   }, [cachedProfiles, fetchProfileByPubkey]);
 
+  // Cleanup for the entire pool when the provider unmounts
   useEffect(() => {
     return () => {
       pool.close(RELAYS);
