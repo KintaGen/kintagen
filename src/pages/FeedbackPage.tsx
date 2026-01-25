@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { usePageTitle } from '../hooks/usePageTitle';
-// CORRECTED LINE: Removed AppNostrEvent from direct import
 import { useNostr } from '../contexts/NostrContext';
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid';
 import { Link } from 'react-router-dom';
 import NostrLoginModal from '../components/NostrLoginModal';
+import NostrEphemeralKeyInfo from '../components/feedback/NostrEphemeralKeyInfo'; // Your specific ephemeral key info component
+
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 
 const FEEDBACK_GROUP_CHAT_ID = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd';
@@ -16,8 +17,9 @@ const FeedbackPage: React.FC = () => {
 
   const {
     pubkey: currentUserPubkey,
+    privKey: currentUserPrivKey, // Access privKey from context
     isLoading: isNostrConnecting,
-    feedbackMessages, // This is already typed by NostrContextType
+    feedbackMessages,
     isLoadingFeedbackMessages,
     sendFeedback,
     getNostrTime,
@@ -27,12 +29,15 @@ const FeedbackPage: React.FC = () => {
     closeNostrLoginModal,
     connectWithFlow,
     connectWithExtension,
-    generateAndConnectKeys,
+    generateAndConnectKeys, // This now sets privKey in context
   } = useNostr();
 
   const [feedbackText, setFeedbackText] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+
+  // --- NEW STATE: Track if the current login is from ephemeral key generation ---
+  const [isEphemeralLogin, setIsEphemeralLogin] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -41,6 +46,14 @@ const FeedbackPage: React.FC = () => {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [feedbackMessages]);
+
+  // Reset ephemeral login flag if the user logs out or connects differently
+  useEffect(() => {
+    if (!currentUserPubkey) {
+      setIsEphemeralLogin(false);
+    }
+  }, [currentUserPubkey]);
+
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,18 +80,20 @@ const FeedbackPage: React.FC = () => {
   };
 
   const handleLoginWithFlow = async () => {
+    setIsEphemeralLogin(false);
     await connectWithFlow();
-    // No need to call closeNostrLoginModal here, connectWithFlow already does it on success
   };
 
   const handleLoginWithExtension = async () => {
+    setIsEphemeralLogin(false); // Not an ephemeral login
     await connectWithExtension();
-    // No need to call closeNostrLoginModal here, connectWithExtension already does it on success
   };
 
   const handleGenerateNewKeys = async () => {
     await generateAndConnectKeys();
-    // No need to call closeNostrLoginModal here, generateAndConnectKeys already does it on success
+
+    setIsEphemeralLogin(true);
+
   };
 
 
@@ -189,6 +204,17 @@ const FeedbackPage: React.FC = () => {
              </p>
           )}
         </div>
+
+        {/* --- CONDITIONAL RENDERING OF EPHEMERAL KEY INFO --- */}
+        {/* Only show if the user logged in specifically by generating new keys AND we have the private key */}
+        {isEphemeralLogin && currentUserPubkey && currentUserPrivKey && (
+          <div className="mt-8"> {/* Added div for consistent styling margin-top */}
+            <NostrEphemeralKeyInfo 
+                pubkey={currentUserPubkey} 
+                privKey={currentUserPrivKey} 
+            />
+          </div>
+        )}
       </div>
 
       <NostrLoginModal

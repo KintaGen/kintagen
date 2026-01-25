@@ -214,12 +214,6 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       closeNostrLoginModal();
 
       const nsec = nip19.nsecEncode(newPrivKey);
-      alert(
-        `Your new Nostr private key (nsec):\n\n${nsec}\n\n` +
-        `Your public key (npub): ${nip19.npubEncode(newPubKey)}\n\n` +
-        `PLEASE SAVE YOUR PRIVATE KEY SECURELY! This is the ONLY time it will be shown. ` +
-        `If you lose it, you will lose access to your Nostr identity.`
-      );
       console.log("Generated NSEC:", nsec);
       console.log("Generated NPUB:", nip19.npubEncode(newPubKey));
 
