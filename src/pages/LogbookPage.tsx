@@ -5,7 +5,6 @@ import { useFlowConfig } from '@onflow/react-sdk';
 import { Helmet } from 'react-helmet-async';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { ArrowLeftIcon, ClockIcon, BeakerIcon, ArrowTopRightOnSquareIcon, CameraIcon } from '@heroicons/react/24/solid';
-import { fetchAndUnzipIpfsArtifact, readZipJson } from '../utils/ipfsHelpers'; // Added for reading zip contents
 
 // Components
 import { LogbookAnalysisEntry } from '../components/LogbookAnalysisEntry';
@@ -14,7 +13,6 @@ import { LogbookMapDisplay } from '../components/LogbookMapDisplay';
 // NEW IMPORTS FOR PROFILE CARD AND SECURE DATA DISPLAY
 import ProfileCard from '../components/profiles/ProfileCard';
 import { useNostr, type NostrProfile } from '../contexts/NostrContext';
-import SecureDataDisplay, { type SecureDataInfo } from '../components/SecureDataDisplay'; // Import the new component and type
 
 const LogbookPage = () => {
   const { ownerAddress, nftId } = useParams();
@@ -36,9 +34,6 @@ const LogbookPage = () => {
 
   const pageTitle = projectName ? `${projectName} - KintaGen Logbook` : 'Logbook - KintaGen';
   usePageTitle(pageTitle);
-
-  // State to hold secure data info for a specific step
-  const [secureDataPerStep, setSecureDataPerStep] = useState<{ [key: string]: SecureDataInfo | null }>({});
 
   // Effect to fetch the owner's Nostr profile
   useEffect(() => {
@@ -64,34 +59,6 @@ const LogbookPage = () => {
     loadOwnerProfile();
   }, [ownerAddress, fetchProfileByFlowWalletAddress]); // Re-fetch if ownerAddress or fetchProfile changes
 
-  // Effect to fetch secure data metadata for each step that has an IPFS hash
-  useEffect(() => {
-    const fetchSecureDataForSteps = async () => {
-      if (!story || story.length === 0) return;
-
-      const newSecureData: { [key: string]: SecureDataInfo | null } = {};
-      for (const step of story) {
-        if (step.ipfsHash) {
-          try {
-            const zip = await fetchAndUnzipIpfsArtifact(step.ipfsHash);
-            const metadata = await readZipJson(zip, "metadata.json");
-            if (metadata && metadata.secure_data) {
-              console.log(metadata.secure_data)
-              newSecureData[step.ipfsHash] = metadata.secure_data as SecureDataInfo;
-            } else {
-              newSecureData[step.ipfsHash] = null;
-            }
-          } catch (err) {
-            console.error(`Failed to fetch secure data for IPFS hash ${step.ipfsHash}:`, err);
-            newSecureData[step.ipfsHash] = null;
-          }
-        }
-      }
-      setSecureDataPerStep(newSecureData);
-    };
-
-    fetchSecureDataForSteps();
-  }, [story]); // Re-fetch if the story changes
 
   const flowscanURL = (nftId: string) => {
     const contractAddr = flowConfig.addresses["KintaGenNFT"];
@@ -173,7 +140,6 @@ const LogbookPage = () => {
 
         <div className="space-y-8">
           {story.map((step, index) => {
-            const secureData = step.ipfsHash ? secureDataPerStep[step.ipfsHash] : null;
 
             // --- ENTRY 1: The Origin (Project Minting) ---
             if (index === 0) {
@@ -263,7 +229,6 @@ const LogbookPage = () => {
                  {/* Timeline Line */}
                  <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gray-700 md:-left-8 hidden md:block"></div>
                  <LogbookAnalysisEntry step={step} /> {/* Pass secureData to LogbookAnalysisEntry */}
-                 {secureData && <SecureDataDisplay secureDataInfo={secureData} />} {/* Display secure data */}
 
               </div>
             );

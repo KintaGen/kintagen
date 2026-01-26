@@ -6,7 +6,7 @@ import { ArrowPathIcon, ExclamationTriangleIcon, ChevronDownIcon, ChevronUpIcon 
 import { NmrAnalysisResultsDisplay } from './analysis/nmr/NmrAnalysisResultsDisplay';
 import { GcmsAnalysisResultsDisplay } from './analysis/xcms/GcmsAnalysisResultsDisplay';
 import { AnalysisResultsDisplay as Ld50AnalysisResultsDisplay } from './analysis/ld50/AnalysisResultsDisplay';
-
+import SecureDataDisplay from './SecureDataDisplay'; // Import the new component and type
 // Helper to convert a Blob to a base64 data URL
 const toBase64 = (blob) => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -54,13 +54,13 @@ export const LogbookAnalysisEntry = ({ step }) => {
                         nmrPlot, ld50Plot, zoomPlot, summaryText,
                         spectrumData, peaks, summaryTable, refInfo,
                         quantReport, topSpectra, rawChroma, smoothedChroma,
-                        integratedPeaks, libMatches, ld50Metrics
+                        integratedPeaks, libMatches, ld50Metrics,metadata
                     ] = await Promise.all([
                         readImage("nmr_plot.png"), readImage("ld50_plot.png"), readImage("calibration_zoom_plot.png"), readText("summary_text.txt"),
                         readJson("spectrum_data.json"), readJson("peaks.json"), readJson("summary_table.json"), readJson("referencing_info.json"),
                         readJson("quantitative_report.json"), readJson("top_spectra_data.json"), readJson("raw_chromatogram.json"),
                         readJson("smoothed_chromatogram.json"), readJson("integrated_peaks.json"), readJson("library_matches.json"),
-                        readJson("ld50_metrics.json")
+                        readJson("ld50_metrics.json"),readJson("metadata.json")
                     ]);
 
                     // Assemble the results object correctly
@@ -77,7 +77,6 @@ export const LogbookAnalysisEntry = ({ step }) => {
                     results.smoothed_chromatogram_data = smoothedChroma;
                     results.integrated_peaks_details = integratedPeaks;
                     results.library_matches = libMatches;
-
                     // The LD50 metrics are at the top level of the `results` object
                     if (ld50Metrics) {
                         Object.assign(results, ld50Metrics);
@@ -87,6 +86,7 @@ export const LogbookAnalysisEntry = ({ step }) => {
                     const reconstructedJob = {
                         state: 'logged',
                         logData: { ...step, resultCID: step.ipfsHash },
+                        metadata: metadata,
                         inputDataHash: step.description.split('input hash: ')[1] || 'N/A',
                         returnvalue: {
                             results: results,
@@ -115,11 +115,13 @@ export const LogbookAnalysisEntry = ({ step }) => {
         if (jobForDisplay) {
             // This dispatcher logic is correct and will now work
             const agent = step.agent.toLowerCase();
+            const secureDataInfo = jobForDisplay.metadata?.secure_data
             return (
                 <div className="p-4 border-t border-gray-700">
                     {agent.includes('nmr') && <NmrAnalysisResultsDisplay job={jobForDisplay} />}
                     {agent.includes('gc-ms') && <GcmsAnalysisResultsDisplay job={jobForDisplay} />}
                     {agent.includes('ld50') && <Ld50AnalysisResultsDisplay job={jobForDisplay} />}
+                    {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
                 </div>
             );
         }

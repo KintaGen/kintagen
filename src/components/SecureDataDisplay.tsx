@@ -1,6 +1,6 @@
 // components/SecureDataDisplay.tsx
 import React from 'react';
-import { LockClosedIcon, LinkIcon, ClipboardIcon, CheckIcon } from '@heroicons/react/24/outline';
+import { LockClosedIcon } from '@heroicons/react/24/outline';
 import { useState } from 'react'; // Import useState for clipboard functionality
 
 
