@@ -4,7 +4,6 @@ import Plot from 'react-plotly.js';
 import { Layout } from 'plotly.js';
 import JSZip from 'jszip';
 
-import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
 import { generateDataHash } from '../../../utils/hash';
 
 // --- Updated interfaces to match the new backend response ---
@@ -345,11 +344,6 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
           </div>
         )}
       </div>
-      <ProvenanceAndDownload 
-        job={job}
-        metadata={metadata}
-        onDownload={handleDownload}
-      />
     </>
   );
 };

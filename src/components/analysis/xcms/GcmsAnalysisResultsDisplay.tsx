@@ -2,7 +2,6 @@ import React, { useRef, useMemo } from 'react';
 import JSZip from 'jszip';
 import BasePlot from 'react-plotly.js';
 import { Layout, Data } from 'plotly.js';
-import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
 import { FidChromatogramPlot, type PlotRef as ChromatogramPlotRef } from './FidChromatogramPlot'; 
 import { MassSpectraDisplay, type MassSpectraPlotRef } from './MassSpectraDisplay';
 import { generateDataHash } from '../../../utils/hash';
@@ -258,12 +257,6 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
             </div>
         )}
       </div>
-
-      <ProvenanceAndDownload 
-        job={job}
-        metadata={metadata}
-        onDownload={handleDownload}
-      />
     </>
   );
 };

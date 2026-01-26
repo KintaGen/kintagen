@@ -1,172 +1,104 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  CheckCircleIcon,
   ArrowPathIcon,
   ExclamationTriangleIcon,
-  FingerPrintIcon,
-  ArrowDownTrayIcon
 } from '@heroicons/react/24/solid';
-import JSZip from 'jszip';
+import JSZip from 'jszip'; // Keep for parsing, but not for re-zipping for download
 
-import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
-
-
-import { generateDataHash } from '../../../utils/hash'; // Adjust path if needed
+// REMOVED: ProvenanceAndDownload import
+// REMOVED: generateDataHash import
+// Adjusted path if needed
 import { type DisplayJob } from '../../../types';
 
 // Use a subset of DisplayJob for results display (id and label not needed here)
-type ResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'returnvalue' | 'logData' | 'inputDataHash'>;
+type ResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'returnvalue' | 'logData' | 'inputDataHash' | 'metadata'>; // Added metadata to job type
 
 // Props interface for the component.
 interface AnalysisResultsDisplayProps {
   job: ResultsDisplayJob;
   isLoading?: boolean; // True when the parent is logging the job to IPFS/blockchain
+  // REMOVED: onDownload prop
 }
 
 export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ job, isLoading }) => {
-  // State for the data that will be displayed
   const [plotUrl, setPlotUrl] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<any | null>(null);
-  const [metadata, setMetadata] = useState<any | null>(null);
+  // REMOVED: metadata state, as it will be passed up or handled by parent
   
-  // State for the component's internal operations
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isFetchingFromIPFS, setIsFetchingFromIPFS] = useState(false);
 
   useEffect(() => {
-    // Reset all state whenever a new job is passed in.
-    // This prevents showing stale data from a previous job.
     setPlotUrl(null);
     setMetrics(null);
-    setMetadata(null);
     setFetchError(null);
     setIsFetchingFromIPFS(false);
 
-    // --- Data Loading Logic ---
-
-    // Case 1: The job is 'completed' (a local or demo job).
-    // The results are directly available in the `returnvalue` prop.
     if (job.state === 'completed' && job.returnvalue?.status === 'success') {
       setPlotUrl(job.returnvalue.results.plot_b64);
       setMetrics(job.returnvalue.results);
-      // Create the metadata object for display from the job's return value.
-      setMetadata({
-        input_data_hash_sha256: job.inputDataHash,
-        analysis_agent: "KintaGen LD50 Agent v1 (Local Run)",
-      });
+      // Metadata for 'completed' state would ideally be passed from LogbookAnalysisEntry,
+      // or reconstructed there if needed for ProvenanceAndDownload.
     }
     
-    // Case 2: The job is 'logged' on-chain.
-    // We must fetch the results artifact from IPFS using the CID.
     else if (job.state === 'logged' && job.logData?.ipfsHash) {
-      const fetchAndParseZip = async () => {
-        setIsFetchingFromIPFS(true);
-        setFetchError(null);
-        try {
-          const response = await fetch(`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${job.logData.ipfsHash}`);
-          if (!response.ok) throw new Error(`Failed to fetch from IPFS (status: ${response.status})`);
-          
-          const zipBlob = await response.blob();
-          const zip = await JSZip.loadAsync(zipBlob);
-          
-          // Extract metadata.json, which contains the provenance info
-          const metadataFile = zip.file("metadata.json");
-          if (metadataFile) {
-            const metadataContent = await metadataFile.async("string");
-            setMetadata(JSON.parse(metadataContent));
-          } else {
-            // Provide a fallback for older jobs that might not have metadata
-            setMetadata({ input_data_hash_sha256: 'N/A (legacy format)' });
-          }
-          
-          // Extract metrics
-          const metricsFile = zip.file("ld50_metrics.json");
-          if (metricsFile) {
-            const metricsContent = await metricsFile.async("string");
-            setMetrics(JSON.parse(metricsContent));
-          } else {
-            throw new Error("'ld50_metrics.json' not found in the ZIP archive.");
-          }
-          
-          // Extract plot image
-          const plotFile = zip.file("ld50_plot.png");
-          if (plotFile) {
-            const plotBase64 = await plotFile.async("base64");
-            setPlotUrl(`data:image/png;base64,${plotBase64}`);
-          } else {
-            throw new Error("'ld50_plot.png' not found in the ZIP archive.");
-          }
+      // For 'logged' jobs, LogbookAnalysisEntry already fetches and parses the zip
+      // and provides the necessary data in `job.returnvalue.results` and `job.metadata`.
+      // This component just needs to consume it.
+      
+      // If `job.returnvalue.results` is guaranteed to be populated by the parent,
+      // we can directly use it here.
+      if (job.returnvalue?.results) {
+        setMetrics(job.returnvalue.results);
+        // The plot URL should also be directly available
+        setPlotUrl(job.returnvalue.results.plot_b64);
+      } else {
+        // Fallback for direct IPFS fetching if parent doesn't fully pre-process,
+        // though the goal is for LogbookAnalysisEntry to do this.
+        const fetchAndParseZip = async () => {
+            setIsFetchingFromIPFS(true);
+            setFetchError(null);
+            try {
+                const response = await fetch(`https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${job.logData.ipfsHash}`);
+                if (!response.ok) throw new Error(`Failed to fetch from IPFS (status: ${response.status})`);
+                
+                const zipBlob = await response.blob();
+                const zip = await JSZip.loadAsync(zipBlob);
+                
+                // Extract metrics
+                const metricsFile = zip.file("ld50_metrics.json");
+                if (metricsFile) {
+                    const metricsContent = await metricsFile.async("string");
+                    setMetrics(JSON.parse(metricsContent));
+                } else {
+                    throw new Error("'ld50_metrics.json' not found in the ZIP archive.");
+                }
+                
+                // Extract plot image
+                const plotFile = zip.file("ld50_plot.png");
+                if (plotFile) {
+                    const plotBase64 = await plotFile.async("base64");
+                    setPlotUrl(`data:image/png;base64,${plotBase64}`);
+                } else {
+                    throw new Error("'ld50_plot.png' not found in the ZIP archive.");
+                }
 
-        } catch (error: any) {
-          console.error("Error fetching/parsing IPFS data:", error);
-          setFetchError(error.message);
-        } finally {
-          setIsFetchingFromIPFS(false);
-        }
-      };
-      fetchAndParseZip();
+            } catch (error: any) {
+                console.error("Error fetching/parsing IPFS data:", error);
+                setFetchError(error.message);
+            } finally {
+                setIsFetchingFromIPFS(false);
+            }
+        };
+        fetchAndParseZip();
+      }
     }
-  }, [job]); // This effect re-runs whenever the `job` prop changes.
+  }, [job]); 
 
-  const handleDownload = async () => {
-    if (!metrics || !plotUrl || !metadata?.input_data_hash_sha256) {
-      console.error("Cannot download: result data or input hash is missing.");
-      return;
-    }
-
-    try {
-      const zip = new JSZip();
-
-      // --- 1. Prepare raw data for hashing and zipping ---
-      const plotBase64 = plotUrl.split(',')[1];
-      const metricsJsonString = JSON.stringify(metrics, null, 2);
-
-      // --- 2. Generate hashes of the outputs, just like the parent page does ---
-      const plotHash = await generateDataHash(plotBase64);
-      const metricsHash = await generateDataHash(metricsJsonString);
-
-      // --- 3. Construct the complete metadata object ---
-      // This will now be identical in structure to the one uploaded to IPFS.
-      const fullMetadata = {
-          schema_version: "1.0.0",
-          analysis_agent: "KintaGen LD50 v1 (Demo Run)",
-          timestamp_utc: new Date().toISOString(),
-          input_data_hash_sha256: metadata.input_data_hash_sha256, // Use the hash from the state
-          outputs: [
-              {
-                  filename: "ld50_plot.png",
-                  hash_sha256: plotHash
-              },
-              {
-                  filename: "ld50_metrics.json",
-                  hash_sha256: metricsHash
-              }
-          ]
-      };
-
-      // --- 4. Add all files to the ZIP archive ---
-      zip.file("metadata.json", JSON.stringify(fullMetadata, null, 2));
-      zip.file("ld50_metrics.json", metricsJsonString);
-      zip.file("ld50_plot.png", plotBase64, { base64: true });
-
-      // --- 5. Generate and trigger the download (this part is the same) ---
-      const zipBlob = await zip.generateAsync({ type: 'blob' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(zipBlob);
-      link.download = `KintaGen_Demo_Artifact_${new Date().toISOString().split('T')[0]}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
-
-    } catch (error) {
-      console.error("Failed to create or download ZIP file:", error);
-    }
-  };
+  // REMOVED: handleDownload function, as it's now in LogbookAnalysisEntry
 
   // --- Render States ---
 
-  // Render a loading spinner if the parent is logging OR if we are fetching from IPFS.
   if (isLoading || isFetchingFromIPFS) {
     return (
       <div className="bg-gray-800 p-8 rounded-lg shadow-lg text-center my-8">
@@ -178,7 +110,6 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
     );
   }
 
-  // Render an error message if fetching from IPFS failed.
   if (fetchError) {
     return (
         <div className="bg-red-900/50 border border-red-700 text-red-200 p-4 rounded-lg my-8 flex items-start space-x-3">
@@ -191,14 +122,11 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
     );
   }
 
-  // If there are no metrics or plot after all loading is done, render nothing.
-  // This handles failed local jobs or other edge cases.
   if (!metrics || !plotUrl) {
     return null;
   }
 
   // --- Main Success Render ---
-  // This is displayed for both completed local jobs and successfully fetched logged jobs.
   return (
     <div className="space-y-8 my-8">
       {/* Metrics and Plot Display Grid */}
@@ -220,11 +148,7 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
         </div>
       </div>
 
-      <ProvenanceAndDownload 
-        job={job}
-        metadata={metadata}
-        onDownload={handleDownload}
-      />
+      {/* REMOVED ProvenanceAndDownload here */}
     </div>
   );
 };
