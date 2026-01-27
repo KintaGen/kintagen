@@ -63,6 +63,8 @@ interface NostrContextType {
     subscribeToDMs: () => void;
     decryptDM: (event: AppNostrEvent) => Promise<string | null>; 
     encryptedMessages: NostrEvent[];
+    pool: SimplePool;
+    RELAYS: string[];
 }
 
 const NostrContext = createContext<NostrContextType | null>(null);
@@ -597,7 +599,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 
   // New: Subscribe to incoming DMs
-  const subscribeToDMs = useCallback(() => {
+  const subscribeToDMs = useCallback(async () => {
     if (!pubkey) {
       console.warn("Not logged in to Nostr, cannot subscribe to DMs.");
       return () => {}; // Return a no-op unsubscribe function
@@ -610,18 +612,15 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       '#O': [NOSTR_SHARE_DATA_OP_TAG]
     };
 
-    pool.subscribe(RELAYS, filter,{
-        onevent: (event: NostrEvent) => {
-          console.log(event)
-          setEncryptedMessages([...encryptedMessages,event]);
-          if (!cachedProfiles[event.pubkey]) {
-            fetchProfileByPubkey(event.pubkey);
-          }
-        }
+    const events = await pool.querySync(RELAYS, filter);
+
+    for(const event of events){
+      setEncryptedMessages([...encryptedMessages,event]);
+
+      if (!cachedProfiles[event.pubkey]) {
+        fetchProfileByPubkey(event.pubkey);
       }
-    );
-
-
+    }
 
     return () => {
       pool.close([]);
@@ -663,7 +662,9 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         logoutNostr,
         decryptDM,
         subscribeToDMs,
-        encryptedMessages
+        encryptedMessages,
+        pool, 
+        RELAYS 
       }
     }>
       {children}

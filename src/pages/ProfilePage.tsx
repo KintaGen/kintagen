@@ -14,15 +14,17 @@ import {
     ArrowTopRightOnSquareIcon,
     WalletIcon,
     ShareIcon,
-    EnvelopeIcon // Added EnvelopeIcon for the new tab
+    EnvelopeIcon,
+    LockClosedIcon // Added for secure data tab
 } from '@heroicons/react/24/solid';
 import NostrInfo from '../components/profile/NostrInfo';
 import ProjectGrid from '../components/projects/ProjectGrid';
 import { useNftsByOwner } from '../flow/kintagen-nft';
 import { Helmet } from 'react-helmet-async';
 import { usePageTitle } from '../hooks/usePageTitle';
-import DataShareRequests from '../components/profile/DataShareRequests'; // Import the new component
-import NostrLoginModal from '../components/NostrLoginModal'; // Import NostrLoginModal
+import DataShareRequests from '../components/profile/DataShareRequests';
+import NostrLoginModal from '../components/NostrLoginModal';
+import SecureDataLogs from '../components/profile/SecureDataLogs'; // <--- IMPORT THE NEW COMPONENT
 
 const ProfilePage: React.FC = () => {
     usePageTitle('My Profile - KintaGen');
@@ -30,19 +32,20 @@ const ProfilePage: React.FC = () => {
     const { user: flowUser } = useFlowCurrentUser();
     const {
         pubkey,
-        privKey, // Access privKey for EphemeralKeyInfo
+        privKey,
         profile,
         connectWithFlow,
         updateProfile,
         isLoading: isNostrLoading,
-        showNostrLoginModal, // From NostrContext
-        openNostrLoginModal, // From NostrContext
-        closeNostrLoginModal, // From NostrContext
-        connectWithExtension, // From NostrContext
-        generateAndConnectKeys, // From NostrContext
+        showNostrLoginModal,
+        openNostrLoginModal,
+        closeNostrLoginModal,
+        connectWithExtension,
+        generateAndConnectKeys,
     } = useNostr();
 
-    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests'>('profile');
+    // Add 'secure-logs' to the activeTab state
+    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests' | 'secure-logs'>('profile');
 
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState('');
@@ -51,7 +54,7 @@ const ProfilePage: React.FC = () => {
     const [picture, setPicture] = useState('');
     const [links, setLinks] = useState<NostrLink[]>([]);
     const [isSaving, setIsSaving] = useState(false);
-    const [isEphemeralLogin, setIsEphemeralLogin] = useState(false); // State to track ephemeral login
+    const [isEphemeralLogin, setIsEphemeralLogin] = useState(false);
 
     const { ownedNfts, isLoading: isLoadingNfts, error: nftsError } = useNftsByOwner(flowUser?.addr);
 
@@ -67,7 +70,6 @@ const ProfilePage: React.FC = () => {
         }
     }, [profile, flowUser]);
 
-    // Reset ephemeral login flag if the user logs out or connects differently
     useEffect(() => {
         if (!pubkey) {
             setIsEphemeralLogin(false);
@@ -104,7 +106,6 @@ const ProfilePage: React.FC = () => {
         }
     };
 
-    // Handlers for NostrLoginModal
     const handleLoginWithFlow = async () => {
         setIsEphemeralLogin(false);
         await connectWithFlow();
@@ -133,7 +134,7 @@ const ProfilePage: React.FC = () => {
                     These keys are derived deterministically from your Flow wallet.
                 </p>
                 <button
-                    onClick={openNostrLoginModal} // Open modal instead of direct connectWithFlow
+                    onClick={openNostrLoginModal}
                     disabled={isNostrLoading}
                     className="bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 flex items-center mx-auto"
                 >
@@ -196,6 +197,13 @@ const ProfilePage: React.FC = () => {
                             className={`${activeTab === 'requests' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
                         >
                             <EnvelopeIcon className="h-4 w-4" /> Data Requests
+                        </button>
+                        {/* New Tab for Secure Data Logs */}
+                        <button
+                            onClick={() => setActiveTab('secure-logs')}
+                            className={`${activeTab === 'secure-logs' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
+                        >
+                            <LockClosedIcon className="h-4 w-4" /> Secure Data Logs
                         </button>
                     </nav>
                 </div>
@@ -428,9 +436,13 @@ const ProfilePage: React.FC = () => {
                 {activeTab === 'requests' && (
                     <DataShareRequests />
                 )}
+
+                {/* Render the new SecureDataLogs component when 'secure-logs' tab is active */}
+                {activeTab === 'secure-logs' && (
+                    <SecureDataLogs />
+                )}
             </div>
 
-            {/* NostrLoginModal for ProfilePage */}
             <NostrLoginModal
                 isOpen={showNostrLoginModal}
                 onClose={closeNostrLoginModal}
