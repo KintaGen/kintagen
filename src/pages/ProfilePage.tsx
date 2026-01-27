@@ -16,31 +16,42 @@ import {
     ShareIcon,
     EnvelopeIcon // Added EnvelopeIcon for the new tab
 } from '@heroicons/react/24/solid';
-import ConnectWalletPrompt from '../components/projects/ConnectWalletPrompt';
 import NostrInfo from '../components/profile/NostrInfo';
 import ProjectGrid from '../components/projects/ProjectGrid';
 import { useNftsByOwner } from '../flow/kintagen-nft';
 import { Helmet } from 'react-helmet-async';
 import { usePageTitle } from '../hooks/usePageTitle';
 import DataShareRequests from '../components/profile/DataShareRequests'; // Import the new component
+import NostrLoginModal from '../components/NostrLoginModal'; // Import NostrLoginModal
 
 const ProfilePage: React.FC = () => {
     usePageTitle('My Profile - KintaGen');
 
     const { user: flowUser } = useFlowCurrentUser();
-    const { pubkey, privKey, profile, connectWithFlow, updateProfile, isLoading: isNostrLoading } = useNostr();
+    const {
+        pubkey,
+        privKey, // Access privKey for EphemeralKeyInfo
+        profile,
+        connectWithFlow,
+        updateProfile,
+        isLoading: isNostrLoading,
+        showNostrLoginModal, // From NostrContext
+        openNostrLoginModal, // From NostrContext
+        closeNostrLoginModal, // From NostrContext
+        connectWithExtension, // From NostrContext
+        generateAndConnectKeys, // From NostrContext
+    } = useNostr();
 
-    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests'>('profile'); // Updated: New 'requests' tab
+    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests'>('profile');
 
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState('');
     const [about, setAbout] = useState('');
     const [flowWalletAddress, setFlowWalletAddress] = useState('');
     const [picture, setPicture] = useState('');
-
     const [links, setLinks] = useState<NostrLink[]>([]);
-
     const [isSaving, setIsSaving] = useState(false);
+    const [isEphemeralLogin, setIsEphemeralLogin] = useState(false); // State to track ephemeral login
 
     const { ownedNfts, isLoading: isLoadingNfts, error: nftsError } = useNftsByOwner(flowUser?.addr);
 
@@ -55,6 +66,13 @@ const ProfilePage: React.FC = () => {
             setFlowWalletAddress(flowUser.addr || '');
         }
     }, [profile, flowUser]);
+
+    // Reset ephemeral login flag if the user logs out or connects differently
+    useEffect(() => {
+        if (!pubkey) {
+            setIsEphemeralLogin(false);
+        }
+    }, [pubkey]);
 
     const addLink = () => {
         setLinks([...links, { title: '', url: '' }]);
@@ -86,19 +104,27 @@ const ProfilePage: React.FC = () => {
         }
     };
 
+    // Handlers for NostrLoginModal
+    const handleLoginWithFlow = async () => {
+        setIsEphemeralLogin(false);
+        await connectWithFlow();
+    };
+
+    const handleLoginWithExtension = async () => {
+        setIsEphemeralLogin(false);
+        await connectWithExtension();
+    };
+
+    const handleGenerateNewKeys = async () => {
+        await generateAndConnectKeys();
+        setIsEphemeralLogin(true);
+    };
+
     const defaultPicture = "https://via.placeholder.com/150/4B5563/D1D5DB?text=No+Pic";
     const currentProfilePicture = picture || profile?.picture || defaultPicture;
 
-    if (!flowUser?.loggedIn) {
-        return (
-            <div className="max-w-7xl mx-auto p-4 md:p-8">
-                 <h1 className="text-3xl font-bold mb-8">My Profile</h1>
-                 <div className="mt-10"><ConnectWalletPrompt /></div>
-            </div>
-        );
-    }
 
-    if (!pubkey) {
+    if ((!pubkey && !flowUser?.loggedIn) || !pubkey) {
         return (
             <div className="max-w-md mx-auto text-center p-8 bg-gray-800 rounded-lg shadow-lg mt-10">
                 <h1 className="text-2xl font-bold mb-4">Initialize Identity</h1>
@@ -107,13 +133,22 @@ const ProfilePage: React.FC = () => {
                     These keys are derived deterministically from your Flow wallet.
                 </p>
                 <button
-                    onClick={connectWithFlow}
+                    onClick={openNostrLoginModal} // Open modal instead of direct connectWithFlow
                     disabled={isNostrLoading}
                     className="bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 flex items-center mx-auto"
                 >
                     {isNostrLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin mr-2"/> : null}
                     {isNostrLoading ? 'Generating Keys...' : 'Initialize Identity'}
                 </button>
+                 <NostrLoginModal
+                    isOpen={showNostrLoginModal}
+                    onClose={closeNostrLoginModal}
+                    onLoginWithFlow={handleLoginWithFlow}
+                    onLoginWithExtension={handleLoginWithExtension}
+                    onGenerateNewKeys={handleGenerateNewKeys}
+                    isConnecting={isNostrLoading}
+                    flowUserLoggedIn={flowUser?.loggedIn || false}
+                />
             </div>
         );
     }
@@ -157,7 +192,7 @@ const ProfilePage: React.FC = () => {
                             Minted NFTs ({ownedNfts.length})
                         </button>
                         <button
-                            onClick={() => setActiveTab('requests')} // New tab for requests
+                            onClick={() => setActiveTab('requests')}
                             className={`${activeTab === 'requests' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
                         >
                             <EnvelopeIcon className="h-4 w-4" /> Data Requests
@@ -390,10 +425,21 @@ const ProfilePage: React.FC = () => {
                     />
                 )}
 
-                {activeTab === 'requests' && ( // New content for the 'requests' tab
+                {activeTab === 'requests' && (
                     <DataShareRequests />
                 )}
             </div>
+
+            {/* NostrLoginModal for ProfilePage */}
+            <NostrLoginModal
+                isOpen={showNostrLoginModal}
+                onClose={closeNostrLoginModal}
+                onLoginWithFlow={handleLoginWithFlow}
+                onLoginWithExtension={handleLoginWithExtension}
+                onGenerateNewKeys={handleGenerateNewKeys}
+                isConnecting={isNostrLoading}
+                flowUserLoggedIn={flowUser?.loggedIn || false}
+            />
         </>
     );
 };

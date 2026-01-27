@@ -95,6 +95,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setPubkey(null);
       setPrivKey(null);
       setProfile(null);
+      setEncryptedMessages([]);
       setFeedbackMessages([]); // Clear feedback messages on Nostr logout
       setCachedProfiles({}); // Clear cached profiles on Nostr logout
     }
