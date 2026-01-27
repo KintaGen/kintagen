@@ -30,7 +30,9 @@ const DataShareRequests: React.FC = () => {
     decryptDM,
     subscribeToDMs,
     getProfileForMessage,
-    encryptedMessages
+    encryptedMessages,
+    pool,
+    RELAYS
   } = useNostr();
   const { shareSecureData } = useSecureLog(true);
 
@@ -61,16 +63,24 @@ const DataShareRequests: React.FC = () => {
 
       const existingRequestIds = new Set(processedRequests.map(req => req.id));
       const existingSharedCIDs = new Set(alreadySharedCIDs); // Take a snapshot of current state
-      console.log(encryptedMessages)
+
       for (const event of encryptedMessages) {
         const hasAppTag = event.tags.some(tag => tag[0] === 'A' && tag[1] === NOSTR_APP_TAG);
         const dataCidTag = event.tags.find(tag => tag[0] === 'C');
         const dataCid = dataCidTag ? dataCidTag[1] : null;
         // 1. Process outgoing shares by us
-        const isOutgoingShare = event.pubkey === currentUserPubkey && // We sent it
-                                event.tags.some(tag => tag[0] === 'O' && tag[1] === NOSTR_SHARING_DATA_OP_TAG);
-        if (isOutgoingShare && dataCid) {
-          const recipientTag = event.tags.find(tag => tag[0] === 'p'); // Recipient of the DM
+        const eventShare = await pool.get(
+          RELAYS,
+          {
+            kinds: [4],
+            authors: [currentUserPubkey],
+            '#I': [dataCid as string],
+            '#O': [NOSTR_SHARING_DATA_OP_TAG]
+          },
+        )
+        console.log(eventShare)
+        if (eventShare) {
+          const recipientTag = eventShare.tags.find(tag => tag[0] === 'p'); // Recipient of the DM
           const recipientPubkey = recipientTag ? recipientTag[1] : null;
 
           if (recipientPubkey) {
@@ -268,13 +278,6 @@ const DataShareRequests: React.FC = () => {
                     <CheckCircleIcon className="h-4 w-4" />
                   )}
                   {isCurrentlySharing ? 'Sharing...' : hasThisDataBeenShared ? 'Shared' : 'Accept'}
-                </button>
-                <button
-                  className="flex items-center gap-1 px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm rounded-md transition-colors"
-                  title="Decline this request (Not yet implemented)"
-                  disabled={isCurrentlySharing || hasThisDataBeenShared} // Also disable if already shared
-                >
-                  <XCircleIcon className="h-4 w-4" /> Decline
                 </button>
               </div>
             </div>

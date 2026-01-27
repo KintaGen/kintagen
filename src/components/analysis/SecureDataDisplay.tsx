@@ -1,7 +1,7 @@
 // components/SecureDataDisplay.tsx
-import React, { useState } from 'react';
+import React, { useState,useEffect } from 'react';
 import { LockClosedIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
-import { useNostr } from '../../contexts/NostrContext'; // Adjust path as needed
+import { useNostr,NOSTR_SHARING_DATA_OP_TAG } from '../../contexts/NostrContext'; // Adjust path as needed
 
 export interface SecureDataInfo {
   nostr_event_id: string; // The event ID of the original data event
@@ -20,9 +20,38 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
   const [permissionRequested, setPermissionRequested] = useState<boolean>(false);
   const [requestStatus, setRequestStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [shared,setShared] = useState<any>()
+  const {
+    pubkey: currentUserPubkey,
+    sendEncryptedDM,
+    openNostrLoginModal,
+    pool,
+    RELAYS,
+  } = useNostr();
 
-  const { pubkey: currentUserPubkey, sendEncryptedDM, openNostrLoginModal } = useNostr();
+  useEffect(() => {
+    checkShared()
+  },[])
 
+  const checkShared = async () => {
+    if(!currentUserPubkey){
+      return;
+    }
+    const eventShare = await pool.get(
+      RELAYS,
+      {
+        kinds: [4],
+        authors: [secureDataInfo.nostr_pubkey],
+        '#p': [currentUserPubkey],
+        '#I': [secureDataInfo.ipfs_cid],
+        '#O': [NOSTR_SHARING_DATA_OP_TAG]
+      },
+    )
+    if(eventShare){
+      setShared(eventShare);
+      setPermissionRequested(true);
+    }
+  }
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -135,9 +164,18 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
             {requestStatus === 'pending' ? 'Requesting Access...' : 'Request Access to Encrypted Data'}
           </button>
         ) : (
-          <p className="text-green-400 font-semibold">
-            Permission request sent! The owner has been notified.
-          </p>
+          <>
+          {
+            shared ? 
+            <p className="text-green-400 font-semibold">
+              Data already shared
+            </p>
+            : 
+            <p className="text-green-400 font-semibold">
+              Permission request sent! The owner has been notified.
+            </p>
+          }
+          </>
         )}
         {errorMessage && (
           <p className="text-red-400 mt-2 text-sm">{errorMessage}</p>
