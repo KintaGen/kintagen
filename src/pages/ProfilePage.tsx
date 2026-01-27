@@ -1,62 +1,61 @@
+// pages/ProfilePage.tsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNostr, type NostrLink } from '../contexts/NostrContext';
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 import { Link } from 'react-router-dom';
-import { 
-    UserCircleIcon, 
-    ArrowPathIcon, 
-    PencilSquareIcon, 
-    CheckCircleIcon, 
-    PlusIcon, 
-    TrashIcon, 
+import {
+    UserCircleIcon,
+    ArrowPathIcon,
+    PencilSquareIcon,
+    CheckCircleIcon,
+    PlusIcon,
+    TrashIcon,
     LinkIcon,
     ArrowTopRightOnSquareIcon,
-    WalletIcon, // Added WalletIcon
-    ShareIcon // Added ShareIcon for the shareable link
+    WalletIcon,
+    ShareIcon,
+    EnvelopeIcon // Added EnvelopeIcon for the new tab
 } from '@heroicons/react/24/solid';
 import ConnectWalletPrompt from '../components/projects/ConnectWalletPrompt';
-import NostrInfo from '../components/profile/NostrInfo'; // Assuming you moved the component here
-import ProjectGrid from '../components/projects/ProjectGrid'; // Import ProjectGrid
-import { useNftsByOwner } from '../flow/kintagen-nft'; // Import the hook to fetch owned NFTs
-import { Helmet } from 'react-helmet-async'; // For page title
-import { usePageTitle } from '../hooks/usePageTitle'; // For page title
+import NostrInfo from '../components/profile/NostrInfo';
+import ProjectGrid from '../components/projects/ProjectGrid';
+import { useNftsByOwner } from '../flow/kintagen-nft';
+import { Helmet } from 'react-helmet-async';
+import { usePageTitle } from '../hooks/usePageTitle';
+import DataShareRequests from '../components/profile/DataShareRequests'; // Import the new component
 
 const ProfilePage: React.FC = () => {
-    usePageTitle('My Profile - KintaGen'); // Set page title
+    usePageTitle('My Profile - KintaGen');
 
     const { user: flowUser } = useFlowCurrentUser();
     const { pubkey, privKey, profile, connectWithFlow, updateProfile, isLoading: isNostrLoading } = useNostr();
 
-    const [activeTab, setActiveTab] = useState<'profile' | 'nfts'>('profile'); // New: Active tab state
+    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests'>('profile'); // Updated: New 'requests' tab
 
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState('');
     const [about, setAbout] = useState('');
     const [flowWalletAddress, setFlowWalletAddress] = useState('');
-    const [picture, setPicture] = useState(''); // New: State for profile picture
-    
+    const [picture, setPicture] = useState('');
+
     const [links, setLinks] = useState<NostrLink[]>([]);
-    
+
     const [isSaving, setIsSaving] = useState(false);
 
-    // Fetch NFTs owned by the current Flow user
     const { ownedNfts, isLoading: isLoadingNfts, error: nftsError } = useNftsByOwner(flowUser?.addr);
 
-    // Sync local state when profile loads
     useEffect(() => {
         if (profile) {
             setName(profile.name || '');
             setAbout(profile.about || '');
             setFlowWalletAddress(profile.flowWalletAddress || flowUser?.addr || '');
-            setPicture(profile.picture || ''); // Set picture from profile
+            setPicture(profile.picture || '');
             setLinks(profile.links || []);
         } else if (flowUser?.loggedIn) {
-            // If Nostr profile not loaded but Flow user is, ensure flowWalletAddress is set
             setFlowWalletAddress(flowUser.addr || '');
         }
     }, [profile, flowUser]);
 
-    // --- Link Management Functions ---
     const addLink = () => {
         setLinks([...links, { title: '', url: '' }]);
     };
@@ -77,9 +76,8 @@ const ProfilePage: React.FC = () => {
         setIsSaving(true);
         try {
             const validLinks = links.filter(l => l.title.trim() !== "" && l.url.trim() !== "");
-            // Pass picture to updateProfile
-            await updateProfile(name, about, validLinks, flowWalletAddress, picture); 
-            setLinks(validLinks); 
+            await updateProfile(name, about, validLinks, flowWalletAddress, picture);
+            setLinks(validLinks);
             setIsEditing(false);
         } catch (e) {
             alert("Failed to save profile.");
@@ -88,10 +86,9 @@ const ProfilePage: React.FC = () => {
         }
     };
 
-    const defaultPicture = "https://via.placeholder.com/150/4B5563/D1D5DB?text=No+Pic"; // A gray placeholder
+    const defaultPicture = "https://via.placeholder.com/150/4B5563/D1D5DB?text=No+Pic";
     const currentProfilePicture = picture || profile?.picture || defaultPicture;
 
-    // 1. Not connected to Flow
     if (!flowUser?.loggedIn) {
         return (
             <div className="max-w-7xl mx-auto p-4 md:p-8">
@@ -101,17 +98,16 @@ const ProfilePage: React.FC = () => {
         );
     }
 
-    // 2. Flow Connected, but not signed into Nostr
     if (!pubkey) {
         return (
             <div className="max-w-md mx-auto text-center p-8 bg-gray-800 rounded-lg shadow-lg mt-10">
                 <h1 className="text-2xl font-bold mb-4">Initialize Identity</h1>
                 <p className="text-gray-400 mb-6">
-                    Sign a message to generate your decentralized identity keys (Nostr). 
+                    Sign a message to generate your decentralized identity keys (Nostr).
                     These keys are derived deterministically from your Flow wallet.
                 </p>
-                <button 
-                    onClick={connectWithFlow} 
+                <button
+                    onClick={connectWithFlow}
                     disabled={isNostrLoading}
                     className="bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 flex items-center mx-auto"
                 >
@@ -121,8 +117,7 @@ const ProfilePage: React.FC = () => {
             </div>
         );
     }
-    
-    // 3. Main Profile UI
+
     return (
         <>
             <Helmet>
@@ -134,8 +129,8 @@ const ProfilePage: React.FC = () => {
                     <h1 className="text-3xl font-bold">My Profile</h1>
                     {pubkey && (
                         <div className="flex items-center gap-2">
-                             <Link 
-                                to={`/profile/${pubkey}`} 
+                             <Link
+                                to={`/profile/${pubkey}`}
                                 className="text-sm text-purple-400 hover:text-purple-300 font-medium flex items-center gap-1"
                             >
                                 <ShareIcon className="h-4 w-4" /> Share Profile
@@ -149,17 +144,23 @@ const ProfilePage: React.FC = () => {
 
                 <div className="border-b border-gray-700 mb-6">
                     <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                        <button 
-                            onClick={() => setActiveTab('profile')} 
+                        <button
+                            onClick={() => setActiveTab('profile')}
                             className={`${activeTab === 'profile' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
                         >
                             Nostr Profile
                         </button>
-                        <button 
-                            onClick={() => setActiveTab('nfts')} 
+                        <button
+                            onClick={() => setActiveTab('nfts')}
                             className={`${activeTab === 'nfts' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
                         >
                             Minted NFTs ({ownedNfts.length})
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('requests')} // New tab for requests
+                            className={`${activeTab === 'requests' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
+                        >
+                            <EnvelopeIcon className="h-4 w-4" /> Data Requests
                         </button>
                     </nav>
                 </div>
@@ -169,31 +170,27 @@ const ProfilePage: React.FC = () => {
                         {/* --- HEADER SECTION --- */}
                         <div className="flex items-start gap-6 mb-8 border-b border-gray-700 pb-8">
                             <div className="flex-shrink-0 relative">
-                                <img 
-                                    src={currentProfilePicture} 
-                                    alt={name || "Nostr User"} 
-                                    className="h-24 w-24 rounded-full object-cover border-2 border-purple-500" 
-                                    onError={(e) => { (e.target as HTMLImageElement).src = defaultPicture; }} // Fallback on error
+                                <img
+                                    src={currentProfilePicture}
+                                    alt={name || "Nostr User"}
+                                    className="h-24 w-24 rounded-full object-cover border-2 border-purple-500"
+                                    onError={(e) => { (e.target as HTMLImageElement).src = defaultPicture; }}
                                 />
                                 {isEditing && (
                                     <label className="absolute -bottom-1 -right-1 bg-purple-600 p-2 rounded-full cursor-pointer hover:bg-purple-500 transition-colors">
                                         <PencilSquareIcon className="h-5 w-5 text-white" />
-                                        <input 
-                                            type="file" 
-                                            className="hidden" 
-                                            accept="image/*" 
-                                            // You'll need to implement actual image upload logic here,
-                                            // likely to IPFS and then setting the CID as the 'picture' URL.
-                                            // For now, this is a placeholder for the UI.
-                                            onChange={(e) => { 
+                                        <input
+                                            type="file"
+                                            className="hidden"
+                                            accept="image/*"
+                                            onChange={(e) => {
                                                 const file = e.target.files?.[0];
                                                 if (file) {
                                                     const reader = new FileReader();
                                                     reader.onloadend = () => {
                                                         setPicture(reader.result as string);
                                                     };
-                                                    reader.readAsDataURL(file); // For local preview
-                                                    // In a real app, you'd upload 'file' to IPFS and set 'picture' to the IPFS URL
+                                                    reader.readAsDataURL(file);
                                                     alert("Image upload functionality not fully implemented. This is a local preview.");
                                                 }
                                             }}
@@ -204,7 +201,7 @@ const ProfilePage: React.FC = () => {
                             <div className="flex-1 w-full">
                                 <label className="text-xs uppercase tracking-wider text-gray-500 font-bold mb-1 block">Display Name</label>
                                 {isEditing ? (
-                                    <input 
+                                    <input
                                         type="text"
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
@@ -248,7 +245,7 @@ const ProfilePage: React.FC = () => {
                                         onChange={(e) => setFlowWalletAddress(e.target.value)}
                                         className="w-full bg-gray-900 p-3 rounded-md border border-gray-600 text-gray-200 focus:ring-2 focus:ring-purple-500 outline-none font-mono"
                                         placeholder="Your Flow wallet address (e.g., 0x123abc...)"
-                                        readOnly // Still read-only as it's typically tied to login
+                                        readOnly
                                     />
                                 ) : (
                                     <p className="text-gray-300 font-mono break-all">
@@ -265,7 +262,7 @@ const ProfilePage: React.FC = () => {
                                     Academic & Social Links
                                 </label>
                                 {isEditing && (
-                                    <button 
+                                    <button
                                         onClick={addLink}
                                         className="text-xs flex items-center gap-1 text-purple-400 hover:text-purple-300 font-bold"
                                     >
@@ -279,7 +276,6 @@ const ProfilePage: React.FC = () => {
                                     {links.map((link, index) => (
                                         <div key={index} className="flex gap-2 items-start animate-fade-in-up">
                                             <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
-                                                {/* Label Input */}
                                                 <div className="md:col-span-1">
                                                     <input
                                                         type="text"
@@ -289,7 +285,6 @@ const ProfilePage: React.FC = () => {
                                                         className="w-full bg-gray-900 border border-gray-600 rounded p-2 text-sm text-white focus:border-purple-500 outline-none"
                                                     />
                                                 </div>
-                                                {/* URL Input */}
                                                 <div className="md:col-span-2">
                                                     <input
                                                         type="text"
@@ -300,7 +295,7 @@ const ProfilePage: React.FC = () => {
                                                     />
                                                 </div>
                                             </div>
-                                            <button 
+                                            <button
                                                 onClick={() => removeLink(index)}
                                                 className="p-2 text-red-400 hover:bg-gray-700 rounded"
                                                 title="Remove Link"
@@ -319,7 +314,7 @@ const ProfilePage: React.FC = () => {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     {profile?.links && profile.links.length > 0 ? (
                                         profile.links.map((link, index) => (
-                                            <a 
+                                            <a
                                                 key={index}
                                                 href={link.url}
                                                 target="_blank"
@@ -344,21 +339,20 @@ const ProfilePage: React.FC = () => {
                         <div className="mt-8 pt-6 border-t border-gray-700 flex justify-end">
                             {isEditing ? (
                                 <div className="flex gap-4">
-                                    <button 
+                                    <button
                                         onClick={() => {
                                             setIsEditing(false);
-                                            // Reset all local states to current profile data
                                             setName(profile?.name || '');
                                             setAbout(profile?.about || '');
                                             setFlowWalletAddress(profile?.flowWalletAddress || flowUser?.addr || '');
                                             setPicture(profile?.picture || '');
                                             setLinks(profile?.links || []);
-                                        }} 
+                                        }}
                                         className="px-4 py-2 text-gray-400 hover:text-white font-medium"
                                     >
                                         Cancel
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={handleSave}
                                         disabled={isSaving}
                                         className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg flex items-center disabled:bg-gray-600 disabled:cursor-not-allowed shadow-lg shadow-green-900/20"
@@ -368,7 +362,7 @@ const ProfilePage: React.FC = () => {
                                     </button>
                                 </div>
                             ) : (
-                                <button 
+                                <button
                                     onClick={() => setIsEditing(true)}
                                     className="bg-gray-700 text-white hover:bg-gray-600 font-semibold py-2 px-6 rounded-lg flex items-center border border-gray-600"
                                 >
@@ -388,12 +382,16 @@ const ProfilePage: React.FC = () => {
                 )}
 
                 {activeTab === 'nfts' && (
-                    <ProjectGrid 
-                        projects={ownedNfts} 
-                        isLoading={isLoadingNfts} 
-                        onCardClick={() => { /* No modal needed for individual projects on this page */ }} 
+                    <ProjectGrid
+                        projects={ownedNfts}
+                        isLoading={isLoadingNfts}
+                        onCardClick={() => { /* No modal needed for individual projects on this page */ }}
                         emptyMessage={flowUser?.addr ? `You haven't minted any NFTs with Flow wallet ${flowUser.addr}.` : "Connect your Flow wallet to view your minted NFTs."}
                     />
+                )}
+
+                {activeTab === 'requests' && ( // New content for the 'requests' tab
+                    <DataShareRequests />
                 )}
             </div>
         </>

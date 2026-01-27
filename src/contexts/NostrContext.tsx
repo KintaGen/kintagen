@@ -52,6 +52,7 @@ interface NostrContextType {
     feedbackMessages: AppNostrEvent[];
     isLoadingFeedbackMessages: boolean;
     sendFeedback: (message: string, groupChatId: string) => Promise<void>;
+    sendEncryptedDM: (recipientPubkey: string, message: string, dataCid: string) => Promise<string | null>; 
     getNostrTime: (timestamp: number) => string;
     getProfileForMessage: (pubkey: string) => NostrProfile | undefined;
     showNostrLoginModal: boolean;
@@ -59,12 +60,16 @@ interface NostrContextType {
     closeNostrLoginModal: () => void;
     logoutFlow: () => Promise<void>;
     logoutNostr: () => void;
+    subscribeToDMs: () => void;
+    decryptDM: (event: AppNostrEvent) => Promise<string | null>; 
+    encryptedMessages: NostrEvent[];
 }
 
 const NostrContext = createContext<NostrContextType | null>(null);
 
-const FEEDBACK_GROUP_CHAT_ID = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd';
-
+export const FEEDBACK_GROUP_CHAT_ID = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd';
+export const NOSTR_APP_TAG = 'kintagendemo-v0';
+export const NOSTR_SHARE_DATA_OP_TAG = `${NOSTR_APP_TAG}-datashare`;
 export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user: flowUser, logOut: flowLogOut } = useFlowCurrentUser(); // Corrected destructuring for flowLogOut
 
@@ -81,6 +86,8 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [showNostrLoginModal, setShowNostrLoginModal] = useState(false);
   const openNostrLoginModal = useCallback(() => setShowNostrLoginModal(true), []);
   const closeNostrLoginModal = useCallback(() => setShowNostrLoginModal(false), []);
+
+  const [encryptedMessages,setEncryptedMessages] = useState<NostrEvent[]>([]);
 
   const logoutNostr = useCallback(() => {
     if (pubkey) { // Only log out if there's an active Nostr pubkey
@@ -255,7 +262,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (flowWalletAddress) {
       tags.push(["f", flowWalletAddress]);
     }
-    tags.push(["A","kintagendemo-v0"]);
+    tags.push(["A",NOSTR_APP_TAG]);
 
     const eventTemplate: Omit<NostrEvent, 'id' | 'sig' | 'pubkey'> = {
       kind: 0,
@@ -343,7 +350,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const events = await pool.querySync(RELAYS, {
         kinds: [0],
-        "#A": ["kintagendemo-v0"],
+        "#A": [NOSTR_APP_TAG],
       });
 
       const profilesMap = new Map<string, NostrProfile>();
@@ -495,6 +502,139 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, [pool]);
 
+
+  // --- Encrypted Direct Messages (NIP-04) ---
+  const sendEncryptedDM = useCallback(async (recipientPubkey: string, message: string, dataCid: string): Promise<string | null> => {
+    if (!pubkey) {
+      throw new Error("You must be logged in to Nostr to send encrypted messages.");
+    }
+    if (!privKey && !window.nostr) {
+      throw new Error("No private key or Nostr extension available to sign and encrypt event.");
+    }
+    if (pubkey === recipientPubkey) {
+        throw new Error("Cannot send an encrypted message to yourself.");
+    }
+
+    try {
+      let encryptedContent: string;
+
+      if (privKey) {
+        const { nip04 } = await import('nostr-tools');
+        encryptedContent = await nip04.encrypt(privKey, recipientPubkey, message);
+      } else if (window.nostr) {
+        encryptedContent = await window.nostr.nip04.encrypt(recipientPubkey, message);
+      } else {
+        throw new Error("Neither private key nor Nostr extension available for encryption.");
+      }
+
+      const eventTemplate: Omit<NostrEvent, 'id' | 'sig' | 'pubkey'> = {
+        kind: 4, // NIP-04 Encrypted Direct Message
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['p', recipientPubkey],
+          ['A',NOSTR_APP_TAG], // Tag App
+          ['O',NOSTR_SHARE_DATA_OP_TAG], // Operation
+          ['C', dataCid] // Data CID
+        ],
+        content: encryptedContent,
+      };
+
+      let signedEvent: NostrEvent;
+      if (privKey) {
+        signedEvent = finalizeEvent({ ...eventTemplate, pubkey }, privKey);
+      } else if (window.nostr) {
+        signedEvent = await window.nostr.signEvent(eventTemplate);
+      } else {
+        throw new Error("Could not sign event.");
+      }
+
+      await Promise.any(pool.publish(RELAYS, signedEvent));
+      return signedEvent.id;
+    } catch (error: any) {
+      console.error("Failed to send encrypted DM:", error);
+      throw new Error(`Failed to send encrypted message: ${error.message || 'Unknown error'}`);
+    }
+  }, [pubkey, privKey, pool]);
+
+  // Cleanup for the entire pool when the provider unmounts
+  useEffect(() => {
+    return () => {
+      pool.close(RELAYS);
+    };
+  }, [pool]);
+  // New: Function to decrypt a NIP-04 DM event
+  const decryptDM = useCallback(async (event: AppNostrEvent): Promise<string | null> => {
+    if (!privKey && !window.nostr) {
+      console.error("Cannot decrypt DM: No private key or Nostr extension available.");
+      return null;
+    }
+    if (event.kind !== 4) {
+      console.warn("Attempted to decrypt non-DM event.");
+      return event.content; // Return as is if not kind 4
+    }
+
+    try {
+      if (privKey) {
+        const { nip04 } = await import('nostr-tools');
+        // Determine the sender's pubkey based on who sent the event
+        const otherPubkey = event.pubkey === pubkey ? event.tags.find(t => t[0] === 'p' && t[1] !== pubkey)?.[1] || event.pubkey : event.pubkey;
+
+        if (!otherPubkey) {
+          console.error("Could not determine other party's pubkey for decryption.");
+          return null;
+        }
+        return await nip04.decrypt(privKey, otherPubkey, event.content);
+      } else if (window.nostr) {
+        return await window.nostr.nip04.decrypt(event.pubkey, event.content);
+      }
+      return null;
+    } catch (error) {
+      console.error("Error decrypting DM:", error);
+      return null;
+    }
+  }, [privKey, pubkey]);
+
+
+  // New: Subscribe to incoming DMs
+  const subscribeToDMs = useCallback(() => {
+    if (!pubkey) {
+      console.warn("Not logged in to Nostr, cannot subscribe to DMs.");
+      return () => {}; // Return a no-op unsubscribe function
+    }
+
+    const filter = {
+      kinds: [4],
+      '#p': [pubkey],
+      '#A': [NOSTR_APP_TAG],
+      '#O': [NOSTR_SHARE_DATA_OP_TAG]
+    };
+
+    pool.subscribe(RELAYS, filter,{
+        onevent: (event: NostrEvent) => {
+          console.log(event)
+          setEncryptedMessages([...encryptedMessages,event]);
+          if (!cachedProfiles[event.pubkey]) {
+            fetchProfileByPubkey(event.pubkey);
+          }
+        }
+      }
+    );
+
+
+
+    return () => {
+      pool.close([]);
+      console.log(`Unsubscribed from DMs for ${pubkey}`);
+    };
+  }, [pubkey, pool, fetchProfileByPubkey, cachedProfiles]);
+
+
+  // Cleanup for the entire pool when the provider unmounts
+  useEffect(() => {
+    return () => {
+      pool.close(RELAYS);
+    };
+  }, [pool]);
   return (
     <NostrContext.Provider value={
       {
@@ -512,6 +652,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         feedbackMessages,
         isLoadingFeedbackMessages,
         sendFeedback,
+        sendEncryptedDM,
         getNostrTime,
         getProfileForMessage,
         showNostrLoginModal,
@@ -519,6 +660,9 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         closeNostrLoginModal,
         logoutFlow,
         logoutNostr,
+        decryptDM,
+        subscribeToDMs,
+        encryptedMessages
       }
     }>
       {children}
