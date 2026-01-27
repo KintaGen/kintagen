@@ -7,7 +7,15 @@ export const fetchAndUnzipIpfsArtifact = async (cid: string) => {
     const zipBlob = await response.blob();
     return await JSZip.loadAsync(zipBlob);
 };
-
+export const fetchIpfsData = async (cid: string): Promise<ArrayBuffer> => { 
+    const gatewayUrl = `https://scarlet-additional-rabbit-987.mypinata.cloud/ipfs/${cid}`;
+    const response = await fetch(gatewayUrl);
+    if (!response.ok) throw new Error(`Failed to fetch data from IPFS. Status: ${response.status}`);
+    
+    // Read the response body as an ArrayBuffer directly
+    const arrayBuffer = await response.arrayBuffer(); 
+    return arrayBuffer;
+};
 export const readZipJson = async (zip: JSZip, filename: string) => {
     const file = zip.file(filename);
     return file ? JSON.parse(await file.async("string")) : undefined;

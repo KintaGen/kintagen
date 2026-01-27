@@ -27,3 +27,28 @@ export async function encryptLargeFile(fileBuffer: ArrayBuffer, conversationKey:
 
     return new Blob([combined], { type: 'application/octet-stream' });
 }
+/**
+ * Decrypts large binary data previously encrypted with AES-GCM (IV prepended).
+ */
+export async function decryptLargeFile(encryptedBlob: ArrayBuffer, conversationKey: Uint8Array): Promise<ArrayBuffer> {
+    // Import the raw conversation key for AES-GCM
+    const key = await window.crypto.subtle.importKey(
+        'raw', 
+        conversationKey, // This is the shared secret
+        { name: 'AES-GCM' }, 
+        false, 
+        ['decrypt']
+    );
+
+    // Extract IV (12 bytes) and ciphertext
+    const iv = new Uint8Array(encryptedBlob.slice(0, 12));
+    const ciphertext = encryptedBlob.slice(12);
+
+    const decryptedContent = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv }, 
+        key, 
+        ciphertext
+    );
+
+    return decryptedContent;
+}

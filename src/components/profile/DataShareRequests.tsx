@@ -1,13 +1,14 @@
 // components/profile/DataShareRequests.tsx
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   useNostr,
-  type AppNostrEvent,
   NOSTR_APP_TAG,
-  NOSTR_SHARE_DATA_OP_TAG
+  NOSTR_SHARE_DATA_OP_TAG, // Tag for incoming requests from others to us
+  NOSTR_SHARING_DATA_OP_TAG // Tag for outgoing shares from us to others
 } from '../../contexts/NostrContext';
-import { EnvelopeIcon, UserCircleIcon, ExclamationCircleIcon, DocumentIcon } from '@heroicons/react/24/outline';
+import { EnvelopeIcon, ExclamationCircleIcon, DocumentIcon } from '@heroicons/react/24/outline';
 import { ArrowPathIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
+import { useSecureLog } from '../../hooks/useSecureLog';
 
 interface DecryptedDM {
   id: string;
@@ -29,17 +30,22 @@ const DataShareRequests: React.FC = () => {
     decryptDM,
     subscribeToDMs,
     getProfileForMessage,
-    encryptedMessages // <--- Now consuming directly from context
+    encryptedMessages
   } = useNostr();
-  console.log(encryptedMessages)
+  const { shareSecureData } = useSecureLog(true);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processedRequests, setProcessedRequests] = useState<DecryptedDM[]>([]);
+  const [sharingRequestId, setSharingRequestId] = useState<string | null>(null);
+  // This set will store strings like "cidValue|recipientPubkey" for quick lookup
+  const [alreadySharedCIDs, setAlreadySharedCIDs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    subscribeToDMs();
-  },[]);
-  // Effect to process the encryptedMessages from the context
+     subscribeToDMs(NOSTR_SHARE_DATA_OP_TAG);
+  }, [subscribeToDMs]);
+
+
   useEffect(() => {
     if (!currentUserPubkey) {
       setProcessedRequests([]);
@@ -48,80 +54,126 @@ const DataShareRequests: React.FC = () => {
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    // Process all encrypted messages to find both incoming requests AND our outgoing shares
+    const processAllMessages = async () => {
+      const newIncomingRequests: DecryptedDM[] = [];
+      const newAlreadySharedCIDs = new Set<string>(); // Temporarily store new shared CIDs found
 
-    const processMessages = async () => {
-      const newProcessed: DecryptedDM[] = [];
+      const existingRequestIds = new Set(processedRequests.map(req => req.id));
+      const existingSharedCIDs = new Set(alreadySharedCIDs); // Take a snapshot of current state
+      console.log(encryptedMessages)
       for (const event of encryptedMessages) {
-        // Ensure we only process relevant DMs if the context somehow provides others
         const hasAppTag = event.tags.some(tag => tag[0] === 'A' && tag[1] === NOSTR_APP_TAG);
-        const hasOpTag = event.tags.some(tag => tag[0] === 'O' && tag[1] === NOSTR_SHARE_DATA_OP_TAG);
-
-        if (!hasAppTag || !hasOpTag) {
-          continue; // Skip irrelevant messages
-        }
-
-        // Avoid reprocessing already processed messages, though `encryptedMessages` should ideally not contain duplicates
-        if (processedRequests.some(req => req.id === event.id)) {
-            continue;
-        }
-
         const dataCidTag = event.tags.find(tag => tag[0] === 'C');
         const dataCid = dataCidTag ? dataCidTag[1] : null;
+        // 1. Process outgoing shares by us
+        const isOutgoingShare = event.pubkey === currentUserPubkey && // We sent it
+                                event.tags.some(tag => tag[0] === 'O' && tag[1] === NOSTR_SHARING_DATA_OP_TAG);
+        if (isOutgoingShare && dataCid) {
+          const recipientTag = event.tags.find(tag => tag[0] === 'p'); // Recipient of the DM
+          const recipientPubkey = recipientTag ? recipientTag[1] : null;
 
-        let decryptedMessage: string | null = null;
-        let decryptionError: string | undefined;
-
-        try {
-          decryptedMessage = await decryptDM(event);
-        } catch (e: any) {
-          console.error("Failed to decrypt incoming DM:", e);
-          decryptionError = e.message || "Failed to decrypt message.";
+          if (recipientPubkey) {
+            const key = `${dataCid}|${recipientPubkey}`;
+            if (!existingSharedCIDs.has(key)) {
+                newAlreadySharedCIDs.add(key);
+            }
+          }
         }
 
-        // getProfileForMessage will return what's in cache or undefined and trigger a fetch
-        const senderProfile = getProfileForMessage(event.pubkey);
+        // 2. Process incoming share requests to us
+        const isIncomingRequest = event.pubkey !== currentUserPubkey && // Someone else sent it to us
+                                  event.tags.some(tag => tag[0] === 'O' && tag[1] === NOSTR_SHARE_DATA_OP_TAG);
+        if (isIncomingRequest && !existingRequestIds.has(event.id)) {
+          let decryptedMessage: string | null = null;
+          let decryptionError: string | undefined;
 
-        newProcessed.push({
-          id: event.id,
-          senderPubkey: event.pubkey,
-          recipientPubkey: currentUserPubkey,
-          message: decryptedMessage || event.content,
-          dataCid: dataCid,
-          timestamp: event.created_at,
-          decryptionError: decryptionError,
-          senderProfile: senderProfile || undefined,
+          try {
+            decryptedMessage = await decryptDM(event);
+          } catch (e: any) {
+            console.error("Failed to decrypt incoming DM:", e);
+            decryptionError = e.message || "Failed to decrypt message.";
+          }
+
+          const senderProfile = getProfileForMessage(event.pubkey);
+
+          newIncomingRequests.push({
+            id: event.id,
+            senderPubkey: event.pubkey,
+            recipientPubkey: currentUserPubkey, // We are the recipient of this request
+            message: decryptedMessage || event.content,
+            dataCid: dataCid,
+            timestamp: event.created_at,
+            decryptionError: decryptionError,
+            senderProfile: senderProfile || undefined,
+          });
+        }
+      }
+
+      // Update processed requests
+      if (newIncomingRequests.length > 0) {
+        setProcessedRequests(prev => {
+          const combined = [...prev, ...newIncomingRequests];
+          const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
+          return unique.sort((a, b) => b.timestamp - a.timestamp);
         });
       }
 
-      setProcessedRequests(prev => {
-        // Combine previous processed requests with new ones, filter duplicates, and sort
-        const combined = [...prev, ...newProcessed];
-        const unique = Array.from(new Map(combined.map(item => [item.id, item])).values());
-        return unique.sort((a, b) => b.timestamp - a.timestamp);
-      });
+      // Update already shared CIDs set
+      if (newAlreadySharedCIDs.size > 0) {
+        setAlreadySharedCIDs(prev => new Set([...Array.from(prev), ...Array.from(newAlreadySharedCIDs)]));
+      }
+
       setLoading(false);
     };
 
-    const timeoutId = setTimeout(() => {
-        if (encryptedMessages.length === 0) { // If no messages after timeout, stop loading
-            setLoading(false);
-        }
-    }, 3000); // 3 seconds timeout
-
-    // Only process if encryptedMessages actually contains new events
-    if (encryptedMessages.length > 0 || !loading) { // Run immediately if messages exist or if not loading (for the initial empty state)
-        processMessages();
+    // Trigger processing
+    if (encryptedMessages.length > 0 || !loading) {
+      processAllMessages();
     } else if (encryptedMessages.length === 0 && loading) {
-        // If no messages at all and still loading, rely on timeout
+        // If no messages at all and still loading, rely on timeout below
     }
 
+    // Timeout for initial empty state
+    const loadingTimeout = setTimeout(() => {
+      if (loading && encryptedMessages.length === 0) {
+        setLoading(false);
+      }
+    }, 3000); // 3 seconds timeout
 
     return () => {
-        clearTimeout(timeoutId);
+      clearTimeout(loadingTimeout);
     };
-  }, [encryptedMessages, currentUserPubkey, decryptDM, getProfileForMessage]); // Dependencies for processing messages
+  }, [encryptedMessages, currentUserPubkey, decryptDM, getProfileForMessage, alreadySharedCIDs]);
+
+
+  const handleAcceptRequest = useCallback(async (request: DecryptedDM) => {
+    if (!request.dataCid) {
+      console.error("Cannot share: No data CID found in the request.");
+      return;
+    }
+
+    setSharingRequestId(request.id);
+
+    try {
+      console.log(`Sharing data with ${request.senderPubkey}...`);
+      const { sharedCid, dmEventId } = await shareSecureData(
+        request.dataCid,
+        request.senderPubkey,
+        `kintagen-shared-data-${request.id.substring(0, 6)}.enc`
+      );
+
+      // Manually add to alreadySharedCIDs so the UI updates immediately
+      setAlreadySharedCIDs(prev => new Set(prev).add(`${request.dataCid}|${request.senderPubkey}`));
+
+      console.log("Data shared successfully! New CID:", sharedCid, "DM Event ID:", dmEventId);
+
+    } catch (err: any) {
+      console.error("Failed to share data:", err);
+    } finally {
+      setSharingRequestId(null);
+    }
+  }, [shareSecureData]);
 
   const defaultProfilePicture = "https://via.placeholder.com/40/4B5563/D1D5DB?text=👤";
 
@@ -153,8 +205,10 @@ const DataShareRequests: React.FC = () => {
 
       <div className="space-y-4">
         {processedRequests.map((request) => {
-          // Dynamically get the latest profile from the cache on each render
           const currentSenderProfile = getProfileForMessage(request.senderPubkey);
+          const isCurrentlySharing = sharingRequestId === request.id;
+          const hasThisDataBeenShared = request.dataCid ? alreadySharedCIDs.has(`${request.dataCid}|${request.senderPubkey}`) : false;
+          const isDisabled = !request.dataCid || isCurrentlySharing || hasThisDataBeenShared;
 
           return (
             <div key={request.id} className="bg-gray-900 p-4 rounded-md border border-gray-700">
@@ -194,18 +248,31 @@ const DataShareRequests: React.FC = () => {
               )}
 
               <div className="flex justify-end gap-3 mt-4 border-t border-gray-700 pt-3">
-                {/* These buttons are placeholders for future implementation */}
                 <button
-                  className="flex items-center gap-1 px-4 py-2 bg-green-700 hover:bg-green-600 text-white text-sm rounded-md transition-colors"
-                  title="Accept this request (Not yet implemented)"
-                  disabled
+                  className={`flex items-center gap-1 px-4 py-2 text-sm rounded-md transition-colors
+                    ${hasThisDataBeenShared
+                      ? 'bg-green-800 text-white cursor-not-allowed' // Already shared style
+                      : isCurrentlySharing
+                        ? 'bg-blue-700 text-white cursor-not-allowed' // Sharing in progress style
+                        : 'bg-green-700 hover:bg-green-600 text-white' // Accept button style
+                    }`}
+                  onClick={() => handleAcceptRequest(request)}
+                  disabled={isDisabled}
+                  title={!request.dataCid ? "No data CID to share" : hasThisDataBeenShared ? "Data already shared" : isCurrentlySharing ? "Sharing in progress..." : "Accept this request"}
                 >
-                  <CheckCircleIcon className="h-4 w-4" /> Accept
+                  {isCurrentlySharing ? (
+                    <ArrowPathIcon className="h-4 w-4 animate-spin" />
+                  ) : hasThisDataBeenShared ? (
+                    <CheckCircleIcon className="h-4 w-4" />
+                  ) : (
+                    <CheckCircleIcon className="h-4 w-4" />
+                  )}
+                  {isCurrentlySharing ? 'Sharing...' : hasThisDataBeenShared ? 'Shared' : 'Accept'}
                 </button>
                 <button
                   className="flex items-center gap-1 px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-sm rounded-md transition-colors"
                   title="Decline this request (Not yet implemented)"
-                  disabled
+                  disabled={isCurrentlySharing || hasThisDataBeenShared} // Also disable if already shared
                 >
                   <XCircleIcon className="h-4 w-4" /> Decline
                 </button>

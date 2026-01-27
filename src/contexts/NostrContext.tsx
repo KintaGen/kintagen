@@ -52,7 +52,7 @@ interface NostrContextType {
     feedbackMessages: AppNostrEvent[];
     isLoadingFeedbackMessages: boolean;
     sendFeedback: (message: string, groupChatId: string) => Promise<void>;
-    sendEncryptedDM: (recipientPubkey: string, message: string, dataCid: string) => Promise<string | null>; 
+    sendEncryptedDM: (recipientPubkey: string, message: string, dataCid: string,sharing: boolean | null, originalCID: string | null) => Promise<string | null>; 
     getNostrTime: (timestamp: number) => string;
     getProfileForMessage: (pubkey: string) => NostrProfile | undefined;
     showNostrLoginModal: boolean;
@@ -72,6 +72,7 @@ const NostrContext = createContext<NostrContextType | null>(null);
 export const FEEDBACK_GROUP_CHAT_ID = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd';
 export const NOSTR_APP_TAG = 'kintagendemo-v0';
 export const NOSTR_SHARE_DATA_OP_TAG = `${NOSTR_APP_TAG}-datashare`;
+export const NOSTR_SHARING_DATA_OP_TAG = `${NOSTR_APP_TAG}-datasharing`
 export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user: flowUser, logOut: flowLogOut } = useFlowCurrentUser(); // Corrected destructuring for flowLogOut
 
@@ -89,7 +90,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const openNostrLoginModal = useCallback(() => setShowNostrLoginModal(true), []);
   const closeNostrLoginModal = useCallback(() => setShowNostrLoginModal(false), []);
 
-  const [encryptedMessages,setEncryptedMessages] = useState<NostrEvent[]>([]);
+  const [encryptedMessages,setEncryptedMessages] = useState([]);
 
   const logoutNostr = useCallback(() => {
     if (pubkey) { // Only log out if there's an active Nostr pubkey
@@ -507,7 +508,13 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 
   // --- Encrypted Direct Messages (NIP-04) ---
-  const sendEncryptedDM = useCallback(async (recipientPubkey: string, message: string, dataCid: string): Promise<string | null> => {
+  const sendEncryptedDM = useCallback(async (
+    recipientPubkey: string,
+    message: string,
+    dataCid: string,
+    sharing: boolean | null,
+    originalCID: string | null
+  ): Promise<string | null> => {
     if (!pubkey) {
       throw new Error("You must be logged in to Nostr to send encrypted messages.");
     }
@@ -529,16 +536,26 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         throw new Error("Neither private key nor Nostr extension available for encryption.");
       }
-
+      let OP_TAG;
+      
+      if(!sharing){
+        OP_TAG = NOSTR_SHARE_DATA_OP_TAG
+      } else {
+        OP_TAG = NOSTR_SHARING_DATA_OP_TAG
+      }
+      const tags = [
+        ['p', recipientPubkey],
+        ['A',NOSTR_APP_TAG], // Tag App
+        ['O',OP_TAG], // Operation
+        ['C', dataCid] // Data CID
+      ]
+      if(sharing){
+        tags.push(['I',originalCID as string]);
+      }
       const eventTemplate: Omit<NostrEvent, 'id' | 'sig' | 'pubkey'> = {
         kind: 4, // NIP-04 Encrypted Direct Message
         created_at: Math.floor(Date.now() / 1000),
-        tags: [
-          ['p', recipientPubkey],
-          ['A',NOSTR_APP_TAG], // Tag App
-          ['O',NOSTR_SHARE_DATA_OP_TAG], // Operation
-          ['C', dataCid] // Data CID
-        ],
+        tags: tags,
         content: encryptedContent,
       };
 
@@ -599,23 +616,33 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 
   // New: Subscribe to incoming DMs
-  const subscribeToDMs = useCallback(async () => {
+  const subscribeToDMs = useCallback(async (OP_TAG: string,originalCID: string | null) => {
     if (!pubkey) {
       console.warn("Not logged in to Nostr, cannot subscribe to DMs.");
       return () => {}; // Return a no-op unsubscribe function
     }
-
-    const filter = {
-      kinds: [4],
-      '#p': [pubkey],
-      '#A': [NOSTR_APP_TAG],
-      '#O': [NOSTR_SHARE_DATA_OP_TAG]
-    };
+    let filter = {};
+    if(originalCID){
+      filter = {
+        kinds: [4],
+        authors: [pubkey],
+        '#A': [NOSTR_APP_TAG],
+        '#O': [OP_TAG],
+        '#I': [originalCID]
+      };
+    } else {
+      filter = {
+        kinds: [4],
+        '#p': [pubkey],
+        '#A': [NOSTR_APP_TAG],
+        '#O': [OP_TAG]
+      };
+    }
 
     const events = await pool.querySync(RELAYS, filter);
+    setEncryptedMessages(events);
 
     for(const event of events){
-      setEncryptedMessages([...encryptedMessages,event]);
 
       if (!cachedProfiles[event.pubkey]) {
         fetchProfileByPubkey(event.pubkey);

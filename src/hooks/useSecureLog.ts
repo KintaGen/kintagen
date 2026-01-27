@@ -1,15 +1,12 @@
 // src/hooks/useSecureLog.tsx
 import { useState, useEffect } from 'react';
-import { useNostr } from '../contexts/NostrContext'; // Import useNostr
+import { useNostr } from '../contexts/NostrContext';
 import { useLighthouse } from './useLighthouse';
-import { encryptLargeFile } from '../utils/encryption';
+import { encryptLargeFile, decryptLargeFile } from '../utils/encryption';
+import { fetchIpfsData } from '../utils/ipfsHelpers';
 import * as nip44 from 'nostr-tools/nip44';
 import { finalizeEvent } from 'nostr-tools/pure';
-// We no longer need to import SimplePool directly here
-// import { SimplePool } from 'nostr-tools/pool';
 
-// RELAYS will now come from NostrContext, but we can keep it local for specific needs if different
-// const RELAYS = ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol'];
 const KINTAGEN_APP_DATA_TAG = 'kintagen_science_data';
 
 export interface SecureDataMeta {
@@ -37,41 +34,36 @@ export interface StoredSecureData {
 }
 
 export const useSecureLog = (hasInputData: boolean) => {
-    // Destructure `pool` and `RELAYS` from useNostr context
-    const { pubkey, privKey, pool, RELAYS } = useNostr(); // Assuming RELAYS is also exposed from NostrContext
+    const { pubkey, privKey, pool, RELAYS, sendEncryptedDM } = useNostr();
     const { uploadFile } = useLighthouse();
     const [includeSecureData, setIncludeSecureData] = useState(true);
 
-    // Auto-enable if connected
     useEffect(() => {
         if (pubkey && privKey) setIncludeSecureData(true);
     }, [pubkey, privKey]);
 
-    /**
-     * Handles the full secure flow: Login -> Encrypt -> Upload -> Publish Nostr Event
-     */
     const processSecureLog = async (
-        dataBuffer: ArrayBuffer, 
-        inputHash: string, 
+        dataBuffer: ArrayBuffer,
+        inputHash: string,
         project: { name: string; nft_id: string },
         dataType: 'ld50' | 'nmr' | 'gcms'
     ): Promise<SecureDataMeta | null> => {
-        
+
         if (!includeSecureData || !hasInputData) return null;
 
         let userPubkey = pubkey;
         let userPrivKey = privKey;
 
-        if (!userPubkey || !userPrivKey) {         
+        if (!userPubkey || !userPrivKey) {
             console.warn("User not logged in or private key not available for secure logging.");
             return null;
         }
 
         console.log("🔒 Encrypting Binary Data with Nostr Keys (AES-GCM)...");
 
-        // 2. Encrypt
-        const conversationKey = nip44.v2.utils.getConversationKey(userPrivKey, userPubkey);
-        const encryptedBlob = await encryptLargeFile(dataBuffer, conversationKey);
+        // 2. Encrypt with owner's key
+        const ownerConversationKey = nip44.v2.utils.getConversationKey(userPrivKey, userPubkey);
+        const encryptedBlob = await encryptLargeFile(dataBuffer, ownerConversationKey);
 
         // 3. Upload to IPFS
         const encFile = new File([encryptedBlob], `${dataType}_data_${inputHash.substring(0, 6)}.enc`);
@@ -81,17 +73,16 @@ export const useSecureLog = (hasInputData: boolean) => {
 
         // 4. Update Nostr App Data (Kind 30078)
         console.log("📝 Updating Nostr App Data...");
-        
+
         let currentData: StoredSecureData = {};
         try {
-            // Use the shared pool instance
-            const existingEvent = await pool.get(RELAYS, { 
-                kinds: [30078], 
-                authors: [userPubkey], 
-                '#d': [KINTAGEN_APP_DATA_TAG] 
+            const existingEvent = await pool.get(RELAYS, {
+                kinds: [30078],
+                authors: [userPubkey],
+                '#d': [KINTAGEN_APP_DATA_TAG]
             });
             if (existingEvent) currentData = JSON.parse(existingEvent.content);
-        } catch (e) { 
+        } catch (e) {
             console.warn("Could not retrieve or parse existing app data, starting fresh.", e);
         }
 
@@ -113,8 +104,6 @@ export const useSecureLog = (hasInputData: boolean) => {
 
         const signedEvent = finalizeEvent(eventTemplate, userPrivKey);
         await Promise.any(pool.publish(RELAYS, signedEvent));
-        // No need to call pool.close() here as the pool is managed by NostrContext
-        // and should remain open for other parts of the application.
 
         return {
             ipfs_cid: encCid,
@@ -130,9 +119,6 @@ export const useSecureLog = (hasInputData: boolean) => {
         };
     };
 
-    /**
-     * Retrieves all secure data uploaded by a specific public key.
-     */
     const getAllSecureDataForPubkey = async (targetPubkey: string): Promise<SecureDataMeta[]> => {
         if (!targetPubkey) {
             console.error("No public key provided to retrieve secure data.");
@@ -143,7 +129,6 @@ export const useSecureLog = (hasInputData: boolean) => {
         let allSecureData: SecureDataMeta[] = [];
 
         try {
-            // Use the shared pool instance
             const events = await pool.querySync(RELAYS, {
                 kinds: [30078],
                 authors: [targetPubkey],
@@ -167,12 +152,12 @@ export const useSecureLog = (hasInputData: boolean) => {
                     console.error(`Error parsing secure data content from event ${event.id}:`, e);
                 }
             }
-            
+
             for (const inputHash in aggregatedData) {
                 const dataEntry = aggregatedData[inputHash];
                 allSecureData.push({
                     ipfs_cid: dataEntry.ipfs_cid,
-                    nostr_event_id: events[0]?.id || 'N/A', // This might not be precise, but points to one relevant event
+                    nostr_event_id: events[0]?.id || 'N/A',
                     nostr_pubkey: targetPubkey,
                     encryption_algo: dataEntry.algo,
                     storage_type: "kind:30078",
@@ -193,11 +178,130 @@ export const useSecureLog = (hasInputData: boolean) => {
         return allSecureData;
     };
 
+    /**
+     * Handles the sharing of secure data with a recipient.
+     * @param originalCid The IPFS CID of the original encrypted data.
+     * @param recipientPubkey The Nostr public key of the user to share the data with.
+     * @param fileName The original filename or a descriptive name for the re-encrypted file.
+     * @returns The IPFS CID of the newly encrypted file and the Nostr event ID of the DM, or null if failure.
+     */
+    const shareSecureData = async (
+        originalCid: string,
+        recipientPubkey: string,
+        fileName: string = "shared_data.enc"
+    ): Promise<{ sharedCid: string; dmEventId: string } | null> => {
+        if (!pubkey || !privKey) {
+            console.error("Owner not logged in or private key not available to share data.");
+            throw new Error("You must be logged in with your private key to share data.");
+        }
+        if (pubkey === recipientPubkey) {
+            throw new Error("Cannot share data with yourself directly via this method.");
+        }
+
+        try {
+            console.log(`🔑 Decrypting data from original CID: ${originalCid}`);
+            // 1. Fetch original encrypted data from IPFS
+            const encryptedDataBuffer = await fetchIpfsData(originalCid);
+
+            // 2. Decrypt the data using the owner's keys (owner -> owner conversation key)
+            const ownerConversationKey = nip44.v2.utils.getConversationKey(privKey, pubkey);
+            const decryptedDataBuffer = await decryptLargeFile(encryptedDataBuffer, ownerConversationKey);
+            console.log("🔓 Data decrypted successfully.");
+
+            // 3. Re-encrypt the decrypted data using owner's privKey and recipient's pubkey
+            console.log(`🔒 Re-encrypting data for recipient: ${recipientPubkey}`);
+            const recipientConversationKey = nip44.v2.utils.getConversationKey(privKey, recipientPubkey);
+            const reEncryptedBlob = await encryptLargeFile(decryptedDataBuffer, recipientConversationKey);
+            console.log("✨ Data re-encrypted for recipient.");
+
+            // 4. Upload the newly encrypted data to IPFS
+            const reEncryptedFile = new File([reEncryptedBlob], fileName);
+            const sharedCid = await uploadFile(reEncryptedFile);
+
+            if (!sharedCid) {
+                throw new Error("Failed to upload re-encrypted data to IPFS.");
+            }
+            console.log(`⬆️ Re-encrypted data uploaded to new CID: ${sharedCid}`);
+
+            // 5. Send an encrypted Nostr DM to the recipient
+            const dmMessage = `Here is the secure data you requested. You can access it via IPFS CID: ${sharedCid}`;
+            const dmEventId = await sendEncryptedDM(recipientPubkey, dmMessage, sharedCid, true, originalCid);
+
+            if (!dmEventId) {
+                throw new Error("Failed to send encrypted DM to recipient.");
+            }
+            console.log(`✉️ Encrypted DM sent to ${recipientPubkey} with event ID: ${dmEventId}`);
+
+            return { sharedCid, dmEventId };
+
+        } catch (error) {
+            console.error("Error sharing secure data:", error);
+            throw error;
+        }
+    };
+
+    /**
+     * Decrypts shared data received from another user and allows downloading it.
+     * @param cid The IPFS CID of the encrypted shared data.
+     * @param senderPubkey The public key of the user who shared the data with us.
+     * @param suggestedFileName A suggested filename for the downloaded file.
+     * @returns Promise that resolves when the file is downloaded, or rejects on error.
+     */
+    const decryptAndDownloadSharedData = async (
+        cid: string,
+        senderPubkey: string,
+        suggestedFileName: string = "decrypted_shared_data.bin"
+    ): Promise<void> => {
+        if (!pubkey || !privKey) {
+            console.error("User not logged in or private key not available to decrypt data.");
+            throw new Error("You must be logged in with your private key to decrypt data.");
+        }
+        if (pubkey === senderPubkey) {
+             console.warn("Attempting to decrypt data sent by self. This method expects data shared by another party.");
+             // Potentially handle this case differently or still allow if it was re-encrypted for self.
+        }
+
+        try {
+            console.log(`⬇️ Fetching encrypted shared data from CID: ${cid}`);
+            // 1. Fetch the encrypted data from IPFS
+            const encryptedDataBuffer = await fetchIpfsData(cid);
+
+            console.log(`🔑 Decrypting shared data using conversation key with ${senderPubkey}`);
+            // 2. Decrypt the data using our private key and the sender's public key
+            // This is the conversation key used to decrypt messages *from* the sender.
+            const conversationKey = nip44.v2.utils.getConversationKey(privKey, senderPubkey);
+            const decryptedDataBuffer = await decryptLargeFile(encryptedDataBuffer, conversationKey);
+            console.log("🔓 Shared data decrypted successfully.");
+
+            // 3. Create a Blob from the decrypted ArrayBuffer
+            const blob = new Blob([decryptedDataBuffer], { type: 'application/octet-stream' });
+
+            // 4. Create a download link and trigger the download
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = suggestedFileName;
+            document.body.appendChild(a); // Append to body to make it clickable
+            a.click(); // Programmatically click the link to trigger download
+            document.body.removeChild(a); // Clean up the DOM
+            URL.revokeObjectURL(url); // Revoke the object URL to free up memory
+
+            console.log(`✅ Decrypted data downloaded as ${suggestedFileName}`);
+
+        } catch (error) {
+            console.error("Error decrypting and downloading shared data:", error);
+            throw error; // Re-throw to be handled by the calling component
+        }
+    };
+
+
     return {
         includeSecureData,
         setIncludeSecureData,
         processSecureLog,
         getAllSecureDataForPubkey,
+        shareSecureData,
+        decryptAndDownloadSharedData, // Expose the new decryption and download method
         hasNostrIdentity: !!pubkey
     };
 };
