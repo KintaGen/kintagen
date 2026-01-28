@@ -26,26 +26,22 @@ import { usePageTitle } from '../hooks/usePageTitle';
 import DataShareRequests from '../components/profile/DataShareRequests';
 import DataSharedRequests from '../components/profile/DataSharedRequests';
 
-import NostrLoginModal from '../components/NostrLoginModal';
+import ConnectWalletPrompt from '../components/projects/ConnectWalletPrompt';
 import SecureDataLogs from '../components/profile/SecureDataLogs'; // <--- IMPORT THE NEW COMPONENT
 
 const ProfilePage: React.FC = () => {
     usePageTitle('My Profile - KintaGen');
 
     const { user: flowUser } = useFlowCurrentUser();
-    const {
+    const { 
         pubkey,
         privKey,
         profile,
         connectWithFlow,
         updateProfile,
-        isLoading: isNostrLoading,
-        showNostrLoginModal,
-        openNostrLoginModal,
-        closeNostrLoginModal,
-        connectWithExtension,
-        generateAndConnectKeys,
+        isLoading: isNostrLoading
     } = useNostr();
+
 
     // Add 'secure-logs' to the activeTab state
     const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests' | 'secure-logs' | 'data-shared'>('profile');
@@ -57,7 +53,6 @@ const ProfilePage: React.FC = () => {
     const [picture, setPicture] = useState('');
     const [links, setLinks] = useState<NostrLink[]>([]);
     const [isSaving, setIsSaving] = useState(false);
-    const [isEphemeralLogin, setIsEphemeralLogin] = useState(false);
 
     const { ownedNfts, isLoading: isLoadingNfts, error: nftsError } = useNftsByOwner(flowUser?.addr);
 
@@ -73,11 +68,6 @@ const ProfilePage: React.FC = () => {
         }
     }, [profile, flowUser]);
 
-    useEffect(() => {
-        if (!pubkey) {
-            setIsEphemeralLogin(false);
-        }
-    }, [pubkey]);
 
     const addLink = () => {
         setLinks([...links, { title: '', url: '' }]);
@@ -109,26 +99,21 @@ const ProfilePage: React.FC = () => {
         }
     };
 
-    const handleLoginWithFlow = async () => {
-        setIsEphemeralLogin(false);
-        await connectWithFlow();
-    };
-
-    const handleLoginWithExtension = async () => {
-        setIsEphemeralLogin(false);
-        await connectWithExtension();
-    };
-
-    const handleGenerateNewKeys = async () => {
-        await generateAndConnectKeys();
-        setIsEphemeralLogin(true);
-    };
 
     const defaultPicture = "https://via.placeholder.com/150/4B5563/D1D5DB?text=No+Pic";
     const currentProfilePicture = picture || profile?.picture || defaultPicture;
 
 
-    if ((!pubkey && !flowUser?.loggedIn) || !pubkey) {
+    if (!flowUser?.loggedIn) {
+        return (
+            <div className="max-w-7xl mx-auto p-4 md:p-8">
+                 <h1 className="text-3xl font-bold mb-8">My Profile</h1>
+                 <div className="mt-10"><ConnectWalletPrompt /></div>
+            </div>
+        );
+    }
+
+    if (!pubkey) {
         return (
             <div className="max-w-md mx-auto text-center p-8 bg-gray-800 rounded-lg shadow-lg mt-10">
                 <h1 className="text-2xl font-bold mb-4">Initialize Identity</h1>
@@ -137,22 +122,13 @@ const ProfilePage: React.FC = () => {
                     These keys are derived deterministically from your Flow wallet.
                 </p>
                 <button
-                    onClick={openNostrLoginModal}
+                    onClick={connectWithFlow}
                     disabled={isNostrLoading}
                     className="bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 flex items-center mx-auto"
                 >
                     {isNostrLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin mr-2"/> : null}
                     {isNostrLoading ? 'Generating Keys...' : 'Initialize Identity'}
                 </button>
-                 <NostrLoginModal
-                    isOpen={showNostrLoginModal}
-                    onClose={closeNostrLoginModal}
-                    onLoginWithFlow={handleLoginWithFlow}
-                    onLoginWithExtension={handleLoginWithExtension}
-                    onGenerateNewKeys={handleGenerateNewKeys}
-                    isConnecting={isNostrLoading}
-                    flowUserLoggedIn={flowUser?.loggedIn || false}
-                />
             </div>
         );
     }
@@ -456,15 +432,6 @@ const ProfilePage: React.FC = () => {
                 )}
             </div>
 
-            <NostrLoginModal
-                isOpen={showNostrLoginModal}
-                onClose={closeNostrLoginModal}
-                onLoginWithFlow={handleLoginWithFlow}
-                onLoginWithExtension={handleLoginWithExtension}
-                onGenerateNewKeys={handleGenerateNewKeys}
-                isConnecting={isNostrLoading}
-                flowUserLoggedIn={flowUser?.loggedIn || false}
-            />
         </>
     );
 };
