@@ -4,7 +4,7 @@ import { useNostr, type NostrLink } from '../contexts/NostrContext';
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 import { Link } from 'react-router-dom';
 import {
-    UserCircleIcon,
+    PaperAirplaneIcon,
     ArrowPathIcon,
     PencilSquareIcon,
     CheckCircleIcon,
@@ -25,6 +25,7 @@ import { Helmet } from 'react-helmet-async';
 import { usePageTitle } from '../hooks/usePageTitle';
 import DataShareRequests from '../components/profile/DataShareRequests';
 import DataSharedRequests from '../components/profile/DataSharedRequests';
+import DataRequestedStatus from '../components/profile/DataRequestedStatus';
 
 import ConnectWalletPrompt from '../components/projects/ConnectWalletPrompt';
 import SecureDataLogs from '../components/profile/SecureDataLogs'; // <--- IMPORT THE NEW COMPONENT
@@ -44,7 +45,7 @@ const ProfilePage: React.FC = () => {
 
 
     // Add 'secure-logs' to the activeTab state
-    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests' | 'secure-logs' | 'data-shared'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests' | 'secure-logs' | 'data-shared' | 'data-requested'>('profile');
 
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState('');
@@ -189,6 +190,12 @@ const ProfilePage: React.FC = () => {
                             className={`${activeTab === 'data-shared' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
                         >
                             <LockOpenIcon className="h-4 w-4" /> Data Shared
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('data-requested')}
+                            className={`${activeTab === 'data-requested' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
+                        >
+                            <PaperAirplaneIcon className="h-4 w-4" /> Data Requested
                         </button>
                     </nav>
                 </div>
@@ -429,6 +436,9 @@ const ProfilePage: React.FC = () => {
 
                 {activeTab === 'data-shared' && (
                     <DataSharedRequests />
+                )}
+                {activeTab === 'data-requested' && (
+                    <DataRequestedStatus />
                 )}
             </div>
 

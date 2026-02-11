@@ -1,7 +1,15 @@
 // components/SecureDataDisplay.tsx
-import React, { useState,useEffect } from 'react';
-import { LockClosedIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
-import { useNostr,NOSTR_SHARING_DATA_OP_TAG } from '../../contexts/NostrContext'; // Adjust path as needed
+import React, { useState, useEffect } from 'react';
+import {
+  LockClosedIcon,
+  DocumentDuplicateIcon,
+  ArrowPathIcon,     // For loading state
+  ArrowDownTrayIcon, // For download button
+  CheckCircleIcon,   // For downloaded state
+  ExclamationCircleIcon // For error state
+} from '@heroicons/react/24/outline';
+import { useNostr, NOSTR_SHARING_DATA_OP_TAG } from '../../contexts/NostrContext';
+import { useSecureLog } from '../../hooks/useSecureLog'; // Import useSecureLog
 
 export interface SecureDataInfo {
   nostr_event_id: string; // The event ID of the original data event
@@ -9,6 +17,8 @@ export interface SecureDataInfo {
   nostr_pubkey: string; // This is the owner's pubkey from your provided data structure
   encryption_algo: string;
   storage_type: string; // Added storage_type as it's in your example
+  type?: 'ld50' | 'nmr' | 'gcms'; // Add type for better filename suggestion
+  project?: string; // Add project for better filename suggestion
 }
 
 interface SecureDataDisplayProps {
@@ -17,41 +27,64 @@ interface SecureDataDisplayProps {
 
 const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo }) => {
   const [copied, setCopied] = useState<boolean>(false);
-  const [permissionRequested, setPermissionRequested] = useState<boolean>(false);
+  const [permissionRequested, setPermissionRequested] = useState<boolean>(false); // Our request for access
   const [requestStatus, setRequestStatus] = useState<'idle' | 'pending' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [shared,setShared] = useState<any>()
+
+  // New states for handling received shares and download
+  const [hasReceivedShare, setHasReceivedShare] = useState<boolean>(false);
+  const [receivedSharedCid, setReceivedSharedCid] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState<boolean>(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadSuccess, setDownloadSuccess] = useState<boolean>(false);
+
   const {
     pubkey: currentUserPubkey,
     sendEncryptedDM,
     openNostrLoginModal,
     pool,
     RELAYS,
+    encryptedMessages // Use encryptedMessages from context
   } = useNostr();
 
-  useEffect(() => {
-    checkShared()
-  },[])
+  // Use useSecureLog to get decryptAndDownloadSharedData
+  const { decryptAndDownloadSharedData } = useSecureLog(false); // No input data here
 
-  const checkShared = async () => {
-    if(!currentUserPubkey){
+  // Effect to check if data has been shared with us
+  useEffect(() => {
+    if (!currentUserPubkey || !secureDataInfo.nostr_pubkey || !secureDataInfo.ipfs_cid) {
+      setHasReceivedShare(false);
+      setReceivedSharedCid(null);
       return;
     }
-    const eventShare = await pool.get(
-      RELAYS,
-      {
-        kinds: [4],
-        authors: [secureDataInfo.nostr_pubkey],
-        '#p': [currentUserPubkey],
-        '#I': [secureDataInfo.ipfs_cid],
-        '#O': [NOSTR_SHARING_DATA_OP_TAG]
-      },
-    )
-    if(eventShare){
-      setShared(eventShare);
-      setPermissionRequested(true);
+
+    // Filter encryptedMessages to find a direct share of this specific data to us
+    const foundShare = encryptedMessages.find(event => {
+      const isFromOwnerToUs = event.pubkey === secureDataInfo.nostr_pubkey;
+      const isToUs = event.tags.some(tag => tag[0] === 'p' && tag[1] === currentUserPubkey);
+      const isSharingOp = event.tags.some(tag => tag[0] === 'O' && tag[1] === NOSTR_SHARING_DATA_OP_TAG);
+      const sharedCidTag = event.tags.find(tag => tag[0] === 'C'); // The CID of the re-encrypted data for us
+      const originalCidTag = event.tags.find(tag => tag[0] === 'I'); // The CID of the original data that was requested
+
+      // Match if the owner shared with us, and the 'I' tag matches the original IPFS CID we're displaying
+      return isFromOwnerToUs && isToUs && isSharingOp && sharedCidTag && originalCidTag && originalCidTag[1] === secureDataInfo.ipfs_cid;
+    });
+
+    if (foundShare) {
+      const sharedCid = foundShare.tags.find(tag => tag[0] === 'C')?.[1];
+      if (sharedCid) {
+        setHasReceivedShare(true);
+        setReceivedSharedCid(sharedCid);
+        console.log(`Found existing share for CID ${secureDataInfo.ipfs_cid} with shared CID ${sharedCid}`);
+      }
+    } else {
+      setHasReceivedShare(false);
+      setReceivedSharedCid(null);
     }
-  }
+
+  }, [encryptedMessages, currentUserPubkey, secureDataInfo.ipfs_cid, secureDataInfo.nostr_pubkey]);
+
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -60,15 +93,20 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
 
   const onRequestPermission = async () => {
     if (!currentUserPubkey) {
-      openNostrLoginModal(); // Open the Nostr login modal
+      openNostrLoginModal();
       return;
     }
 
-    // Use secureDataInfo.nostr_pubkey directly as the owner's pubkey
     const ownerPubkey = secureDataInfo.nostr_pubkey;
 
     if (!ownerPubkey) {
       setErrorMessage("Owner's Nostr public key is not available to request access.");
+      setRequestStatus('error');
+      return;
+    }
+
+    if (currentUserPubkey === ownerPubkey) {
+      setErrorMessage("You own this data, no request needed. You can access it directly from your 'Secure Data Logs'.");
       setRequestStatus('error');
       return;
     }
@@ -78,8 +116,9 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
 
     try {
       const dataCid = secureDataInfo.ipfs_cid;
-      const message = `Hello, I would like to request access to the encrypted data linked by IPFS CID: ${secureDataInfo.ipfs_cid} (Nostr event ID: ${secureDataInfo.nostr_event_id}). Please grant me access.`;
-      const dmId = await sendEncryptedDM(ownerPubkey, message,dataCid); // Use ownerPubkey here
+      const message = `Hello, I would like to request access to your encrypted data with IPFS CID: ${secureDataInfo.ipfs_cid} (Nostr event ID: ${secureDataInfo.nostr_event_id}). Please grant me access.`;
+      // 'sharing' parameter is false/null because WE are REQUESTING
+      const dmId = await sendEncryptedDM(ownerPubkey, message, dataCid, false, null);
       if (dmId) {
         setPermissionRequested(true);
         setRequestStatus('success');
@@ -93,6 +132,42 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
       setRequestStatus('error');
     }
   };
+
+  const handleDecryptAndDownload = async () => {
+    if (!currentUserPubkey || !receivedSharedCid || !secureDataInfo.nostr_pubkey) {
+      setDownloadError("Cannot download: Missing current user pubkey, shared CID, or owner pubkey.");
+      return;
+    }
+
+    setIsDownloading(true);
+    setDownloadError(null);
+    setDownloadSuccess(false);
+
+    try {
+      // Create a more descriptive filename
+      const suggestedFileName = [
+        secureDataInfo.type || secureDataInfo.project || 'data',
+        secureDataInfo.ipfs_cid.substring(0, 6)
+      ].filter(Boolean).join('_') + '.bin';
+
+      await decryptAndDownloadSharedData(
+        receivedSharedCid,
+        secureDataInfo.nostr_pubkey, // The owner is the sender of the re-encrypted data
+        suggestedFileName
+      );
+      setDownloadSuccess(true);
+      console.log("Data decrypted and downloaded successfully.");
+    } catch (error: any) {
+      console.error("Error decrypting and downloading shared data:", error);
+      setDownloadError(error.message || "Failed to decrypt and download data.");
+      setDownloadSuccess(false);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+
+  const isOwner = currentUserPubkey === secureDataInfo.nostr_pubkey;
 
   return (
     <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
@@ -151,7 +226,38 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
       </div>
 
       <div className="mt-6 text-center">
-        {!permissionRequested ? (
+        {isOwner ? (
+          <p className="text-blue-400 font-semibold">
+            You own this data. Access it via 'Secure Data Logs'.
+          </p>
+        ) : hasReceivedShare && receivedSharedCid ? (
+          <>
+            <p className="text-green-400 font-semibold mb-3 flex items-center justify-center gap-2">
+              <CheckCircleIcon className="h-5 w-5" /> Access Granted!
+            </p>
+            <button
+              onClick={handleDecryptAndDownload}
+              className={`font-bold py-2 px-6 rounded-lg transition-colors flex items-center justify-center mx-auto
+                ${isDownloading ? 'bg-indigo-700 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500'}
+                text-white`}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <> <ArrowPathIcon className="h-5 w-5 animate-spin mr-2" /> Downloading... </>
+              ) : (
+                <> <ArrowDownTrayIcon className="h-5 w-5 mr-2" /> Decrypt & Download Data </>
+              )}
+            </button>
+            {downloadSuccess && (
+              <p className="text-green-400 mt-2 text-sm">Download successful!</p>
+            )}
+            {downloadError && (
+              <p className="text-red-400 mt-2 text-sm flex items-center justify-center gap-1">
+                <ExclamationCircleIcon className="h-4 w-4" /> {downloadError}
+              </p>
+            )}
+          </>
+        ) : (
           <button
             onClick={onRequestPermission}
             className={`font-bold py-2 px-6 rounded-lg transition-colors
@@ -163,19 +269,6 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
           >
             {requestStatus === 'pending' ? 'Requesting Access...' : 'Request Access to Encrypted Data'}
           </button>
-        ) : (
-          <>
-          {
-            shared ? 
-            <p className="text-green-400 font-semibold">
-              Data already shared
-            </p>
-            : 
-            <p className="text-green-400 font-semibold">
-              Permission request sent! The owner has been notified.
-            </p>
-          }
-          </>
         )}
         {errorMessage && (
           <p className="text-red-400 mt-2 text-sm">{errorMessage}</p>
