@@ -7,16 +7,21 @@ interface DashboardHeaderProps {
 }
 
 const DashboardHeader: React.FC<DashboardHeaderProps> = ({ loading, error }) => (
-  <>
-    <h1 className="text-3xl font-bold mb-6">Network Cortex Overview</h1>
+  <div className="mb-8">
+    <h1 className="text-3xl font-extrabold gradient-text mb-1">Network Cortex Overview</h1>
+    <p className="text-gray-500 text-sm">Your research network at a glance</p>
     {loading && (
-      <div className="flex items-center gap-2 text-gray-400 mb-6">
-        <ArrowPathIcon className="h-5 w-5 animate-spin" />
+      <div className="flex items-center gap-2 text-gray-400 mt-4 text-sm">
+        <ArrowPathIcon className="h-4 w-4 animate-spin text-purple-400" />
         Loading network data...
       </div>
     )}
-    {error && <p className="text-red-400 mb-6">Error: {error}</p>}
-  </>
+    {error && (
+      <p className="text-red-400 mt-4 text-sm bg-red-900/20 border border-red-800/40 rounded-lg px-4 py-2.5">
+        Error: {error}
+      </p>
+    )}
+  </div>
 );
 
 export default DashboardHeader;

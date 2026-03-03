@@ -1,15 +1,23 @@
-// src/components/Header.js
-import React from 'react';
 import { Bars3Icon } from '@heroicons/react/24/outline';
 
-const Header = ({ toggleSidebar }) => {
+
+const Header = ({ toggleSidebar }: { toggleSidebar: () => void }) => {
   return (
-    // This header is only visible on screens smaller than `md` (768px by default)
-    <header className="bg-gray-800 p-4 md:hidden flex items-center">
-      <button onClick={toggleSidebar} className="text-gray-200 hover:text-white">
-        <Bars3Icon className="h-6 w-6" />
+    <header className="bg-gray-900/95 backdrop-blur border-b border-gray-700/50 px-4 py-3 md:hidden flex items-center justify-between sticky top-0 z-20">
+      <div className="flex items-center gap-3">
+        {/* Brand icon */}
+        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center shadow-glow-purple flex-shrink-0">
+          <span className="text-white font-black text-xs">K</span>
+        </div>
+        <h1 className="text-base font-bold gradient-text">KintaGen</h1>
+      </div>
+      <button
+        onClick={toggleSidebar}
+        className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+        aria-label="Open menu"
+      >
+        <Bars3Icon className="h-5 w-5" />
       </button>
-      <h1 className="text-lg font-bold ml-4">KintaGen - Demo</h1>
     </header>
   );
 };

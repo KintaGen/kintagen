@@ -6,19 +6,29 @@ interface DateRangeSelectorProps {
   onViewChange: (view: View) => void;
 }
 
+const views: { value: View; label: string }[] = [
+  { value: 'weekly', label: 'Last 7 Days' },
+  { value: 'monthly', label: 'Last 30 Days' },
+  { value: 'yearly', label: 'Last 12 Months' },
+];
+
 const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({ view, onViewChange }) => (
-  <div className="flex items-center justify-end mb-2 gap-3">
-    <label htmlFor="view" className="text-sm text-gray-400">Range:</label>
-    <select
-      id="view"
-      value={view}
-      onChange={(e) => onViewChange(e.target.value as View)}
-      className="bg-gray-700 text-gray-100 px-3 py-1 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-    >
-      <option value="weekly">Last 7 Days</option>
-      <option value="monthly">Last 30 Days</option>
-      <option value="yearly">Last 12 Months</option>
-    </select>
+  <div className="flex items-center justify-end mb-4 gap-2">
+    <span className="text-xs text-gray-500 font-medium mr-1">Range:</span>
+    <div className="flex items-center gap-1 bg-gray-800/80 border border-gray-700/60 rounded-lg p-1">
+      {views.map((v) => (
+        <button
+          key={v.value}
+          onClick={() => onViewChange(v.value)}
+          className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-150 ${view === v.value
+              ? 'bg-gradient-to-r from-purple-600 to-violet-600 text-white shadow-sm'
+              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'
+            }`}
+        >
+          {v.label}
+        </button>
+      ))}
+    </div>
   </div>
 );
 
