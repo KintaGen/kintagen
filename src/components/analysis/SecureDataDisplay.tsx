@@ -8,8 +8,9 @@ import {
   CheckCircleIcon,   // For downloaded state
   ExclamationCircleIcon // For error state
 } from '@heroicons/react/24/outline';
-import { useNostr, NOSTR_SHARING_DATA_OP_TAG } from '../../contexts/NostrContext';
+import { useNostr, NOSTR_APP_TAG, NOSTR_SHARING_DATA_OP_TAG } from '../../contexts/NostrContext';
 import { useSecureLog } from '../../hooks/useSecureLog'; // Import useSecureLog
+import { useFlowCurrentUser } from '@onflow/react-sdk';
 
 export interface SecureDataInfo {
   nostr_event_id: string; // The event ID of the original data event
@@ -41,48 +42,114 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
   const {
     pubkey: currentUserPubkey,
     sendEncryptedDM,
-    openNostrLoginModal,
+    connectWithFlow,
+    isLoading: isNostrConnecting,
+    subscribeToDMs,
     pool,
     RELAYS,
     encryptedMessages // Use encryptedMessages from context
   } = useNostr();
+  const { user: flowUser } = useFlowCurrentUser();
 
   // Use useSecureLog to get decryptAndDownloadSharedData
   const { decryptAndDownloadSharedData } = useSecureLog(false); // No input data here
 
+  useEffect(() => {
+    if (currentUserPubkey) {
+      subscribeToDMs(NOSTR_SHARING_DATA_OP_TAG);
+    }
+  }, [currentUserPubkey, subscribeToDMs]);
+
   // Effect to check if data has been shared with us
   useEffect(() => {
-    if (!currentUserPubkey || !secureDataInfo.nostr_pubkey || !secureDataInfo.ipfs_cid) {
+    let cancelled = false;
+
+    if (!currentUserPubkey) {
       setHasReceivedShare(false);
       setReceivedSharedCid(null);
-      return;
+      return () => {
+        cancelled = true;
+      };
     }
 
-    // Filter encryptedMessages to find a direct share of this specific data to us
-    const foundShare = encryptedMessages.find(event => {
-      const isFromOwnerToUs = event.pubkey === secureDataInfo.nostr_pubkey;
-      const isToUs = event.tags.some(tag => tag[0] === 'p' && tag[1] === currentUserPubkey);
-      const isSharingOp = event.tags.some(tag => tag[0] === 'O' && tag[1] === NOSTR_SHARING_DATA_OP_TAG);
-      const sharedCidTag = event.tags.find(tag => tag[0] === 'C'); // The CID of the re-encrypted data for us
-      const originalCidTag = event.tags.find(tag => tag[0] === 'I'); // The CID of the original data that was requested
+    if (!secureDataInfo.nostr_pubkey || !secureDataInfo.ipfs_cid) {
+      setHasReceivedShare(false);
+      setReceivedSharedCid(null);
+      return () => {
+        cancelled = true;
+      };
+    }
 
-      // Match if the owner shared with us, and the 'I' tag matches the original IPFS CID we're displaying
-      return isFromOwnerToUs && isToUs && isSharingOp && sharedCidTag && originalCidTag && originalCidTag[1] === secureDataInfo.ipfs_cid;
-    });
+    const findShareInEvents = (events: Array<{ pubkey: string; tags: string[][] }>) =>
+      events.find((event) => {
+        const isFromOwnerToUs = event.pubkey === secureDataInfo.nostr_pubkey;
+        const isToUs = event.tags.some((tag) => tag[0] === 'p' && tag[1] === currentUserPubkey);
+        const isSharingOp = event.tags.some(
+          (tag) => tag[0] === 'O' && tag[1] === NOSTR_SHARING_DATA_OP_TAG
+        );
+        const sharedCidTag = event.tags.find((tag) => tag[0] === 'C');
+        const originalCidTag = event.tags.find((tag) => tag[0] === 'I');
+        return (
+          isFromOwnerToUs &&
+          isToUs &&
+          isSharingOp &&
+          !!sharedCidTag &&
+          !!originalCidTag &&
+          originalCidTag[1] === secureDataInfo.ipfs_cid
+        );
+      });
 
-    if (foundShare) {
-      const sharedCid = foundShare.tags.find(tag => tag[0] === 'C')?.[1];
+    const cachedShare = findShareInEvents(encryptedMessages);
+    if (cachedShare) {
+      const sharedCid = cachedShare.tags.find((tag) => tag[0] === 'C')?.[1];
       if (sharedCid) {
-        setHasReceivedShare(true);
-        setReceivedSharedCid(sharedCid);
-        console.log(`Found existing share for CID ${secureDataInfo.ipfs_cid} with shared CID ${sharedCid}`);
+        if (!cancelled) {
+          setHasReceivedShare(true);
+          setReceivedSharedCid(sharedCid);
+        }
+        return;
       }
-    } else {
-      setHasReceivedShare(false);
-      setReceivedSharedCid(null);
     }
 
-  }, [encryptedMessages, currentUserPubkey, secureDataInfo.ipfs_cid, secureDataInfo.nostr_pubkey]);
+    const checkRelays = async () => {
+      try {
+        const events = await pool.querySync(RELAYS, {
+          kinds: [4],
+          '#p': [currentUserPubkey],
+          '#A': [NOSTR_APP_TAG],
+          '#O': [NOSTR_SHARING_DATA_OP_TAG],
+          '#I': [secureDataInfo.ipfs_cid],
+        });
+        const relayShare = findShareInEvents(events);
+        const sharedCid = relayShare?.tags.find((tag) => tag[0] === 'C')?.[1];
+        if (sharedCid) {
+          if (!cancelled) {
+            setHasReceivedShare(true);
+            setReceivedSharedCid(sharedCid);
+          }
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to query relay shares for this CID:', error);
+      }
+      if (!cancelled) {
+        setHasReceivedShare(false);
+        setReceivedSharedCid(null);
+      }
+    };
+
+    checkRelays();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    encryptedMessages,
+    currentUserPubkey,
+    pool,
+    RELAYS,
+    secureDataInfo.ipfs_cid,
+    secureDataInfo.nostr_pubkey
+  ]);
 
 
   const handleCopy = (text: string) => {
@@ -93,7 +160,12 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
 
   const onRequestPermission = async () => {
     if (!currentUserPubkey) {
-      openNostrLoginModal();
+      if (!flowUser?.loggedIn) {
+        setErrorMessage("Connect your Flow wallet first to initialize Nostr ID.");
+        setRequestStatus('error');
+        return;
+      }
+      await connectWithFlow();
       return;
     }
 
@@ -133,6 +205,16 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
     }
   };
 
+  const handleInitializeNostr = async () => {
+    if (!flowUser?.loggedIn) return;
+    try {
+      setErrorMessage(null);
+      await connectWithFlow();
+    } catch (error: any) {
+      setErrorMessage(error?.message || 'Failed to initialize Nostr ID with Flow wallet.');
+    }
+  };
+
   const handleDecryptAndDownload = async () => {
     if (!currentUserPubkey || !receivedSharedCid || !secureDataInfo.nostr_pubkey) {
       setDownloadError("Cannot download: Missing current user pubkey, shared CID, or owner pubkey.");
@@ -145,10 +227,10 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
 
     try {
       // Create a more descriptive filename
-      const suggestedFileName = [
-        secureDataInfo.type || secureDataInfo.project || 'data',
-        secureDataInfo.ipfs_cid.substring(0, 6)
-      ].filter(Boolean).join('_') + '.bin';
+      const label = secureDataInfo.project || secureDataInfo.type || 'shared_data';
+      const safeLabel = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'shared_data';
+      const datePart = new Date().toISOString().slice(0, 10);
+      const suggestedFileName = `kintagen_${safeLabel}_${datePart}.zip`;
 
       await decryptAndDownloadSharedData(
         receivedSharedCid,
@@ -230,6 +312,28 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
           <p className="text-blue-400 font-semibold">
             You own this data. Access it via 'Secure Data Logs'.
           </p>
+        ) : !currentUserPubkey ? (
+          <>
+            <p className="text-amber-300 text-sm mb-3">
+              Initialize your Nostr ID with your Flow wallet to check if this data was already shared with you.
+            </p>
+            {flowUser?.loggedIn ? (
+              <button
+                onClick={handleInitializeNostr}
+                className={`font-bold py-2 px-6 rounded-lg transition-colors text-white ${isNostrConnecting
+                  ? 'bg-amber-700 cursor-not-allowed'
+                  : 'bg-amber-600 hover:bg-amber-500'
+                  }`}
+                disabled={isNostrConnecting}
+              >
+                {isNostrConnecting ? 'Initializing...' : 'Initialize Nostr ID'}
+              </button>
+            ) : (
+              <p className="text-xs text-gray-400">
+                Connect your Flow wallet first. The Nostr ID is derived from your wallet signature.
+              </p>
+            )}
+          </>
         ) : hasReceivedShare && receivedSharedCid ? (
           <>
             <p className="text-green-400 font-semibold mb-3 flex items-center justify-center gap-2">

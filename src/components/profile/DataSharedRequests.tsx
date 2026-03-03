@@ -314,7 +314,8 @@ const DataSharedRequests: React.FC = () => {
     async (id: string, sharedCid: string, senderPubkey: string) => {
       setDownloadingId(id);
       try {
-        const filename = `kintagen_data_${sharedCid.slice(0, 8)}.bin`;
+        const datePart = new Date().toISOString().slice(0, 10);
+        const filename = `kintagen_shared_data_${datePart}.zip`;
         await decryptAndDownloadSharedData(sharedCid, senderPubkey, filename);
         setDownloadedIds((prev) => new Set(prev).add(id));
       } catch (err: any) {

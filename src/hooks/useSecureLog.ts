@@ -250,7 +250,7 @@ export const useSecureLog = (hasInputData: boolean) => {
     const decryptAndDownloadSharedData = async (
         cid: string,
         senderPubkey: string,
-        suggestedFileName: string = "decrypted_shared_data.bin"
+        suggestedFileName: string = "kintagen_shared_data.zip"
     ): Promise<void> => {
         if (!pubkey || !privKey) {
             console.error("User not logged in or private key not available to decrypt data.");
@@ -273,20 +273,34 @@ export const useSecureLog = (hasInputData: boolean) => {
             const decryptedDataBuffer = await decryptLargeFile(encryptedDataBuffer, conversationKey);
             console.log("🔓 Shared data decrypted successfully.");
 
-            // 3. Create a Blob from the decrypted ArrayBuffer
-            const blob = new Blob([decryptedDataBuffer], { type: 'application/octet-stream' });
+            // 3. Package decrypted bytes into a zip so downloaded files are easier to manage.
+            const { default: JSZip } = await import('jszip');
+            const normalizedName = (suggestedFileName || 'kintagen_shared_data.zip').trim();
+            const baseName = normalizedName.replace(/\.zip$/i, '').replace(/\.[a-z0-9]{1,8}$/i, '') || 'kintagen_shared_data';
+            const zipFileName = normalizedName.toLowerCase().endsWith('.zip') ? normalizedName : `${baseName}.zip`;
+            const innerFileName = `${baseName}.bin`;
+
+            const zip = new JSZip();
+            zip.file(innerFileName, decryptedDataBuffer);
+            zip.file('metadata.json', JSON.stringify({
+                source_cid: cid,
+                sender_pubkey: senderPubkey,
+                downloaded_at: new Date().toISOString(),
+                encryption: 'aes-gcm-nip44',
+            }, null, 2));
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
 
             // 4. Create a download link and trigger the download
-            const url = URL.createObjectURL(blob);
+            const url = URL.createObjectURL(zipBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = suggestedFileName;
+            a.download = zipFileName;
             document.body.appendChild(a); // Append to body to make it clickable
             a.click(); // Programmatically click the link to trigger download
             document.body.removeChild(a); // Clean up the DOM
             URL.revokeObjectURL(url); // Revoke the object URL to free up memory
 
-            console.log(`✅ Decrypted data downloaded as ${suggestedFileName}`);
+            console.log(`✅ Decrypted data downloaded as ${zipFileName}`);
 
         } catch (error) {
             console.error("Error decrypting and downloading shared data:", error);

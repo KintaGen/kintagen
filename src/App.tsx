@@ -18,16 +18,41 @@ import VerificationPage  from './pages/VerificationPage'; // Assuming you placed
 
 import Header from './components/Header';
 import { JobProvider, useJobs } from './contexts/JobContext';
-import { NostrProvider } from './contexts/NostrContext'; // CHANGE THIS
+import { NostrProvider, useNostr } from './contexts/NostrContext'; // CHANGE THIS
+import NostrLoginModal from './components/NostrLoginModal';
 
 import GlobalJobStatusToast from './components/GlobalJobStatusToast';
-import { FlowProvider } from '@onflow/react-sdk';
+import { FlowProvider, useFlowCurrentUser } from '@onflow/react-sdk';
 
 import './services/firebase';
 
 const ToastManager = () => {
   const { jobs } = useJobs(); // Get the global jobs state
   return <GlobalJobStatusToast jobs={jobs} />;
+};
+
+const GlobalNostrLoginModal = () => {
+  const { user: flowUser } = useFlowCurrentUser();
+  const {
+    showNostrLoginModal,
+    closeNostrLoginModal,
+    connectWithFlow,
+    connectWithExtension,
+    generateAndConnectKeys,
+    isLoading: isNostrConnecting,
+  } = useNostr();
+
+  return (
+    <NostrLoginModal
+      isOpen={showNostrLoginModal}
+      onClose={closeNostrLoginModal}
+      onLoginWithFlow={connectWithFlow}
+      onLoginWithExtension={connectWithExtension}
+      onGenerateNewKeys={generateAndConnectKeys}
+      isConnecting={isNostrConnecting}
+      flowUserLoggedIn={flowUser?.loggedIn || false}
+    />
+  );
 };
 const accountProofResolver = async () => {
   const nonce = "75f8587e5bd5f9dcc9909d0dae1f0ac5814458b2ae129620502cb936fde7120a"; // Example 32-byte hex
@@ -168,6 +193,7 @@ const App: React.FC = () => {
           )}
 
           <ToastManager />
+          <GlobalNostrLoginModal />
         </JobProvider>
       </HashRouter>
       </NostrProvider>

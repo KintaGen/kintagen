@@ -4,16 +4,12 @@ import { usePageTitle } from '../hooks/usePageTitle';
 import { useNostr } from '../contexts/NostrContext';
 import { PaperAirplaneIcon } from '@heroicons/react/24/solid';
 import { Link } from 'react-router-dom';
-import NostrLoginModal from '../components/NostrLoginModal';
 import NostrEphemeralKeyInfo from '../components/feedback/NostrEphemeralKeyInfo'; // Your specific ephemeral key info component
-
-import { useFlowCurrentUser } from '@onflow/react-sdk';
 
 const FEEDBACK_GROUP_CHAT_ID = '3cf3df85c1ee58b712e7296c0d2ec66a68f9b9ccc846b63d2f830d974aa447cd';
 
 const FeedbackPage: React.FC = () => {
   usePageTitle('Feedback & Suggestions - KintaGen');
-  const { user: flowUser } = useFlowCurrentUser();
 
   const {
     pubkey: currentUserPubkey,
@@ -24,12 +20,7 @@ const FeedbackPage: React.FC = () => {
     sendFeedback,
     getNostrTime,
     getProfileForMessage,
-    showNostrLoginModal,
     openNostrLoginModal,
-    closeNostrLoginModal,
-    connectWithFlow,
-    connectWithExtension,
-    generateAndConnectKeys, // This now sets privKey in context
   } = useNostr();
 
   const [feedbackText, setFeedbackText] = useState('');
@@ -78,24 +69,6 @@ const FeedbackPage: React.FC = () => {
       setIsSending(false);
     }
   };
-
-  const handleLoginWithFlow = async () => {
-    setIsEphemeralLogin(false);
-    await connectWithFlow();
-  };
-
-  const handleLoginWithExtension = async () => {
-    setIsEphemeralLogin(false); // Not an ephemeral login
-    await connectWithExtension();
-  };
-
-  const handleGenerateNewKeys = async () => {
-    await generateAndConnectKeys();
-
-    setIsEphemeralLogin(true);
-
-  };
-
 
   return (
     <>
@@ -217,15 +190,6 @@ const FeedbackPage: React.FC = () => {
         )}
       </div>
 
-      <NostrLoginModal
-        isOpen={showNostrLoginModal}
-        onClose={closeNostrLoginModal}
-        onLoginWithFlow={handleLoginWithFlow}
-        onLoginWithExtension={handleLoginWithExtension}
-        onGenerateNewKeys={handleGenerateNewKeys}
-        isConnecting={isNostrConnecting}
-        flowUserLoggedIn={flowUser?.loggedIn || false}
-      />
     </>
   );
 };
