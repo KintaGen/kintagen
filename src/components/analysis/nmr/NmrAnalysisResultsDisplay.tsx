@@ -60,6 +60,7 @@ type NmrResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'inputDataH
 
 interface NmrAnalysisResultsDisplayProps {
   job: NmrResultsDisplayJob;
+  showDataPanels?: boolean;
 }
 
 
@@ -208,7 +209,10 @@ const PeakTables: React.FC<{ peaks?: Peak[]; summary?: SummaryBand[] }> = ({ pea
 };
 
 
-export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps> = ({ job }) => {
+export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps> = ({
+  job,
+  showDataPanels = true,
+}) => {
   const { returnvalue, logData } = job;
   const [metadata, setMetadata] = useState<any | null>(null);
   const secureDataInfo = returnvalue?.secureDataInfo || job.metadata?.secure_data || null;
@@ -347,13 +351,18 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
           </div>
         )}
 
-        {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
+        {showDataPanels && (
+          <>
+            {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
 
-        <ProvenanceAndDownload
-          job={job as DisplayJob}
-          metadata={metadata}
-          onDownload={handleDownload}
-        />
+            <ProvenanceAndDownload
+              job={job as DisplayJob}
+              metadata={metadata}
+              onDownload={handleDownload}
+              showDownloadForNonDemo
+            />
+          </>
+        )}
       </div>
     </>
   );

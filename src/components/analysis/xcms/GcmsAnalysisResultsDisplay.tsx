@@ -14,9 +14,13 @@ type ResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'returnvalue' 
 
 interface GcmsAnalysisResultsDisplayProps {
   job: ResultsDisplayJob;
+  showDataPanels?: boolean;
 }
 
-export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProps> = ({ job }) => {
+export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProps> = ({
+  job,
+  showDataPanels = true,
+}) => {
   const { returnvalue, logData, inputDataHash } = job;
   const initialResults = returnvalue?.results;
   const secureDataInfo = returnvalue?.secureDataInfo || job.metadata?.secure_data || null;
@@ -262,13 +266,18 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
         )}
       </div>
 
-      {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
+      {showDataPanels && (
+        <>
+          {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
 
-      <ProvenanceAndDownload
-        job={job as DisplayJob}
-        metadata={metadata}
-        onDownload={handleDownload}
-      />
+          <ProvenanceAndDownload
+            job={job as DisplayJob}
+            metadata={metadata}
+            onDownload={handleDownload}
+            showDownloadForNonDemo
+          />
+        </>
+      )}
     </>
   );
 };

@@ -209,9 +209,9 @@ export const LogbookAnalysisEntry = ({ step }) => {
             return (
                 <div className="p-4 border-t border-gray-700">
                     {/* Render specialized display components */}
-                    {agentType.includes('nmr') && <NmrAnalysisResultsDisplay job={jobForDisplay} />}
-                    {agentType.includes('gc-ms') && <GcmsAnalysisResultsDisplay job={jobForDisplay} />}
-                    {agentType.includes('ld50') && <Ld50AnalysisResultsDisplay job={jobForDisplay} />}
+                    {agentType.includes('nmr') && <NmrAnalysisResultsDisplay job={jobForDisplay} showDataPanels={false} />}
+                    {agentType.includes('gc-ms') && <GcmsAnalysisResultsDisplay job={jobForDisplay} showDataPanels={false} />}
+                    {agentType.includes('ld50') && <Ld50AnalysisResultsDisplay job={jobForDisplay} showDataPanels={false} />}
                     <div className='space-y-8'>
                         {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
 

@@ -17,9 +17,14 @@ type ResultsDisplayJob = Pick<
 interface AnalysisResultsDisplayProps {
   job: ResultsDisplayJob;
   isLoading?: boolean;
+  showDataPanels?: boolean;
 }
 
-export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ job, isLoading }) => {
+export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({
+  job,
+  isLoading,
+  showDataPanels = true,
+}) => {
   const [plotUrl, setPlotUrl] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<any | null>(null);
   const [metadata, setMetadata] = useState<any | null>(null);
@@ -195,13 +200,18 @@ export const AnalysisResultsDisplay: React.FC<AnalysisResultsDisplayProps> = ({ 
         </div>
       </div>
 
-      {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
+      {showDataPanels && (
+        <>
+          {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
 
-      <ProvenanceAndDownload
-        job={job as DisplayJob}
-        metadata={metadata}
-        onDownload={handleDownload}
-      />
+          <ProvenanceAndDownload
+            job={job as DisplayJob}
+            metadata={metadata}
+            onDownload={handleDownload}
+            showDownloadForNonDemo
+          />
+        </>
+      )}
     </div>
   );
 };

@@ -236,6 +236,7 @@ export const CustomObservationDisplay: React.FC<CustomObservationDisplayProps> =
         job={job}
         metadata={metadata}
         onDownload={handleDownload}
+        showDownloadForNonDemo
       />
     </div>
   );
