@@ -257,8 +257,8 @@ export const useSecureLog = (hasInputData: boolean) => {
             throw new Error("You must be logged in with your private key to decrypt data.");
         }
         if (pubkey === senderPubkey) {
-             console.warn("Attempting to decrypt data sent by self. This method expects data shared by another party.");
-             // Potentially handle this case differently or still allow if it was re-encrypted for self.
+            console.warn("Attempting to decrypt data sent by self. This method expects data shared by another party.");
+            // Potentially handle this case differently or still allow if it was re-encrypted for self.
         }
 
         try {
@@ -295,13 +295,29 @@ export const useSecureLog = (hasInputData: boolean) => {
     };
 
 
+    /**
+     * Returns a Map from ipfs_cid → SecureDataMeta for any pubkey.
+     * Useful for looking up which project/NFT a given CID belongs to.
+     */
+    const getSecureDataByCid = async (targetPubkey: string): Promise<Map<string, SecureDataMeta>> => {
+        const map = new Map<string, SecureDataMeta>();
+        if (!targetPubkey) return map;
+        const all = await getAllSecureDataForPubkey(targetPubkey);
+        for (const entry of all) {
+            if (entry.ipfs_cid) map.set(entry.ipfs_cid, entry);
+        }
+        return map;
+    };
+
     return {
+
         includeSecureData,
         setIncludeSecureData,
         processSecureLog,
         getAllSecureDataForPubkey,
+        getSecureDataByCid,
         shareSecureData,
-        decryptAndDownloadSharedData, // Expose the new decryption and download method
+        decryptAndDownloadSharedData,
         hasNostrIdentity: !!pubkey
     };
 };

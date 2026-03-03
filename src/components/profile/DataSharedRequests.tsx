@@ -20,7 +20,8 @@ import {
   DocumentArrowDownIcon,
   LockOpenIcon,
 } from '@heroicons/react/24/solid';
-import { useSecureLog } from '../../hooks/useSecureLog';
+import { useSecureLog, type SecureDataMeta } from '../../hooks/useSecureLog';
+import { BeakerIcon, LinkIcon } from '@heroicons/react/24/outline';
 
 // ─────────────────────────────────────────────
 // Types
@@ -48,6 +49,38 @@ interface SentRequest {
 }
 
 type InnerTab = 'received' | 'sent';
+
+// ─────────────────────────────────────────────
+// Shared sub-components
+// ─────────────────────────────────────────────
+
+const TYPE_BADGE: Record<string, { label: string; color: string }> = {
+  ld50: { label: 'LD50', color: 'bg-red-500/15 text-red-400 border-red-500/25' },
+  nmr: { label: 'NMR', color: 'bg-blue-500/15 text-blue-400 border-blue-500/25' },
+  gcms: { label: 'GC-MS', color: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/25' },
+};
+
+const DataContextBadge: React.FC<{ meta: SecureDataMeta }> = ({ meta }) => {
+  const badge = meta.type ? TYPE_BADGE[meta.type.toLowerCase()] : undefined;
+  return (
+    <div className="flex flex-wrap items-center gap-2 bg-indigo-500/8 border border-indigo-500/15 rounded-lg px-3 py-2">
+      <BeakerIcon className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+      {meta.project && (
+        <span className="text-xs font-semibold text-indigo-300">{meta.project}</span>
+      )}
+      {meta.nft_id && (
+        <span className="flex items-center gap-1 text-xs text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-full">
+          <LinkIcon className="h-3 w-3" /> NFT #{meta.nft_id}
+        </span>
+      )}
+      {badge && (
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${badge.color}`}>
+          {badge.label}
+        </span>
+      )}
+    </div>
+  );
+};
 
 // ─────────────────────────────────────────────
 // Sub-components
@@ -116,7 +149,7 @@ const DataSharedRequests: React.FC = () => {
     encryptedMessages,
   } = useNostr();
 
-  const { decryptAndDownloadSharedData } = useSecureLog(true);
+  const { decryptAndDownloadSharedData, getSecureDataByCid } = useSecureLog(true);
 
   const [innerTab, setInnerTab] = useState<InnerTab>('received');
   const [loading, setLoading] = useState(true);
@@ -124,6 +157,9 @@ const DataSharedRequests: React.FC = () => {
 
   const [receivedShares, setReceivedShares] = useState<ReceivedShare[]>([]);
   const [sentRequests, setSentRequests] = useState<SentRequest[]>([]);
+
+  // CID maps keyed by ownerPubkey — loaded lazily per unique owner
+  const [ownerCidMaps, setOwnerCidMaps] = useState<Map<string, Map<string, SecureDataMeta>>>(new Map());
 
   // download state per-item (keyed by id)
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -339,8 +375,8 @@ const DataSharedRequests: React.FC = () => {
             {tab.count > 0 && (
               <span
                 className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${innerTab === tab.id
-                    ? 'bg-white/20 text-white'
-                    : 'bg-gray-700 text-gray-300'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-gray-700 text-gray-300'
                   }`}
               >
                 {tab.count}
@@ -488,8 +524,8 @@ const DataSharedRequests: React.FC = () => {
                       <div
                         key={req.id}
                         className={`group border rounded-xl p-4 transition-all duration-200 ${req.granted
-                            ? 'bg-emerald-900/10 border-emerald-700/30 hover:border-emerald-500/40'
-                            : 'bg-gray-900/60 border-gray-700/60 hover:border-amber-500/20'
+                          ? 'bg-emerald-900/10 border-emerald-700/30 hover:border-emerald-500/40'
+                          : 'bg-gray-900/60 border-gray-700/60 hover:border-amber-500/20'
                           }`}
                       >
                         {/* Recipient + status pill */}

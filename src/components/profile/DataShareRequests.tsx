@@ -10,12 +10,14 @@ import {
   ShieldCheckIcon,
   ExclamationCircleIcon,
   InboxArrowDownIcon,
+  BeakerIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
 import {
   ArrowPathIcon,
   CheckCircleIcon,
 } from '@heroicons/react/24/solid';
-import { useSecureLog } from '../../hooks/useSecureLog';
+import { useSecureLog, type SecureDataMeta } from '../../hooks/useSecureLog';
 
 interface IncomingRequest {
   id: string;
@@ -26,16 +28,19 @@ interface IncomingRequest {
   decryptionError?: string;
 }
 
+const TYPE_BADGE: Record<string, { label: string; color: string }> = {
+  ld50: { label: 'LD50', color: 'bg-red-500/15 text-red-400 border-red-500/25' },
+  nmr: { label: 'NMR', color: 'bg-blue-500/15 text-blue-400 border-blue-500/25' },
+  gcms: { label: 'GC-MS', color: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/25' },
+};
+
 const avatarFallback = (k: string) =>
   `https://api.dicebear.com/7.x/identicon/svg?seed=${k}&backgroundColor=1f2937`;
 
 const shortKey = (k: string) => `${k.slice(0, 8)}…${k.slice(-8)}`;
 
 const tsLabel = (ts: number) =>
-  new Date(ts * 1000).toLocaleString(undefined, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
+  new Date(ts * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 const Skeleton = () => (
   <div className="space-y-3 animate-pulse">
@@ -55,6 +60,29 @@ const Skeleton = () => (
   </div>
 );
 
+// DataContext pill — shows project, NFT id, and type badge for a CID
+const DataContextBadge: React.FC<{ meta: SecureDataMeta }> = ({ meta }) => {
+  const badge = meta.type ? TYPE_BADGE[meta.type.toLowerCase()] : undefined;
+  return (
+    <div className="flex flex-wrap items-center gap-2 bg-indigo-500/8 border border-indigo-500/15 rounded-lg px-3 py-2">
+      <BeakerIcon className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+      {meta.project && (
+        <span className="text-xs font-semibold text-indigo-300">{meta.project}</span>
+      )}
+      {meta.nft_id && (
+        <span className="flex items-center gap-1 text-xs text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded-full">
+          <LinkIcon className="h-3 w-3" /> NFT #{meta.nft_id}
+        </span>
+      )}
+      {badge && (
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${badge.color}`}>
+          {badge.label}
+        </span>
+      )}
+    </div>
+  );
+};
+
 const DataShareRequests: React.FC = () => {
   const {
     pubkey: currentUserPubkey,
@@ -65,18 +93,26 @@ const DataShareRequests: React.FC = () => {
     pool,
     RELAYS,
   } = useNostr();
-  const { shareSecureData } = useSecureLog(true);
+  const { shareSecureData, getSecureDataByCid } = useSecureLog(true);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [requests, setRequests] = useState<IncomingRequest[]>([]);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [sharedIds, setSharedIds] = useState<Set<string>>(new Set());
+  // Map from ipfs_cid → SecureDataMeta for our own data
+  const [cidMetaMap, setCidMetaMap] = useState<Map<string, SecureDataMeta>>(new Map());
 
   useEffect(() => {
     // @ts-ignore
     subscribeToDMs(NOSTR_SHARE_DATA_OP_TAG);
   }, [subscribeToDMs]);
+
+  // Load our own CID → meta map once we have a pubkey
+  useEffect(() => {
+    if (!currentUserPubkey) return;
+    getSecureDataByCid(currentUserPubkey).then(setCidMetaMap).catch(console.error);
+  }, [currentUserPubkey]);
 
   useEffect(() => {
     if (!currentUserPubkey) {
@@ -88,8 +124,6 @@ const DataShareRequests: React.FC = () => {
     const process = async () => {
       const newRequests: IncomingRequest[] = [];
       const processedIds = new Set(requests.map((r) => r.id));
-
-      // Build a set of already-shared CIDs from pool
       const newSharedKeys = new Set<string>();
 
       for (const event of encryptedMessages) {
@@ -99,7 +133,6 @@ const DataShareRequests: React.FC = () => {
         const dataCidTag = event.tags.find((t) => t[0] === 'C');
         const dataCid = dataCidTag?.[1] ?? null;
 
-        // Check if we already sent a share back for this CID
         if (dataCid) {
           const shareEvent = await pool.get(RELAYS, {
             kinds: [4],
@@ -145,11 +178,9 @@ const DataShareRequests: React.FC = () => {
           return unique.sort((a, b) => b.timestamp - a.timestamp);
         });
       }
-
       if (newSharedKeys.size > 0) {
         setSharedIds((prev) => new Set([...prev, ...newSharedKeys]));
       }
-
       setLoading(false);
     };
 
@@ -179,7 +210,6 @@ const DataShareRequests: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center gap-3 mb-1">
         <div className="p-2 rounded-lg bg-green-500/10 border border-green-500/20">
           <InboxArrowDownIcon className="h-5 w-5 text-green-400" />
@@ -215,13 +245,15 @@ const DataShareRequests: React.FC = () => {
               ? sharedIds.has(`${req.dataCid}|${req.senderPubkey}`)
               : false;
             const isSharing = sharingId === req.id;
+            // Look up what NFT/project this CID belongs to
+            const dataMeta = req.dataCid ? cidMetaMap.get(req.dataCid) : undefined;
 
             return (
               <div
                 key={req.id}
                 className={`border rounded-xl p-4 transition-all duration-200 ${alreadyShared
-                  ? 'bg-emerald-900/10 border-emerald-700/30'
-                  : 'bg-gray-900/60 border-gray-700/60 hover:border-green-500/30'
+                    ? 'bg-emerald-900/10 border-emerald-700/30'
+                    : 'bg-gray-900/60 border-gray-700/60 hover:border-green-500/30'
                   }`}
               >
                 {/* Sender */}
@@ -230,9 +262,7 @@ const DataShareRequests: React.FC = () => {
                     src={profile?.picture || avatarFallback(req.senderPubkey)}
                     alt={profile?.name || 'User'}
                     className="h-9 w-9 rounded-full object-cover ring-2 ring-green-500/25"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = avatarFallback(req.senderPubkey);
-                    }}
+                    onError={(e) => { (e.target as HTMLImageElement).src = avatarFallback(req.senderPubkey); }}
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-white truncate">
@@ -242,6 +272,13 @@ const DataShareRequests: React.FC = () => {
                   </div>
                   <span className="text-xs text-gray-600 whitespace-nowrap">{tsLabel(req.timestamp)}</span>
                 </div>
+
+                {/* ── Data context: project + NFT ── */}
+                {dataMeta && (
+                  <div className="mb-3">
+                    <DataContextBadge meta={dataMeta} />
+                  </div>
+                )}
 
                 {/* Message */}
                 <div className="bg-gray-800/60 rounded-lg px-3 py-2.5 mb-3">
@@ -263,7 +300,6 @@ const DataShareRequests: React.FC = () => {
                   <p className="text-xs text-red-400 italic mb-2">⚠ {req.decryptionError}</p>
                 )}
 
-                {/* Action */}
                 <div className="flex justify-end pt-2 border-t border-gray-700/40">
                   {alreadyShared ? (
                     <span className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-medium bg-emerald-700/20 text-emerald-400 border border-emerald-600/30">
@@ -274,18 +310,14 @@ const DataShareRequests: React.FC = () => {
                       onClick={() => handleAccept(req)}
                       disabled={!req.dataCid || isSharing}
                       className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${isSharing
-                        ? 'bg-green-700/50 text-white cursor-not-allowed'
-                        : 'bg-green-600 hover:bg-green-500 text-white shadow-sm shadow-green-900/40'
+                          ? 'bg-green-700/50 text-white cursor-not-allowed'
+                          : 'bg-green-600 hover:bg-green-500 text-white shadow-sm shadow-green-900/40'
                         }`}
                     >
                       {isSharing ? (
-                        <>
-                          <ArrowPathIcon className="h-4 w-4 animate-spin" /> Granting Access…
-                        </>
+                        <><ArrowPathIcon className="h-4 w-4 animate-spin" /> Granting Access…</>
                       ) : (
-                        <>
-                          <CheckCircleIcon className="h-4 w-4" /> Grant Access
-                        </>
+                        <><CheckCircleIcon className="h-4 w-4" /> Grant Access</>
                       )}
                     </button>
                   )}
