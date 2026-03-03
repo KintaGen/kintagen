@@ -1,10 +1,9 @@
 // pages/ProfilePage.tsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNostr, type NostrLink } from '../contexts/NostrContext';
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 import { Link } from 'react-router-dom';
 import {
-    PaperAirplaneIcon,
     ArrowPathIcon,
     PencilSquareIcon,
     CheckCircleIcon,
@@ -25,7 +24,7 @@ import { Helmet } from 'react-helmet-async';
 import { usePageTitle } from '../hooks/usePageTitle';
 import DataShareRequests from '../components/profile/DataShareRequests';
 import DataSharedRequests from '../components/profile/DataSharedRequests';
-import DataRequestedStatus from '../components/profile/DataRequestedStatus';
+
 
 import ConnectWalletPrompt from '../components/projects/ConnectWalletPrompt';
 import SecureDataLogs from '../components/profile/SecureDataLogs'; // <--- IMPORT THE NEW COMPONENT
@@ -34,7 +33,7 @@ const ProfilePage: React.FC = () => {
     usePageTitle('My Profile - KintaGen');
 
     const { user: flowUser } = useFlowCurrentUser();
-    const { 
+    const {
         pubkey,
         privKey,
         profile,
@@ -45,7 +44,7 @@ const ProfilePage: React.FC = () => {
 
 
     // Add 'secure-logs' to the activeTab state
-    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests' | 'secure-logs' | 'data-shared' | 'data-requested'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'nfts' | 'requests' | 'secure-logs' | 'data-shared'>('profile');
 
     const [isEditing, setIsEditing] = useState(false);
     const [name, setName] = useState('');
@@ -108,8 +107,8 @@ const ProfilePage: React.FC = () => {
     if (!flowUser?.loggedIn) {
         return (
             <div className="max-w-7xl mx-auto p-4 md:p-8">
-                 <h1 className="text-3xl font-bold mb-8">My Profile</h1>
-                 <div className="mt-10"><ConnectWalletPrompt /></div>
+                <h1 className="text-3xl font-bold mb-8">My Profile</h1>
+                <div className="mt-10"><ConnectWalletPrompt /></div>
             </div>
         );
     }
@@ -127,7 +126,7 @@ const ProfilePage: React.FC = () => {
                     disabled={isNostrLoading}
                     className="bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-500 disabled:bg-gray-600 flex items-center mx-auto"
                 >
-                    {isNostrLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin mr-2"/> : null}
+                    {isNostrLoading ? <ArrowPathIcon className="h-5 w-5 animate-spin mr-2" /> : null}
                     {isNostrLoading ? 'Generating Keys...' : 'Initialize Identity'}
                 </button>
             </div>
@@ -145,7 +144,7 @@ const ProfilePage: React.FC = () => {
                     <h1 className="text-3xl font-bold">My Profile</h1>
                     {pubkey && (
                         <div className="flex items-center gap-2">
-                             <Link
+                            <Link
                                 to={`/profile/${pubkey}`}
                                 className="text-sm text-purple-400 hover:text-purple-300 font-medium flex items-center gap-1"
                             >
@@ -158,46 +157,29 @@ const ProfilePage: React.FC = () => {
                     )}
                 </div>
 
-                <div className="border-b border-gray-700 mb-6">
-                    <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                        <button
-                            onClick={() => setActiveTab('profile')}
-                            className={`${activeTab === 'profile' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
-                        >
-                            Nostr Profile
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('nfts')}
-                            className={`${activeTab === 'nfts' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}
-                        >
-                            Minted NFTs ({ownedNfts.length})
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('requests')}
-                            className={`${activeTab === 'requests' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
-                        >
-                            <EnvelopeIcon className="h-4 w-4" /> Data Requests
-                        </button>
-                        {/* New Tab for Secure Data Logs */}
-                        <button
-                            onClick={() => setActiveTab('secure-logs')}
-                            className={`${activeTab === 'secure-logs' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
-                        >
-                            <LockClosedIcon className="h-4 w-4" /> Secure Data Logs
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('data-shared')}
-                            className={`${activeTab === 'data-shared' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
-                        >
-                            <LockOpenIcon className="h-4 w-4" /> Data Shared
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('data-requested')}
-                            className={`${activeTab === 'data-requested' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-1`}
-                        >
-                            <PaperAirplaneIcon className="h-4 w-4" /> Data Requested
-                        </button>
-                    </nav>
+                {/* ── Tab Navigation ── */}
+                <div className="mb-6">
+                    <div className="flex gap-1 bg-gray-900/70 p-1 rounded-xl border border-gray-700/50 overflow-x-auto">
+                        {([
+                            { id: 'profile', label: 'Profile', icon: <PencilSquareIcon className="h-4 w-4" /> },
+                            { id: 'nfts', label: `NFTs (${ownedNfts.length})`, icon: <WalletIcon className="h-4 w-4" /> },
+                            { id: 'requests', label: 'Data Requests', icon: <EnvelopeIcon className="h-4 w-4" /> },
+                            { id: 'secure-logs', label: 'Secure Logs', icon: <LockClosedIcon className="h-4 w-4" /> },
+                            { id: 'data-shared', label: 'Data Shared', icon: <LockOpenIcon className="h-4 w-4" /> },
+                        ] as const).map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setActiveTab(tab.id as any)}
+                                className={`flex items-center gap-1.5 whitespace-nowrap py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200
+                                    ${activeTab === tab.id
+                                        ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/30'
+                                        : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/60'
+                                    }`}
+                            >
+                                {tab.icon}{tab.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 {activeTab === 'profile' && (
@@ -392,7 +374,7 @@ const ProfilePage: React.FC = () => {
                                         disabled={isSaving}
                                         className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-6 rounded-lg flex items-center disabled:bg-gray-600 disabled:cursor-not-allowed shadow-lg shadow-green-900/20"
                                     >
-                                        {isSaving ? <ArrowPathIcon className="h-5 w-5 animate-spin mr-2"/> : <CheckCircleIcon className="h-5 w-5 mr-2"/>}
+                                        {isSaving ? <ArrowPathIcon className="h-5 w-5 animate-spin mr-2" /> : <CheckCircleIcon className="h-5 w-5 mr-2" />}
                                         Save Profile
                                     </button>
                                 </div>
@@ -401,7 +383,7 @@ const ProfilePage: React.FC = () => {
                                     onClick={() => setIsEditing(true)}
                                     className="bg-gray-700 text-white hover:bg-gray-600 font-semibold py-2 px-6 rounded-lg flex items-center border border-gray-600"
                                 >
-                                    <PencilSquareIcon className="h-5 w-5 mr-2"/>
+                                    <PencilSquareIcon className="h-5 w-5 mr-2" />
                                     Edit Profile
                                 </button>
                             )}
@@ -426,19 +408,21 @@ const ProfilePage: React.FC = () => {
                 )}
 
                 {activeTab === 'requests' && (
-                    <DataShareRequests />
+                    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700/60 shadow-lg">
+                        <DataShareRequests />
+                    </div>
                 )}
 
-                {/* Render the new SecureDataLogs component when 'secure-logs' tab is active */}
                 {activeTab === 'secure-logs' && (
-                    <SecureDataLogs />
+                    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700/60 shadow-lg">
+                        <SecureDataLogs />
+                    </div>
                 )}
 
                 {activeTab === 'data-shared' && (
-                    <DataSharedRequests />
-                )}
-                {activeTab === 'data-requested' && (
-                    <DataRequestedStatus />
+                    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700/60 shadow-lg">
+                        <DataSharedRequests />
+                    </div>
                 )}
             </div>
 
