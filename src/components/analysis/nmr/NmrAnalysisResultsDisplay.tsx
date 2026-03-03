@@ -5,6 +5,8 @@ import { Layout } from 'plotly.js';
 import JSZip from 'jszip';
 
 import { generateDataHash } from '../../../utils/hash';
+import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
+import SecureDataDisplay from '../SecureDataDisplay';
 
 // --- Updated interfaces to match the new backend response ---
 interface SpectrumPoint {
@@ -48,10 +50,11 @@ interface NmrResults {
 import { type DisplayJob } from '../../../types';
 
 // Use a subset of DisplayJob for results display with specific returnvalue type
-type NmrResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'inputDataHash' | 'logData'> & {
+type NmrResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'inputDataHash' | 'logData' | 'metadata'> & {
   returnvalue?: {
     results: NmrResults;
     status: 'success' | 'error';
+    secureDataInfo?: any;
   };
 };
 
@@ -208,10 +211,10 @@ const PeakTables: React.FC<{ peaks?: Peak[]; summary?: SummaryBand[] }> = ({ pea
 export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps> = ({ job }) => {
   const { returnvalue, logData } = job;
   const [metadata, setMetadata] = useState<any | null>(null);
+  const secureDataInfo = returnvalue?.secureDataInfo || job.metadata?.secure_data || null;
   if (!job) {
     return null; // or return a loading spinner, e.g., <p>Loading results...</p>
   }
-  console.log(job)
   const results = useMemo(() => returnvalue?.results, [returnvalue]);
 
   useEffect(() => {
@@ -222,9 +225,9 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
         analysis_agent: "KintaGen NMR Agent v1.2 (Local Run)", // Version bump
       });
     } else if (job.state === 'logged') {
-        setMetadata({
-            input_data_hash_sha256: job.inputDataHash,
-            analysis_agent: "KintaGen NMR Agent v1.2",
+        setMetadata(job.metadata || {
+          input_data_hash_sha256: job.inputDataHash,
+          analysis_agent: "KintaGen NMR Agent v1.2",
         });
     }
   }, [job]);
@@ -343,6 +346,14 @@ export const NmrAnalysisResultsDisplay: React.FC<NmrAnalysisResultsDisplayProps>
             <p className="text-gray-400">Interactive plot not available.</p>
           </div>
         )}
+
+        {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
+
+        <ProvenanceAndDownload
+          job={job as DisplayJob}
+          metadata={metadata}
+          onDownload={handleDownload}
+        />
       </div>
     </>
   );

@@ -161,6 +161,7 @@ const GCMSAnalysisPage: React.FC = () => {
 
         setViewedJob({ 
             ...job, 
+            metadata,
             returnvalue: { 
                 results: { 
                     quantitative_report, top_spectra_data, raw_chromatogram_data,

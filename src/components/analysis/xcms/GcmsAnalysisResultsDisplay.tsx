@@ -5,10 +5,12 @@ import { Layout, Data } from 'plotly.js';
 import { FidChromatogramPlot, type PlotRef as ChromatogramPlotRef } from './FidChromatogramPlot'; 
 import { MassSpectraDisplay, type MassSpectraPlotRef } from './MassSpectraDisplay';
 import { generateDataHash } from '../../../utils/hash';
+import { ProvenanceAndDownload } from '../ProvenanceAndDownload';
+import SecureDataDisplay from '../SecureDataDisplay';
 
 import { type DisplayJob } from '../../../types';
 
-type ResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'returnvalue' | 'logData' | 'inputDataHash'>;
+type ResultsDisplayJob = Pick<DisplayJob, 'projectId' | 'state' | 'returnvalue' | 'logData' | 'inputDataHash' | 'metadata'>;
 
 interface GcmsAnalysisResultsDisplayProps {
   job: ResultsDisplayJob;
@@ -17,6 +19,7 @@ interface GcmsAnalysisResultsDisplayProps {
 export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProps> = ({ job }) => {
   const { returnvalue, logData, inputDataHash } = job;
   const initialResults = returnvalue?.results;
+  const secureDataInfo = returnvalue?.secureDataInfo || job.metadata?.secure_data || null;
   
   const chromatogramPlotRef = useRef<ChromatogramPlotRef>(null);
   const msPlotRef = useRef<MassSpectraPlotRef>(null);
@@ -62,10 +65,11 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
   
   const alignmentData = initialResults?.retention_time_deviation || [];
 
-  const metadata = inputDataHash ? {
+  const localMetadata = inputDataHash ? {
     input_data_hash_sha256: inputDataHash,
     analysis_agent: "KintaGen GC-MS Feature Finder v2.0",
   } : null;
+  const metadata = job.metadata || localMetadata;
 
   // --- 2. Alignment Plot Config ---
   const alignmentPlotData: Data[] = useMemo(() => {
@@ -100,7 +104,7 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
       return;
     }
 
-    if (job.state === 'completed' && initialResults && metadata) {
+    if (job.state === 'completed' && initialResults && localMetadata) {
       try {
         const zip = new JSZip();
         const outputs = [];
@@ -143,7 +147,7 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
         if (outputs.length === 0) throw new Error("No output data available.");
 
         const fullMetadata = {
-            ...metadata,
+            ...localMetadata,
             timestamp_utc: new Date().toISOString(),
             outputs: outputs
         };
@@ -257,6 +261,14 @@ export const GcmsAnalysisResultsDisplay: React.FC<GcmsAnalysisResultsDisplayProp
             </div>
         )}
       </div>
+
+      {secureDataInfo && <SecureDataDisplay secureDataInfo={secureDataInfo} />}
+
+      <ProvenanceAndDownload
+        job={job as DisplayJob}
+        metadata={metadata}
+        onDownload={handleDownload}
+      />
     </>
   );
 };

@@ -22,6 +22,7 @@ interface ProvenanceAndDownloadProps {
 
 export const ProvenanceAndDownload: React.FC<ProvenanceAndDownloadProps> = ({ job, metadata, onDownload }) => {
     const logs = job.returnvalue?.log || [];
+    const isDemoProject = job.projectId === DEMO_PROJECT_ID;
     return (
     // This container manages the spacing between the sections.
     <div className="space-y-8">
@@ -58,22 +59,24 @@ export const ProvenanceAndDownload: React.FC<ProvenanceAndDownloadProps> = ({ jo
         </div>
       )}
       
-      {/* Section 3: Download Button for Demo Projects */}
-      {job.projectId === DEMO_PROJECT_ID && (
-        <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
-          <h3 className="text-lg font-semibold mb-4">Download Demo Results</h3>
-          <p className="text-gray-400 mb-4 text-sm">
-            Download a verifiable artifact of this demo analysis, including the data hash, metrics, and plot.
-          </p>
-          <button
-            onClick={onDownload}
-            className="flex items-center justify-center mx-auto bg-cyan-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-cyan-500"
-          >
-            <ArrowDownTrayIcon className="h-5 w-5 mr-2"/>
-            <span>Download Artifact (.zip)</span>
-          </button>
-        </div>
-      )}
+      {/* Section 3: Download Button */}
+      <div className="bg-gray-800 p-6 rounded-lg shadow-lg text-center">
+        <h3 className="text-lg font-semibold mb-4">
+          {isDemoProject ? 'Download Demo Results' : 'Download Analysis Artifact'}
+        </h3>
+        <p className="text-gray-400 mb-4 text-sm">
+          {isDemoProject
+            ? 'Download a verifiable artifact of this demo analysis, including the data hash, metrics, and plot.'
+            : 'Download a verifiable artifact for this analysis run, including metadata and result files.'}
+        </p>
+        <button
+          onClick={onDownload}
+          className="flex items-center justify-center mx-auto bg-cyan-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-cyan-500"
+        >
+          <ArrowDownTrayIcon className="h-5 w-5 mr-2"/>
+          <span>Download Artifact (.zip)</span>
+        </button>
+      </div>
         {/*
                 <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
             <h3 className="text-lg font-semibold mb-2 text-gray-300">Processing Log</h3>

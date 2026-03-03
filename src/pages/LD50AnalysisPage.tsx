@@ -117,6 +117,7 @@ const LD50AnalysisPage: React.FC = () => {
 
             setViewedJob({ 
                 ...job, 
+                metadata,
                 returnvalue: { 
                     results: { ...metrics, plot_b64: plotBase64 }, 
                     status: 'success', 

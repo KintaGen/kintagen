@@ -191,6 +191,7 @@ const NMRAnalysisPage: React.FC = () => {
 
         setViewedJob({ 
             ...job, 
+            metadata,
             returnvalue: { 
                 results: { spectrum_data, peaks, summary_table, referencing_info, summary_text, plot_b64, residual_zoom_plot_b64 }, 
                 status: 'success', 

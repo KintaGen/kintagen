@@ -80,6 +80,7 @@ export interface DisplayJob {
     returnvalue?: any;
     logData?: any;
     inputDataHash?: string;
+    metadata?: any;
 }
 
 export interface AnalysisMetadata {
