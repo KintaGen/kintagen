@@ -23,7 +23,6 @@
     "bls-eth-wasm": "^1.4.0",
     "clsx": "^2.1.1",
     "crypto": "^1.0.1",
-    "firebase": "^12.10.0",
     "framer-motion": "^12.34.5",
     "glob": "^11.1.0",
     "jszip": "^3.10.1",

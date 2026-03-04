@@ -7,8 +7,8 @@ import { nip19 } from 'nostr-tools';
 import { Buffer } from 'buffer'; // Required for Buffer.from(hexString, 'hex') if not polyfilled
 
 fcl.config()
-   .put("accessNode.api", "https://rest-testnet.onflow.org")
-   .put("discovery.wallet", "https://fcl-discovery.onflow.org/testnet/authn");
+  .put("accessNode.api", "https://rest-testnet.onflow.org")
+  .put("discovery.wallet", "https://fcl-discovery.onflow.org/testnet/authn");
 
 const RELAYS = [
   'wss://relay.damus.io',
@@ -18,18 +18,18 @@ const RELAYS = [
 ];
 
 export interface NostrLink {
-    title: string;
-    url: string;
+  title: string;
+  url: string;
 }
 
 export interface NostrProfile {
-    name?: string;
-    about?: string;
-    picture?: string;
-    flowWalletAddress?: string;
-    links?: NostrLink[];
-    pubkey?: string;
-    created_at?: number; // Keep as optional for consistency with parsed data
+  name?: string;
+  about?: string;
+  picture?: string;
+  flowWalletAddress?: string;
+  links?: NostrLink[];
+  pubkey?: string;
+  created_at?: number; // Keep as optional for consistency with parsed data
 }
 
 export interface AppNostrEvent extends NostrEvent {
@@ -38,33 +38,33 @@ export interface AppNostrEvent extends NostrEvent {
 }
 
 interface NostrContextType {
-    pubkey: string | null;
-    privKey: Uint8Array | null;
-    profile: NostrProfile | null;
-    connectWithFlow: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>;
-    connectWithExtension: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>;
-    generateAndConnectKeys: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>;
-    updateProfile: (name: string, about: string, links: NostrLink[], flowWalletAddress?: string, picture?: string) => Promise<void>;
-    fetchProfileByFlowWalletAddress: (flowAddr: string) => Promise<NostrProfile | null>;
-    fetchAllProfiles: () => Promise<NostrProfile[]>;
-    fetchProfileByPubkey: (pubkey: string) => Promise<NostrProfile | null>;
-    isLoading: boolean;
-    feedbackMessages: AppNostrEvent[];
-    isLoadingFeedbackMessages: boolean;
-    sendFeedback: (message: string, groupChatId: string) => Promise<void>;
-    sendEncryptedDM: (recipientPubkey: string, message: string, dataCid: string,sharing: boolean | null, originalCID: string | null) => Promise<string | null>; 
-    getNostrTime: (timestamp: number) => string;
-    getProfileForMessage: (pubkey: string) => NostrProfile | undefined;
-    showNostrLoginModal: boolean;
-    openNostrLoginModal: () => void;
-    closeNostrLoginModal: () => void;
-    logoutFlow: () => Promise<void>;
-    logoutNostr: () => void;
-    subscribeToDMs: () => void;
-    decryptDM: (event: AppNostrEvent) => Promise<string | null>; 
-    encryptedMessages: NostrEvent[];
-    pool: SimplePool;
-    RELAYS: string[];
+  pubkey: string | null;
+  privKey: Uint8Array | null;
+  profile: NostrProfile | null;
+  connectWithFlow: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>;
+  connectWithExtension: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>;
+  generateAndConnectKeys: () => Promise<{ pubkey: string; privKey: Uint8Array } | null>;
+  updateProfile: (name: string, about: string, links: NostrLink[], flowWalletAddress?: string, picture?: string) => Promise<void>;
+  fetchProfileByFlowWalletAddress: (flowAddr: string) => Promise<NostrProfile | null>;
+  fetchAllProfiles: () => Promise<NostrProfile[]>;
+  fetchProfileByPubkey: (pubkey: string) => Promise<NostrProfile | null>;
+  isLoading: boolean;
+  feedbackMessages: AppNostrEvent[];
+  isLoadingFeedbackMessages: boolean;
+  sendFeedback: (message: string, groupChatId: string) => Promise<void>;
+  sendEncryptedDM: (recipientPubkey: string, message: string, dataCid: string, sharing: boolean | null, originalCID: string | null) => Promise<string | null>;
+  getNostrTime: (timestamp: number) => string;
+  getProfileForMessage: (pubkey: string) => NostrProfile | undefined;
+  showNostrLoginModal: boolean;
+  openNostrLoginModal: () => void;
+  closeNostrLoginModal: () => void;
+  logoutFlow: () => Promise<void>;
+  logoutNostr: () => void;
+  subscribeToDMs: () => void;
+  decryptDM: (event: AppNostrEvent) => Promise<string | null>;
+  encryptedMessages: NostrEvent[];
+  pool: SimplePool;
+  RELAYS: string[];
 }
 
 const NostrContext = createContext<NostrContextType | null>(null);
@@ -84,13 +84,13 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [feedbackMessages, setFeedbackMessages] = useState<AppNostrEvent[]>([]);
   const [isLoadingFeedbackMessages, setIsLoadingFeedbackMessages] = useState(true);
-  const [cachedProfiles, setCachedProfiles] = useState<{[pubkey: string]: NostrProfile}>({});
+  const [cachedProfiles, setCachedProfiles] = useState<{ [pubkey: string]: NostrProfile }>({});
 
   const [showNostrLoginModal, setShowNostrLoginModal] = useState(false);
   const openNostrLoginModal = useCallback(() => setShowNostrLoginModal(true), []);
   const closeNostrLoginModal = useCallback(() => setShowNostrLoginModal(false), []);
 
-  const [encryptedMessages,setEncryptedMessages] = useState([]);
+  const [encryptedMessages, setEncryptedMessages] = useState([]);
 
   const logoutNostr = useCallback(() => {
     if (pubkey) { // Only log out if there's an active Nostr pubkey
@@ -187,7 +187,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     } catch (error: any) { // Corrected error typing to `any` for robustness
       console.error("Nostr Login (Flow) Error:", error);
-      alert(error.message || "Failed to derive Nostr identity from Flow.");
+
       logoutNostr(); // NEW: Reset Nostr if Flow connection fails
       return null;
     } finally {
@@ -213,7 +213,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { pubkey: pk, privKey: null as any }; // Explicitly return null for privKey
     } catch (error: any) { // Corrected error typing to `any`
       console.error("Nostr Login (Extension) Error:", error);
-      alert(error.message || "Failed to connect with Nostr extension. Please ensure it's unlocked and permitted.");
+
       logoutNostr(); // NEW: Reset Nostr if extension connection fails
       return null;
     } finally {
@@ -242,7 +242,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { pubkey: newPubKey, privKey: newPrivKey };
     } catch (error: any) { // Corrected error typing to `any`
       console.error("Nostr Key Generation Error:", error);
-      alert(error.message || "Failed to generate new Nostr keys.");
+
       logoutNostr(); // NEW: Reset Nostr if key generation fails
       return null;
     } finally {
@@ -256,17 +256,17 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!pubkey) throw new Error("Not logged in to Nostr.");
 
     const content = JSON.stringify({
-        name,
-        about,
-        picture,
-        links,
-        flowWalletAddress
+      name,
+      about,
+      picture,
+      links,
+      flowWalletAddress
     });
     const tags: string[][] = [];
     if (flowWalletAddress) {
       tags.push(["f", flowWalletAddress]);
     }
-    tags.push(["A",NOSTR_APP_TAG]);
+    tags.push(["A", NOSTR_APP_TAG]);
 
     const eventTemplate: Omit<NostrEvent, 'id' | 'sig' | 'pubkey'> = {
       kind: 0,
@@ -324,7 +324,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const fetchProfileByPubkey = useCallback(async (targetPubkey: string): Promise<NostrProfile | null> => {
     if (!targetPubkey) return null;
     if (cachedProfiles[targetPubkey]) {
-        return cachedProfiles[targetPubkey];
+      return cachedProfiles[targetPubkey];
     }
     try {
       const event = await pool.get(RELAYS, {
@@ -381,7 +381,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setCachedProfiles(prev => {
         const newCache = { ...prev };
         fetchedProfiles.forEach(p => {
-            if (p.pubkey) newCache[p.pubkey] = p;
+          if (p.pubkey) newCache[p.pubkey] = p;
         });
         return newCache;
       });
@@ -462,23 +462,23 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     pool.subscribe(RELAYS, filter, {
-        onevent: (event: NostrEvent) => {
-            const appEvent = event as AppNostrEvent;
-            if (!cachedProfiles[appEvent.pubkey]) {
-                fetchProfileByPubkey(appEvent.pubkey);
-            }
-
-            setFeedbackMessages(prevMessages => {
-                if (!prevMessages.some(msg => msg.id === appEvent.id)) {
-                    return [...prevMessages, appEvent].sort((a, b) => a.created_at - b.created_at);
-                }
-                return prevMessages;
-            });
-            setIsLoadingFeedbackMessages(false);
-        },
-        oneose: () => {
-          setIsLoadingFeedbackMessages(false);
+      onevent: (event: NostrEvent) => {
+        const appEvent = event as AppNostrEvent;
+        if (!cachedProfiles[appEvent.pubkey]) {
+          fetchProfileByPubkey(appEvent.pubkey);
         }
+
+        setFeedbackMessages(prevMessages => {
+          if (!prevMessages.some(msg => msg.id === appEvent.id)) {
+            return [...prevMessages, appEvent].sort((a, b) => a.created_at - b.created_at);
+          }
+          return prevMessages;
+        });
+        setIsLoadingFeedbackMessages(false);
+      },
+      oneose: () => {
+        setIsLoadingFeedbackMessages(false);
+      }
     });
 
     // Keeping pool.close([]) as requested, assuming it effectively unsubscribes this specific filter.
@@ -522,7 +522,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       throw new Error("No private key or Nostr extension available to sign and encrypt event.");
     }
     if (pubkey === recipientPubkey) {
-        throw new Error("Cannot send an encrypted message to yourself.");
+      throw new Error("Cannot send an encrypted message to yourself.");
     }
 
     try {
@@ -537,20 +537,20 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw new Error("Neither private key nor Nostr extension available for encryption.");
       }
       let OP_TAG;
-      
-      if(!sharing){
+
+      if (!sharing) {
         OP_TAG = NOSTR_SHARE_DATA_OP_TAG
       } else {
         OP_TAG = NOSTR_SHARING_DATA_OP_TAG
       }
       const tags = [
         ['p', recipientPubkey],
-        ['A',NOSTR_APP_TAG], // Tag App
-        ['O',OP_TAG], // Operation
+        ['A', NOSTR_APP_TAG], // Tag App
+        ['O', OP_TAG], // Operation
         ['C', dataCid] // Data CID
       ]
-      if(sharing){
-        tags.push(['I',originalCID as string]);
+      if (sharing) {
+        tags.push(['I', originalCID as string]);
       }
       const eventTemplate: Omit<NostrEvent, 'id' | 'sig' | 'pubkey'> = {
         kind: 4, // NIP-04 Encrypted Direct Message
@@ -616,13 +616,13 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 
   // New: Subscribe to incoming DMs
-  const subscribeToDMs = useCallback(async (OP_TAG: string,originalCID: string | null) => {
+  const subscribeToDMs = useCallback(async (OP_TAG: string, originalCID: string | null) => {
     if (!pubkey) {
       console.warn("Not logged in to Nostr, cannot subscribe to DMs.");
-      return () => {}; // Return a no-op unsubscribe function
+      return () => { }; // Return a no-op unsubscribe function
     }
     let filter = {};
-    if(originalCID){
+    if (originalCID) {
       filter = {
         kinds: [4],
         authors: [pubkey],
@@ -642,7 +642,7 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const events = await pool.querySync(RELAYS, filter);
     setEncryptedMessages(events);
 
-    for(const event of events){
+    for (const event of events) {
 
       if (!cachedProfiles[event.pubkey]) {
         fetchProfileByPubkey(event.pubkey);
@@ -690,8 +690,8 @@ export const NostrProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         decryptDM,
         subscribeToDMs,
         encryptedMessages,
-        pool, 
-        RELAYS 
+        pool,
+        RELAYS
       }
     }>
       {children}

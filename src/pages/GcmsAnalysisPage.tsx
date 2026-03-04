@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { XCircleIcon } from '@heroicons/react/24/solid';
@@ -6,6 +6,7 @@ import JSZip from 'jszip';
 import { upload } from '@vercel/blob/client';
 
 // --- Custom Hooks & Utils ---
+import { useNostr } from '../contexts/NostrContext';
 import { useOwnedNftProjects } from '../flow/kintagen-nft';
 import { useLighthouse } from '../hooks/useLighthouse';
 import { useSecureLog } from '../hooks/useSecureLog';
@@ -33,6 +34,7 @@ const GCMSAnalysisPage: React.FC = () => {
   const { uploadFile, error: uploadError } = useLighthouse();
   const { user } = useFlowCurrentUser();
   const flowConfig = useFlowConfig();
+  const { connectWithFlow } = useNostr();
 
   // 2. Local State
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -65,6 +67,20 @@ const GCMSAnalysisPage: React.FC = () => {
   // C. Secure Log Logic
   const { includeSecureData, setIncludeSecureData, processSecureLog, hasNostrIdentity } =
     useSecureLog(mzmlFiles.length > 0);
+
+  // --- Auto Logging Effects ---
+  const [autoLogJobId, setAutoLogJobId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (autoLogJobId && hasNostrIdentity && !jobIdBeingLogged && !isLogging) {
+      const jobToLog = displayJobs.find(j => j.id === autoLogJobId);
+      if (jobToLog) {
+        handleViewAndLogResults(jobToLog);
+      }
+      setAutoLogJobId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLogJobId, hasNostrIdentity, displayJobs, jobIdBeingLogged, isLogging]);
 
   // --- Handlers ---
 
@@ -188,6 +204,11 @@ const GCMSAnalysisPage: React.FC = () => {
 
       // 2B. Real Project
       if (job.projectId !== DEMO_PROJECT_ID && user?.addr) {
+        if (!hasNostrIdentity) {
+          setAutoLogJobId(job.id);
+          connectWithFlow().catch(console.error);
+          return;
+        }
         setIsLogging(true); setJobIdBeingLogged(job.id);
         try {
           const project = projects.find(p => p.id === job.projectId);

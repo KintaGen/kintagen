@@ -6,6 +6,7 @@ import JSZip from 'jszip';
 import { upload } from '@vercel/blob/client';
 
 // --- Custom Hooks & Components ---
+import { useNostr } from '../contexts/NostrContext';
 import { useOwnedNftProjects } from '../flow/kintagen-nft';
 import { useLighthouse } from '../hooks/useLighthouse';
 import { useSecureLog } from '../hooks/useSecureLog';
@@ -38,6 +39,7 @@ const NMRAnalysisPage: React.FC = () => {
   const flowConfig = useFlowConfig();
   const { user } = useFlowCurrentUser();
   const { uploadFile, error: uploadError } = useLighthouse();
+  const { connectWithFlow } = useNostr();
 
   // --- State ---
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -123,6 +125,20 @@ const NMRAnalysisPage: React.FC = () => {
     }
     return jobs.filter(job => job.kind === 'nmr' && job.projectId === DEMO_PROJECT_ID).map(job => ({ ...job, id: job.id, projectId: job.projectId as string, state: job.state as any, }));
   }, [selectedProjectId, projects, jobs]);
+
+  // --- Auto Logging Effects ---
+  const [autoLogJobId, setAutoLogJobId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (autoLogJobId && hasNostrIdentity && !jobIdBeingLogged && !isLogging) {
+      const jobToLog = displayJobs.find(j => j.id === autoLogJobId);
+      if (jobToLog) {
+        handleViewAndLogResults(jobToLog);
+      }
+      setAutoLogJobId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoLogJobId, hasNostrIdentity, displayJobs, jobIdBeingLogged, isLogging]);
 
   // --- Run Analysis ---
   const handleRunAnalysis = async () => {
@@ -215,6 +231,11 @@ const NMRAnalysisPage: React.FC = () => {
 
       // --- 2B: REAL PROJECT -> Log to Chain ---
       if (job.projectId !== DEMO_PROJECT_ID && user?.addr) {
+        if (!hasNostrIdentity) {
+          setAutoLogJobId(job.id);
+          connectWithFlow().catch(console.error);
+          return;
+        }
         setIsLogging(true); setJobIdBeingLogged(job.id);
         try {
           const project = projects.find(p => p.id === job.projectId);

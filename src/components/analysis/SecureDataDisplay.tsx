@@ -8,7 +8,7 @@ import {
   CheckCircleIcon,   // For downloaded state
   ExclamationCircleIcon // For error state
 } from '@heroicons/react/24/outline';
-import { useNostr, NOSTR_APP_TAG, NOSTR_SHARING_DATA_OP_TAG } from '../../contexts/NostrContext';
+import { useNostr, NOSTR_APP_TAG, NOSTR_SHARING_DATA_OP_TAG, NOSTR_SHARE_DATA_OP_TAG } from '../../contexts/NostrContext';
 import { useSecureLog } from '../../hooks/useSecureLog'; // Import useSecureLog
 import { useFlowCurrentUser } from '@onflow/react-sdk';
 
@@ -56,9 +56,48 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
 
   useEffect(() => {
     if (currentUserPubkey) {
-      subscribeToDMs(NOSTR_SHARING_DATA_OP_TAG);
+      subscribeToDMs(NOSTR_SHARING_DATA_OP_TAG, null);
     }
   }, [currentUserPubkey, subscribeToDMs]);
+
+  // Effect to check if we have already requested access
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentUserPubkey || !secureDataInfo.nostr_pubkey || !secureDataInfo.ipfs_cid) {
+      return;
+    }
+
+    // If we're the owner, we don't need to request access
+    if (currentUserPubkey === secureDataInfo.nostr_pubkey) {
+      return;
+    }
+
+    const checkExistingRequest = async () => {
+      try {
+        const events = await pool.querySync(RELAYS, {
+          kinds: [4],
+          authors: [currentUserPubkey],
+          '#p': [secureDataInfo.nostr_pubkey]
+        });
+
+        const hasRequested = events.some((event) => {
+          const isRequestOp = event.tags.some(tag => tag[0] === 'O' && (tag[1] === NOSTR_SHARE_DATA_OP_TAG || tag[1] === 'kintagendemo-v0-datashare'));
+          const isCorrectCid = event.tags.some(tag => tag[0] === 'C' && tag[1] === secureDataInfo.ipfs_cid);
+          return isRequestOp && isCorrectCid;
+        });
+
+        if (hasRequested && !cancelled) {
+          setPermissionRequested(true);
+          setRequestStatus('success');
+        }
+      } catch (error) {
+        console.error('Failed to check for existing data access requests:', error);
+      }
+    };
+
+    checkExistingRequest();
+    return () => { cancelled = true; };
+  }, [currentUserPubkey, secureDataInfo.nostr_pubkey, secureDataInfo.ipfs_cid, pool, RELAYS]);
 
   // Effect to check if data has been shared with us
   useEffect(() => {
@@ -361,13 +400,16 @@ const SecureDataDisplay: React.FC<SecureDataDisplayProps> = ({ secureDataInfo })
               </p>
             )}
           </>
+        ) : permissionRequested || requestStatus === 'success' ? (
+          <p className="text-blue-400 font-semibold mb-3 flex items-center justify-center gap-2">
+            <CheckCircleIcon className="h-5 w-5" /> Access Requested
+          </p>
         ) : (
           <button
             onClick={onRequestPermission}
             className={`font-bold py-2 px-6 rounded-lg transition-colors
               ${requestStatus === 'pending' ? 'bg-blue-700 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500'}
               ${requestStatus === 'error' ? 'bg-red-600 hover:bg-red-500' : ''}
-              ${requestStatus === 'success' ? 'bg-green-600 hover:bg-green-500' : ''}
               text-white`}
             disabled={requestStatus === 'pending'}
           >
