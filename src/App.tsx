@@ -1,5 +1,5 @@
-import React,{useEffect, useState} from 'react';
-import { HashRouter, Routes, Route } from 'react-router-dom'; 
+import React, { useEffect, useState } from 'react';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import HomePage from './pages/HomePage';
 //import ResearchChatPage from './pages/ResearchChatPage';
@@ -14,7 +14,7 @@ import AllProfilesPage from './pages/AllProfilesPage';
 import IndividualProfilePage from './pages/IndividualProfilePage'; // NEW IMPORT
 import FeedbackPage from './pages/FeedbackPage'; // NEW IMPORT
 
-import VerificationPage  from './pages/VerificationPage'; // Assuming you placed it here
+import VerificationPage from './pages/VerificationPage'; // Assuming you placed it here
 
 import Header from './components/Header';
 import { JobProvider, useJobs } from './contexts/JobContext';
@@ -24,7 +24,6 @@ import NostrLoginModal from './components/NostrLoginModal';
 import GlobalJobStatusToast from './components/GlobalJobStatusToast';
 import { FlowProvider, useFlowCurrentUser } from '@onflow/react-sdk';
 
-import './services/firebase';
 
 const ToastManager = () => {
   const { jobs } = useJobs(); // Get the global jobs state
@@ -62,15 +61,16 @@ const accountProofResolver = async () => {
 
   return {
     appIdentifier: "KintaGen Platform",
-    nonce: nonce 
+    nonce: nonce
   };
 };
 const testnetConfig = {
   // --- Network Information ---
   "accessNodeUrl": "https://rest-testnet.onflow.org",
   // Ensure this URL is exactly this:
-  "discoveryWallet": "https://fcl-discovery.onflow.org/testnet/authn", 
-  
+  "discoveryWallet": "https://fcl-discovery.onflow.org/testnet/authn",
+  "discoveryAuthnInclude": ["0x82ec283f88a62e65"] as string[],
+
   // --- App Information ---
   "appDetailTitle": "KintaGen Platform",
   "appDetailIcon": "https://avatars.githubusercontent.com/u/215318019?s=200&v=4",
@@ -78,11 +78,11 @@ const testnetConfig = {
 
   // --- Address Configuration ---
   "addresses": {
-    "NonFungibleToken": "0x631e88ae7f1d7c20",    
-    "MetadataViews": "0x631e88ae7f1d7c20",       
-    "ViewResolver": "0x631e88ae7f1d7c20",        
+    "NonFungibleToken": "0x631e88ae7f1d7c20",
+    "MetadataViews": "0x631e88ae7f1d7c20",
+    "ViewResolver": "0x631e88ae7f1d7c20",
     "FlowToken": "0x7e60df042a9c0868",
-    "KintaGenNFT": "0x3c16354a3859c81b",          
+    "KintaGenNFT": "0x3c16354a3859c81b",
     "FungibleToken": "0x9a0766d93b6608b7",
   }
 } as const;
@@ -137,65 +137,65 @@ const App: React.FC = () => {
   };
 
   return (
-      // @ts-ignore
-      <FlowProvider
-          // Pass all configuration through the `config` prop
-          config={configToUse}
-          flowJson={jsonToUse}
+    // @ts-ignore
+    <FlowProvider
+      // Pass all configuration through the `config` prop
+      config={configToUse}
+      flowJson={jsonToUse}
 
-        >
-        <NostrProvider>
+    >
+      <NostrProvider>
         <HashRouter>
-        <JobProvider>
-          {/* --- This is the main layout container --- */}
-          <div className="bg-gray-900 min-h-screen text-gray-200 flex">
-            
-            {/* 4. Pass the state to the Sidebar */}
-            <Sidebar isOpen={isSidebarOpen} />
-            
-            <div className="flex flex-col flex-1 md:ml-64">
-              
-              {/* 5. Add the mobile-only Header */}
-              <Header toggleSidebar={toggleSidebar} />
-              
-              {/* 6. Make the main content margin responsive */}
-              <main className="flex-1 p-4 md:p-8">
-                <Routes>
-                  {/* ... your routes ... */}
-                  <Route path="/" element={<HomePage />} /> 
-                  <Route path="/my-profile" element={<ProfilePage />} />
-                  <Route path="/projects" element={<MintingComponent />} />
-                  {/*<Route path="/chat" element={<ResearchChatPage />} />*/}
-                  <Route path="/profiles" element={<AllProfilesPage />} />
-                  <Route path="/profile/:pubkey" element={<IndividualProfilePage />} /> 
-                  <Route path="/analysis" element={<LD50AnalysisPage />} />
-                  <Route path="/analysis-nmr" element={<NMRAnalysisPage />} />
-                  <Route path="/analysis-xcms" element={<GCMSAnalysisPage />} />
-                  <Route path="/custom" element={<CustomObservationPage />} />
-                  <Route path="/feedback" element={<FeedbackPage />} />
+          <JobProvider>
+            {/* --- This is the main layout container --- */}
+            <div className="bg-gray-900 min-h-screen text-gray-200 flex">
 
-                  <Route path="/logbook/:ownerAddress/:nftId" element={<LogbookPage />} />
+              {/* 4. Pass the state to the Sidebar */}
+              <Sidebar isOpen={isSidebarOpen} />
 
-                  <Route path="/verify" element={<VerificationPage />} />
+              <div className="flex flex-col flex-1 md:ml-64">
 
-                </Routes>
-              </main>
+                {/* 5. Add the mobile-only Header */}
+                <Header toggleSidebar={toggleSidebar} />
 
+                {/* 6. Make the main content margin responsive */}
+                <main className="flex-1 p-4 md:p-8">
+                  <Routes>
+                    {/* ... your routes ... */}
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/my-profile" element={<ProfilePage />} />
+                    <Route path="/projects" element={<MintingComponent />} />
+                    {/*<Route path="/chat" element={<ResearchChatPage />} />*/}
+                    <Route path="/profiles" element={<AllProfilesPage />} />
+                    <Route path="/profile/:pubkey" element={<IndividualProfilePage />} />
+                    <Route path="/analysis" element={<LD50AnalysisPage />} />
+                    <Route path="/analysis-nmr" element={<NMRAnalysisPage />} />
+                    <Route path="/analysis-xcms" element={<GCMSAnalysisPage />} />
+                    <Route path="/custom" element={<CustomObservationPage />} />
+                    <Route path="/feedback" element={<FeedbackPage />} />
+
+                    <Route path="/logbook/:ownerAddress/:nftId" element={<LogbookPage />} />
+
+                    <Route path="/verify" element={<VerificationPage />} />
+
+                  </Routes>
+                </main>
+
+              </div>
             </div>
-          </div>
 
-          {/* 7. (Optional but recommended) Add an overlay */}
-          {isSidebarOpen && (
-            <div
-              onClick={toggleSidebar}
-              className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
-            ></div>
-          )}
+            {/* 7. (Optional but recommended) Add an overlay */}
+            {isSidebarOpen && (
+              <div
+                onClick={toggleSidebar}
+                className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
+              ></div>
+            )}
 
-          <ToastManager />
-          <GlobalNostrLoginModal />
-        </JobProvider>
-      </HashRouter>
+            <ToastManager />
+            <GlobalNostrLoginModal />
+          </JobProvider>
+        </HashRouter>
       </NostrProvider>
     </FlowProvider>
   );
