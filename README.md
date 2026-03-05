@@ -2,6 +2,8 @@
 
 🚀 **Live Demo:** [https://kintagendemo.vercel.app/](https://kintagendemo.vercel.app/)
 
+**Notion:** [View the documentation on Notion](https://kintagen-project.notion.site/Immutable-Scientific-Logbook-293b3c79252a80b4b681c1149473d486?pvs=74)
+
 ---
 
 # KintaGen UI (Frontend and Serverless functions)
